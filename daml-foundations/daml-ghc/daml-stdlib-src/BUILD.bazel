@@ -1,9 +1,19 @@
 # Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+load("//bazel_tools:pkg.bzl", "pkg_tar")
 
 filegroup(
   name = "daml-stdlib-src",
   srcs = glob(["*.daml", "**/*.daml"]),
+  visibility = ["//visibility:public"]
+)
+
+exports_files(["LibraryModules.daml"])
+
+pkg_tar(
+  name = "daml-stdlib-src-tarball",
+  mode = "0666",
+  srcs = ["."],
   visibility = ["//visibility:public"]
 )
