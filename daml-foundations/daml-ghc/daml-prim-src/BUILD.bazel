@@ -9,6 +9,12 @@ filegroup(
   visibility = ["//visibility:public"]
 )
 
+filegroup(
+  name = "daml-prim-src-no-lib",
+  srcs = glob(["**/*.daml"], exclude = ["LibraryModules.daml"],),
+  visibility = ["//visibility:public"]
+)
+
 pkg_tar(
   name = "daml-prim-src-tarball",
   mode = "0666",

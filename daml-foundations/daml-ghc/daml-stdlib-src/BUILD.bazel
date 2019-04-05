@@ -9,6 +9,13 @@ filegroup(
   visibility = ["//visibility:public"]
 )
 
+
+filegroup(
+  name = "daml-stdlib-src-no-lib",
+  srcs = glob(["**/*.daml"], exclude = ["LibraryModules.daml"]),
+  visibility = ["//visibility:public"]
+)
+
 exports_files(["LibraryModules.daml"])
 
 pkg_tar(

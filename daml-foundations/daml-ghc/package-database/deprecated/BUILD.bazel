@@ -1,30 +1,28 @@
 # Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-load ("//daml-foundations/daml-ghc/package-database:util.bzl", "bundled_package_db", "daml_package_rule", "daml_package_db")
+load ("//daml-foundations/daml-ghc/package-database:util.bzl", "bundled_package_db", "daml_package_rule", "daml_package_db", "merged_source_rule")
 
-genrule(
-  name = "daml-prim-and-stdlib",
-  outs = ["daml-prim-and-stdlib-src"],
-  srcs = ["//daml-foundations/daml-ghc/daml-stdlib-src:daml-stdlib-src-tarball",
-          "//daml-foundations/daml-ghc/daml-prim-src:daml-prim-src-tarball",
-          "//daml-foundations/daml-ghc/daml-stdlib-src:LibraryModules.daml"],
-  cmd = """
-    dir=$(location :daml-prim-and-stdlib-src)
-    mkdir -p $$dir
-    tar xf $(location //daml-foundations/daml-ghc/daml-stdlib-src:daml-stdlib-src-tarball) --strip-components 2 -C $$dir
-    tar xf $(location //daml-foundations/daml-ghc/daml-prim-src:daml-prim-src-tarball) --strip-components 2 -C $$dir
-    sed -n 10,10000p $(location //daml-foundations/daml-ghc/daml-stdlib-src:LibraryModules.daml) >> $$dir/LibraryModules.daml
-  """,
-  visibility = ["//visibility:public"]
+
+merged_source_rule(
+    name = "daml-prim-and-stdlib-src",
+    srcs = [
+        "//daml-foundations/daml-ghc/daml-prim-src:daml-prim-src-no-lib",
+        "//daml-foundations/daml-ghc/daml-stdlib-src:daml-stdlib-src-no-lib",
+    ],
+    strip_prefixes = [
+        "daml-foundations/daml-ghc/daml-prim-src/",
+        "daml-foundations/daml-ghc/daml-stdlib-src/",
+    ],
 )
 
-bundled_package_db(
-    name = "package-db",
-    pkg_db = ":package_db_for_damlc",
-    daml_lf_versions = ["1.0", "1.1", "1.2", "1.3"],
-    visibility = ["//visibility:public"],
-)
+
+# bundled_package_db(
+#     name = "package-db",
+#     pkg_db = ":package_db_for_damlc",
+#     daml_lf_versions = ["1.0", "1.1", "1.2", "1.3"],
+#     visibility = ["//visibility:public"],
+# )
 
 daml_package_rule(
   name = "daml-prim-1.0",
@@ -36,48 +34,48 @@ daml_package_rule(
   daml_lf_version = "1.0",
 )
 
-daml_package_rule(
-  name = "daml-prim-1.1",
-  pkg_name = "daml-prim",
-  srcs = ":daml-prim-and-stdlib-src",
-  pkg_root = "daml-prim-and-stdlib-src",
-  package_db = "//daml-foundations/daml-ghc/package-database:package_db_for_daml-prim",
-  visibility = ["//visibility:public"],
-  daml_lf_version = "1.1",
-)
+# daml_package_rule(
+#   name = "daml-prim-1.1",
+#   pkg_name = "daml-prim",
+#   srcs = ":daml-prim-and-stdlib-src",
+#   pkg_root = "daml-prim-and-stdlib-src",
+#   package_db = "//daml-foundations/daml-ghc/package-database:package_db_for_daml-prim",
+#   visibility = ["//visibility:public"],
+#   daml_lf_version = "1.1",
+# )
 
-daml_package_rule(
-  name = "daml-prim-1.2",
-  pkg_name = "daml-prim",
-  srcs = ":daml-prim-and-stdlib-src",
-  pkg_root = "$(location :daml-prim-and-stdlib-src)",
-  package_db = "//daml-foundations/daml-ghc/package-database:package_db_for_daml-prim",
-  visibility = ["//visibility:public"],
-  daml_lf_version = "1.2",
-)
+# daml_package_rule(
+#   name = "daml-prim-1.2",
+#   pkg_name = "daml-prim",
+#   srcs = ":daml-prim-and-stdlib-src",
+#   pkg_root = "$(location :daml-prim-and-stdlib-src)",
+#   package_db = "//daml-foundations/daml-ghc/package-database:package_db_for_daml-prim",
+#   visibility = ["//visibility:public"],
+#   daml_lf_version = "1.2",
+# )
 
-daml_package_rule(
-  name = "daml-prim-1.3",
-  pkg_name = "daml-prim",
-  srcs = ":daml-prim-and-stdlib-src",
-  pkg_root = "$(location :daml-prim-and-stdlib-src)",
-  package_db = "//daml-foundations/daml-ghc/package-database:package_db_for_daml-prim",
-  visibility = ["//visibility:public"],
-  daml_lf_version = "1.3",
-)
+# daml_package_rule(
+#   name = "daml-prim-1.3",
+#   pkg_name = "daml-prim",
+#   srcs = ":daml-prim-and-stdlib-src",
+#   pkg_root = "$(location :daml-prim-and-stdlib-src)",
+#   package_db = "//daml-foundations/daml-ghc/package-database:package_db_for_daml-prim",
+#   visibility = ["//visibility:public"],
+#   daml_lf_version = "1.3",
+# )
 
-daml_package_db(
-  name = "package_db_for_damlc",
-  pkgs =  [":daml-prim-1.0"
-          ,":daml-prim-1.1"
-          ,":daml-prim-1.2"
-          ,":daml-prim-1.3"
-          ],
-  visibility = ["//visibility:public"]
-)
+# daml_package_db(
+#   name = "package_db_for_damlc",
+#   pkgs =  [":daml-prim-1.0"
+#           ,":daml-prim-1.1"
+#           ,":daml-prim-1.2"
+#           ,":daml-prim-1.3"
+#           ],
+#   visibility = ["//visibility:public"]
+# )
 
-alias(
-    name = "daml-prim.dalf",
-    actual = ":daml-prim-1.1.dalf",
-    visibility = ["//visibility:public"],
-)
+# alias(
+#     name = "daml-prim.dalf",
+#     actual = ":daml-prim-1.1.dalf",
+#     visibility = ["//visibility:public"],
+# )

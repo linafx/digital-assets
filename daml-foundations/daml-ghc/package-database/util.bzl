@@ -46,6 +46,39 @@ depends: {depends}
 
 DamlPackage = provider(fields=["daml_lf_version", "pkg_name", "pkg_conf", "iface_tar", "dalf", "modules"])
 
+def _merged_source_rule_impl(ctx):
+  files = []
+  for file in ctx.files.srcs:
+    stripped = file.path
+    for prefix in ctx.attr.strip_prefixes:
+      if file.path.startswith(prefix):
+        stripped = file.path[len(prefix):]
+        break
+    f = ctx.actions.declare_file(stripped)
+    ctx.actions.run_shell(
+      inputs = [file],
+      outputs = [f],
+      command = "cp {} {}".format(file.path, f.path),
+    )
+    files += [f]
+  libraryModulesContent = """
+  daml 1.2
+  module LibraryModules where
+  """
+  libraryModules = ctx.actions.declare_file("LibraryModules.daml")
+  ctx.actions.write(libraryModules, libraryModulesContent)
+  files += [libraryModules]
+  return [DefaultInfo(files = depset(files), runfiles = ctx.runfiles(files = files))]
+
+merged_source_rule = rule(
+  implementation = _merged_source_rule_impl,
+  attrs = {
+    "srcs": attr.label_list(allow_files = True),
+    "strip_prefixes": attr.string_list(),
+  },
+)
+
+
 # Compile a DAML file and create the GHC package database
 # for it.
 def _daml_package_rule_impl(ctx):
@@ -54,10 +87,12 @@ def _daml_package_rule_impl(ctx):
   # Construct mapping from module names to paths
   modules = {}
   for file in ctx.files.srcs:
+    print("PATH: " + file.path)
     # FIXME(JM): HACK: the `[3:]` assumes we're in
     # daml-foundations/daml-ghc! Find a way to get the
     # base path...
     modules[".".join(file.path[:-5].split("/")[3:])] = file.path
+  print(ctx.attr.pkg_root)
 
   # Create the package conf file
   ctx.actions.write(
@@ -70,6 +105,9 @@ def _daml_package_rule_impl(ctx):
   )
 
   package_db_tar = ctx.attr.package_db[PackageDb].tar
+
+  # print("MODULES")
+  # print(modules)
 
   ctx.actions.run_shell(
     outputs = [ctx.outputs.dalf, ctx.outputs.iface_tar],
