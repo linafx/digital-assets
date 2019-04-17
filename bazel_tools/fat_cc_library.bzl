@@ -70,7 +70,7 @@ def _fat_cc_library_impl(ctx):
                 [f.path for f in static_libs],
         )
     else:
-        static_libs += ctx.attr._extra_static_libs
+        static_libs += ctx.files._extra_static_libs
         input_libs = "  ".join([lib.path for lib in static_libs])
         ctx.actions.run_shell(
             mnemonic = "CppLinkFatStaticLib",
