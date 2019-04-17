@@ -131,7 +131,7 @@ fat_cc_library = rule(
         ),
         "_extra_static_libs": attr.label_list(
             allow_files = True,
-            default = [] if not is_windows else ["@io_tweag_rules_haskell_ghc_windows_amd64//:mingw/lib/gcc/x86_64-w64-mingw32/7.2.0/lib/libstdc++.a"]
+            default = [] if not is_windows else ["@io_tweag_rules_haskell_ghc_windows_amd64//:mingw/lib/gcc/x86_64-w64-mingw32/7.2.0/libstdc++.a"]
         ),
         "whole_archive_flag": attr.string_list(
             # ld on MacOS doesn’t understand --whole-archive
