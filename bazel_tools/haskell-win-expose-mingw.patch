@@ -9,7 +9,7 @@ index d97d160..0a1937e 100644
 +# We expose all of mingw so we can mess around with libraries
 +filegroup(
 +    name = "mingw",
-+    srcs = glob(["mingw/**/*"]),
++    srcs = glob(["mingw/lib/**/*"]),
 +)
 +
  cc_library(
