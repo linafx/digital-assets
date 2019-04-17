@@ -1,0 +1,17 @@
+diff --git a/haskell/ghc.BUILD b/haskell/ghc.BUILD
+index d97d160..0a1937e 100644
+--- a/haskell/ghc.BUILD
++++ b/haskell/ghc.BUILD
+@@ -5,6 +5,12 @@ filegroup(
+     srcs = glob(["bin/*"]),
+ )
+ 
++# We expose all of mingw so we can mess around with libraries
++filegroup(
++    name = "mingw",
++    srcs = glob(["mingw/**/*"]),
++)
++
+ cc_library(
+     name = "threaded-rts",
+     srcs = glob(

@@ -79,11 +79,18 @@ def _fat_cc_library_impl(ctx):
                 [f.path for f in static_libs],
         )
     else:
+        input_libs = "  ".join([lib.path for lib in static_libs])
         ctx.actions.run_shell(
             mnemonic = "CppLinkFatStaticLib",
             outputs = [static_lib],
             inputs = [mri_script] + static_libs,
-            command = "{ar} -M < {mri_script}".format(ar = ar, mri_script = mri_script.path),
+            command = """
+            set -eoux pipefail
+            for lib in {input_libs}; do
+              {ar} -x $lib
+            done
+            {ar} -qc {static_lib} *.o
+            """.format(ar = ar, static_lib = static_lib.path, input_libs = input_libs),
         )
 
     fat_lib = cc_common.create_library_to_link(
