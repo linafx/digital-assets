@@ -55,15 +55,6 @@ def _fat_cc_library_impl(ctx):
         env = {"PATH": ""},
     )
 
-    mri_script_content = "\n".join(
-        ["create {}".format(static_lib.path)] +
-        ["addlib {}".format(lib.path) for lib in static_libs] +
-        ["save", "end"],
-    ) + "\n"
-
-    mri_script = ctx.actions.declare_file(ctx.label.name + "_mri")
-    ctx.actions.write(mri_script, mri_script_content)
-
     ar = toolchain.ar_executable()
 
     if ar.find("libtool") >= 0:
@@ -79,11 +70,12 @@ def _fat_cc_library_impl(ctx):
                 [f.path for f in static_libs],
         )
     else:
+        static_libs += ctx.attr._extra_static_libs
         input_libs = "  ".join([lib.path for lib in static_libs])
         ctx.actions.run_shell(
             mnemonic = "CppLinkFatStaticLib",
             outputs = [static_lib],
-            inputs = [mri_script] + static_libs,
+            inputs = static_libs,
             command = """
             set -eoux pipefail
             for lib in {input_libs}; do
@@ -136,6 +128,10 @@ fat_cc_library = rule(
             default =
                 # bin/cc is gcc on Darwin which fails to find libc++
                 Label("@nixpkgs_cc_toolchain//:bin/clang") if is_darwin else None,
+        ),
+        "_extra_static_libs": attr.label_list(
+            allow_files = True,
+            default = [] if not is_windows else ["@io_tweag_rules_haskell_ghc_windows_amd64//:mingw/lib/gcc/x864_64-w64-mingw32/7.2.0/lib/libstdc++.a"]
         ),
         "whole_archive_flag": attr.string_list(
             # ld on MacOS doesn’t understand --whole-archive
