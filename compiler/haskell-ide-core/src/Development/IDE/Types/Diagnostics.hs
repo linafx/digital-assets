@@ -33,6 +33,7 @@ module Development.IDE.Types.Diagnostics (
   dLocation,
   dFilePath,
   filePathToUri,
+  uriToFilePath,
   getDiagnosticsFromStore
   ) where
 

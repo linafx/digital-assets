@@ -388,7 +388,10 @@ updateFileDiagnostics ::
   -> [Diagnostic] -- ^ current results
   -> Action ()
 updateFileDiagnostics afp previousAll currentAll = do
-    let filt = Set.fromList . filter (\x -> view dFilePath x == Just afp)
+    let filt = Set.fromList . filter (\x -> view dFilePath x == afp')
+        -- We roundtrip through uriToFilePath to make sure we get the same
+        -- use of \ and / in the path.
+        afp' = uriToFilePath $ filePathToUri afp
         previous = fmap filt previousAll
         current = filt currentAll
     liftIO $ putStrLn $ "updateFileDiagnostics: " <> show (afp, map (view dFilePath) currentAll, current, fmap (map (view dFilePath)) previousAll, previous)
