@@ -57,6 +57,9 @@ import           Language.Haskell.LSP.Types as LSP (
   )
 import Language.Haskell.LSP.Diagnostics
 
+import System.IO.Unsafe
+import System.Directory
+
 import Development.IDE.Types.Location
 
 ideErrorText :: FilePath -> T.Text -> LSP.Diagnostic
@@ -104,7 +107,7 @@ dFilePath ::
   Lens' LSP.Diagnostic (Maybe FilePath)
 dFilePath = lens g s where
     g :: LSP.Diagnostic -> Maybe FilePath
-    g d = (uriToFilePath . _uri) =<< view dLocation d
+    g d = (fmap (unsafePerformIO . canonicalizePath) . uriToFilePath . _uri) =<< view dLocation d
     s :: LSP.Diagnostic -> Maybe FilePath -> LSP.Diagnostic
     s d@Diagnostic{..} fp = set dLocation
         (Location <$> (filePathToUri <$> fp) <*> pure _range) d
@@ -218,7 +221,7 @@ prettyFileDiagnostics (uri, diags) =
     --     label_ ("Stage: "<>T.unpack stage) $ vcat $ map prettyDiagnostic diags
 
     filePath :: FilePath
-    filePath = fromMaybe dontKnow $ uriToFilePath uri
+    filePath = maybe dontKnow (unsafePerformIO . canonicalizePath) $ uriToFilePath uri
 
     -- storeContents ::
     --     (FilePath, [(T.Text, [LSP.Diagnostic])])
