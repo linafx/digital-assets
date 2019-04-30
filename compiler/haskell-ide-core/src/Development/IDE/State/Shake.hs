@@ -365,8 +365,8 @@ defineEarlyCutoff op = addBuiltinRule noLint noIdentity $ \(Q (key, file)) old m
             (bs, res) <- actionCatch
                 (do v <- op key file; liftIO $ evaluate $ force v) $
                 \(e :: SomeException) -> pure (Nothing, ([ideErrorText file $ T.pack $ show e | not $ isBadDependency e],Nothing))
-            liftIO $ putStrLn $ "ran: " <> show (key, file)
             res <- return $ first (map $ set dFilePath $ Just file) res
+            liftIO $ putStrLn $ "ran: " <> show (key, file, res)
 
             (before, after) <- liftIO $ setValues state key file res
             updateFileDiagnostics file before after
