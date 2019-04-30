@@ -274,7 +274,7 @@ unsafeClearAllDiagnostics IdeState{shakeExtras = ShakeExtras{state}} = modifyVar
 garbageCollect :: (FilePath -> Bool) -> Action ()
 garbageCollect keep = do
     ShakeExtras{state} <- getShakeExtras
-    liftIO $ modifyVar_ state $ return . Map.filterWithKey (\file _ -> keep file)
+    liftIO $ modifyVar_ state $ \m -> putStrLn ("Unfiltered keys: " <> show (Map.keys m)) >> return (Map.filterWithKey (\file _ -> keep file) m)
 
 define
     :: IdeRule k v
@@ -357,11 +357,15 @@ defineEarlyCutoff op = addBuiltinRule noLint noIdentity $ \(Q (key, file)) old m
                 _ -> return Nothing
         _ -> return Nothing
     case val of
-        Just res -> return res
+        Just res -> do
+            liftIO $ putStrLn $ "no need to run: "  <> show (key, file)
+            return res
         Nothing -> do
+            liftIO $ putStrLn $ "running: " <> show (key, file)
             (bs, res) <- actionCatch
                 (do v <- op key file; liftIO $ evaluate $ force v) $
                 \(e :: SomeException) -> pure (Nothing, ([ideErrorText file $ T.pack $ show e | not $ isBadDependency e],Nothing))
+            liftIO $ putStrLn $ "ran: " <> show (key, file)
             res <- return $ first (map $ set dFilePath $ Just file) res
 
             (before, after) <- liftIO $ setValues state key file res

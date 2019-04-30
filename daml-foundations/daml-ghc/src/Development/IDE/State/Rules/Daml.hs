@@ -331,6 +331,7 @@ ofInterestRule = do
                     -- the roots even though they should be included.
                     roots `Set.union`
                     (Set.insert "" $ foldMap (Map.keysSet . depModuleDeps) depInfo)
+            liftIO $ putStrLn ("reachable: " <> show reachableFiles)
             garbageCollect (`Set.member` reachableFiles)
           DamlEnv{..} <- getDamlServiceEnv
           liftIO $ whenJust envScenarioService $ \scenarioService -> do
