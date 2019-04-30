@@ -391,6 +391,7 @@ updateFileDiagnostics afp previousAll currentAll = do
     let filt = Set.fromList . filter (\x -> view dFilePath x == Just afp)
         previous = fmap filt previousAll
         current = filt currentAll
+    liftIO $ putStrLn $ "updateFileDiagnostics: " <> show (afp, current, previous)
     when (Just current /= previous) $ do
         liftIO $ print (filePathToUri afp, Set.toList current)
         sendEvent $ EventFileDiagnostics $ (filePathToUri afp, Set.toList current)
