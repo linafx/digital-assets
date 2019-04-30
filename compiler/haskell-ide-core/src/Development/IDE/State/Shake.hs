@@ -347,6 +347,7 @@ defineEarlyCutoff
     => (k -> FilePath -> Action (Maybe BS.ByteString, IdeResult v))
     -> Rules ()
 defineEarlyCutoff op = addBuiltinRule noLint noIdentity $ \(Q (key, file)) old mode -> do
+    liftIO $ print (key, file)
     ShakeExtras{state} <- getShakeExtras
     val <- case old of
         Just old | mode == RunDependenciesSame -> do
