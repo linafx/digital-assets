@@ -3,7 +3,7 @@
 
 package com.digitalasset.ledger.api.refinements
 
-import com.digitalasset.ledger.api.v1.value.{Identifier, Record, Value}
+import com.digitalasset.ledger.api.v1.value.{Record, Value}
 import scalaz.{@@, Tag}
 
 object ApiTypes {

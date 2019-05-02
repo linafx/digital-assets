@@ -3,7 +3,7 @@
 
 package com.digitalasset.ledger.client.binding
 
-import com.digitalasset.ledger.api.refinements.ApiTypes
+import com.digitalasset.ledger.api.refinements.{ApiTypes, Identifier}
 import com.digitalasset.ledger.api.v1.{commands => rpccmd, value => rpcvalue}
 import scalaz.syntax.std.boolean._
 import scalaz.syntax.tag._
@@ -98,7 +98,7 @@ sealed abstract class Primitive {
         moduleName: String,
         entityName: String): TemplateId[Tpl]
 
-    private[binding] def substEx[F[_]](fa: F[rpcvalue.Identifier]): F[TemplateId[_]]
+    private[binding] def substEx[F[_]](fa: F[Identifier]): F[TemplateId[_]]
 
     // @deprecated("Use 3-argument version instead", since = "15.0.0")
     def unapply[Tpl](t: TemplateId[Tpl]): Option[(String, String)]
@@ -181,13 +181,13 @@ private[client] object OnlyPrimitive extends Primitive {
         moduleName: String,
         entityName: String): TemplateId[Tpl] =
       ApiTypes.TemplateId(
-        rpcvalue.Identifier(
+        Identifier(
           packageId = packageId,
           name = s"$moduleName.$entityName",
           moduleName = moduleName,
           entityName = entityName))
 
-    private[binding] override def substEx[F[_]](fa: F[rpcvalue.Identifier]) =
+    private[binding] override def substEx[F[_]](fa: F[Identifier]) =
       ApiTypes.TemplateId subst fa
 
     override def unapply[Tpl](t: TemplateId[Tpl]): Option[(String, String)] =

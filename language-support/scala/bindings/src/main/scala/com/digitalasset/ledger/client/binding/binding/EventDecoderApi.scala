@@ -3,7 +3,7 @@
 
 package com.digitalasset.ledger.client.binding
 
-import com.digitalasset.ledger.api.refinements.ApiTypes
+import com.digitalasset.ledger.api.refinements.{ApiTypes, Identifier}
 
 import scala.collection.immutable.{Map, Seq}
 import scalaz.Id.Id
@@ -26,7 +26,7 @@ abstract class EventDecoderApi(
 
   private[this] val dtl = {
     type F[A] = A => Option[rpcevent.CreatedEvent => Option[Template[_]]]
-    ApiTypes.TemplateId.unsubst[F, rpcvalue.Identifier](decoderTable.lift)
+    ApiTypes.TemplateId.unsubst[F, Identifier](decoderTable.lift)
   }
 
   @SuppressWarnings(Array("org.wartremover.warts.Any"))
