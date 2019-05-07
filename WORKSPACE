@@ -342,7 +342,7 @@ nixpkgs_package(
 #Javadoc
 nixpkgs_package(
     name = "jdk_nix",
-    attribute_path = "jdk8",
+    attribute_path = "jdk12",
     fail_not_supported = False,
     nix_file = "//nix:bazel.nix",
     nix_file_deps = common_nix_file_deps,

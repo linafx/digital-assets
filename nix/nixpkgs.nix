@@ -13,9 +13,9 @@ let
     bazel = pkgs.callPackage ./overrides/bazel {
       inherit (pkgs.darwin) cctools;
       inherit (pkgs.darwin.apple_sdk.frameworks) CoreFoundation CoreServices Foundation;
-      buildJdk = pkgs.jdk8;
-      buildJdkName = "jdk8";
-      runJdk = pkgs.jdk8;
+      buildJdk = pkgs.jdk12;
+      buildJdkName = "jdk12";
+      runJdk = pkgs.jdk12;
       # Create a C binary
       # Required by Bazel.
       # Added to nixpkgs in 88fe22d0d7d6626b7735a4a4e606215b951ad267

@@ -79,10 +79,10 @@ buildBazelPackage rec {
 
   buildAttrs = {
     postPatch = ''
-      # Configure Bazel to use JDK8
+      # Configure Bazel to use JDK12
       cat >> .bazelrc <<EOF
-      build --host_java_toolchain=@bazel_tools//tools/jdk:toolchain_hostjdk8
-      build --java_toolchain=@bazel_tools//tools/jdk:toolchain_hostjdk8
+      build --host_java_toolchain=@bazel_tools//tools/jdk:toolchain_hostjdk12
+      build --java_toolchain=@bazel_tools//tools/jdk:toolchain_hostjdk12
       build --host_javabase=@local_jdk//:jdk
       build --javabase=@local_jdk//:jdk
       EOF

@@ -69,7 +69,7 @@ in rec {
 
     zinc = pkgs.callPackage ./tools/zinc {};
 
-    jdk    = bazel_dependencies.jdk8;
+    jdk    = bazel_dependencies.jdk12;
     java   = jdk;
     javac  = jdk;
     jinfo  = jdk;

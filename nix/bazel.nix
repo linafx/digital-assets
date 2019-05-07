@@ -13,7 +13,7 @@ rec {
     gzip
     hlint
     imagemagick
-    jdk8
+    jdk12
     jq
     libffi
     nodejs
