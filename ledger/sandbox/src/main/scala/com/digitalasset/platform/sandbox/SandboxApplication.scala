@@ -11,7 +11,8 @@ import akka.stream.scaladsl.{Sink, Source}
 import com.digitalasset.api.util.TimeProvider
 import com.digitalasset.daml.lf.data.ImmArray
 import com.digitalasset.daml.lf.engine.Engine
-import com.digitalasset.ledger.server.LedgerApiServer.LedgerApiServer
+import com.digitalasset.grpc.adapter.ExecutionSequencerFactory
+import com.digitalasset.ledger.server.LedgerApiServer.{ApiServices, LedgerApiServer}
 import com.digitalasset.platform.sandbox.banner.Banner
 import com.digitalasset.platform.sandbox.config.{SandboxConfig, SandboxContext}
 import com.digitalasset.platform.sandbox.metrics.MetricsManager
@@ -116,20 +117,24 @@ object SandboxApplication {
       val ledgerBackend = new SandboxLedgerBackend(ledger)
 
       stopHeartbeats = scheduleHeartbeats(timeProvider, ledger.publishHeartbeat)
-
       server = LedgerApiServer(
-        ledgerBackend,
-        timeProvider,
-        engine,
-        config,
+        (am: ActorMaterializer, esf: ExecutionSequencerFactory) =>
+          ApiServices
+            .create(
+              config,
+              ledgerBackend,
+              engine,
+              timeProvider,
+              timeServiceBackendO
+                .map(
+                  TimeServiceBackend.withObserver(
+                    _,
+                    ledger.publishHeartbeat
+                  )))(am, esf)
+            .withServices(List(resetService)),
         port,
-        timeServiceBackendO
-          .map(
-            TimeServiceBackend.withObserver(
-              _,
-              ledger.publishHeartbeat
-            )),
-        Some(resetService)
+        config.address,
+        config.tlsConfig.flatMap(_.server)
       )
 
       // NOTE(JM): Re-use the same port after reset.

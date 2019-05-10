@@ -26,19 +26,27 @@ import io.grpc.BindableService
 import io.grpc.protobuf.services.ProtoReflectionService
 import org.slf4j.LoggerFactory
 
+import scala.collection.immutable
+
 import scala.concurrent.{ExecutionContext, Future}
 
 trait ApiServices extends AutoCloseable {
   val services: Iterable[BindableService]
+
+  def withServices(otherServices: immutable.Seq[BindableService]): ApiServices
 }
 
-private class ApiServicesBundle(val services: Iterable[BindableService]) extends ApiServices {
+private case class ApiServicesBundle(services: immutable.Seq[BindableService]) extends ApiServices {
 
   override def close(): Unit =
     services.foreach {
       case closeable: AutoCloseable => closeable.close()
       case _ => ()
     }
+
+  override def withServices(otherServices: immutable.Seq[BindableService]): ApiServices =
+    copy(services = services.++:(otherServices))
+
 }
 
 object ApiServices {
