@@ -55,18 +55,20 @@ object SandboxApplication {
     private val resetService: SandboxResetService = new SandboxResetService(
       () => ledgerId,
       () => materializer.executionContext,
-      () => {
-        stopHeartbeats()
-
-        //need to run this async otherwise the callback kills the server under the in-flight reset service request!
-        Future {
-          server.close() // fully tear down the old server.
-          buildAndStartServer(SqlStartMode.AlwaysReset)
-        }(materializer.executionContext)
-
-        server.servicesClosed()
-      },
+      () => resetAndRestartServer()
     )
+
+    // returns with a Future firing when all services have been closed!
+    private def resetAndRestartServer(): Future[Unit] = {
+      stopHeartbeats()
+      //need to run this async otherwise the callback kills the server under the in-flight reset service request!
+      Future {
+        server.close() // fully tear down the old server.
+        buildAndStartServer(SqlStartMode.AlwaysReset)
+      }(materializer.executionContext)
+
+      server.servicesClosed()
+    }
 
     @SuppressWarnings(Array("org.wartremover.warts.ExplicitImplicitTypes"))
     private def buildAndStartServer(
@@ -168,13 +170,11 @@ object SandboxApplication {
     }
   }
 
-  def apply(config: => SandboxConfig): SandboxServer = {
-
+  def apply(config: => SandboxConfig): SandboxServer =
     new SandboxServer(
       "sandbox",
       config
     )
-  }
 
   private def scheduleHeartbeats(timeProvider: TimeProvider, onTimeChange: Instant => Future[Unit])(
       implicit mat: ActorMaterializer,
