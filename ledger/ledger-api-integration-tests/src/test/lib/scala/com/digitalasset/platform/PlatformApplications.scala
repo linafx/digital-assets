@@ -7,7 +7,6 @@ import java.io.File
 import java.nio.file.Path
 import java.time.Duration
 
-import com.digitalasset.platform.sandbox.SandboxApplication
 import com.digitalasset.platform.sandbox.config.{
   CommandConfiguration,
   DamlPackageContainer,
@@ -97,23 +96,20 @@ object PlatformApplications {
     def default: Config = defaultWithLedgerId(Some(defaultLedgerId))
   }
 
-  def sandboxApplication(config: Config, jdbcUrl: Option[String]) = {
+  def sandboxConfig(config: Config, jdbcUrl: Option[String]) = {
     val selectedPort = 0
-
-    SandboxApplication(
-      SandboxConfig(
-        address = None,
-        port = selectedPort,
-        damlPackageContainer = DamlPackageContainer(config.darFiles.map(_.toFile)),
-        timeProviderType = config.timeProviderType,
-        timeModel = config.timeModel,
-        commandConfig = config.commandConfiguration,
-        scenario = None,
-        tlsConfig = None,
-        ledgerIdMode =
-          config.ledgerId.fold[LedgerIdMode](LedgerIdMode.Random)(LedgerIdMode.Predefined),
-        jdbcUrl = jdbcUrl
-      )
+    SandboxConfig(
+      address = None,
+      port = selectedPort,
+      damlPackageContainer = DamlPackageContainer(config.darFiles.map(_.toFile)),
+      timeProviderType = config.timeProviderType,
+      timeModel = config.timeModel,
+      commandConfig = config.commandConfiguration,
+      scenario = None,
+      tlsConfig = None,
+      ledgerIdMode =
+        config.ledgerId.fold[LedgerIdMode](LedgerIdMode.Random)(LedgerIdMode.Predefined),
+      jdbcUrl = jdbcUrl
     )
   }
 }

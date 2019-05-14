@@ -5,16 +5,16 @@ package com.digitalasset.platform.sandbox.perf
 
 import java.io.File
 
-import com.digitalasset.platform.sandbox.SandboxApplication
+import com.digitalasset.platform.sandbox.SandboxServer
 import com.digitalasset.platform.sandbox.config.{DamlPackageContainer, SandboxConfig}
 
 class SandboxServerState {
 
-  private var _app: SandboxApplication.SandboxServer = null
+  private var _app: SandboxServer.SandboxServer = null
 
   def setup(): Unit = {
     println("Starting Sandbox Application")
-    _app = SandboxApplication(
+    _app = SandboxServer(
       SandboxConfig.default
         .copy(port = 0, damlPackageContainer = DamlPackageContainer(List(new File("//TODO")))))
     _app.start()
@@ -26,6 +26,6 @@ class SandboxServerState {
     _app = null
   }
 
-  def app: SandboxApplication.SandboxServer = _app
+  def app: SandboxServer.SandboxServer = _app
 
 }
