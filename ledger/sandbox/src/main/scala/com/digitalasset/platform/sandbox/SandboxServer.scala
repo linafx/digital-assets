@@ -12,7 +12,6 @@ import com.digitalasset.api.util.TimeProvider
 import com.digitalasset.daml.lf.data.ImmArray
 import com.digitalasset.daml.lf.engine.Engine
 import com.digitalasset.grpc.adapter.ExecutionSequencerFactory
-import com.digitalasset.ledger.backend.api.v1.LedgerBackend
 import com.digitalasset.ledger.server.LedgerApiServer.{ApiServices, LedgerApiServer}
 import com.digitalasset.platform.sandbox.SandboxServer.{
   asyncTolerance,
@@ -88,15 +87,15 @@ class SandboxServer(actorSystemName: String, config: => SandboxConfig) extends A
   case class ApiServerState(
       ledgerId: String,
       apiServer: LedgerApiServer,
-      ledgerBackend: LedgerBackend,
-      stopHeartbeats: () => Unit //TODO: can this be in the server?
+      ledger: Ledger,
+      stopHeartbeats: () => Unit
   ) extends AutoCloseable {
     def port: Int = apiServer.port
 
     override def close: Unit = {
       stopHeartbeats()
       apiServer.close() //fully tear down the old server.
-      ledgerBackend.close()
+      ledger.close()
     }
   }
 
@@ -227,7 +226,7 @@ class SandboxServer(actorSystemName: String, config: => SandboxConfig) extends A
     val newState = ApiServerState(
       ledgerId,
       apiServer,
-      ledgerBackend,
+      ledger,
       stopHeartbeats
     )
 
