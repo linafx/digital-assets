@@ -3,25 +3,22 @@
 
 package com.digitalasset.platform.sandbox.perf
 
-import java.io.File
-
 import com.digitalasset.platform.sandbox.SandboxServer
 import com.digitalasset.platform.sandbox.config.{DamlPackageContainer, SandboxConfig}
 
 class SandboxServerState {
 
+  @volatile
   private var _app: SandboxServer.SandboxServer = null
 
   def setup(): Unit = {
-    println("Starting Sandbox Application")
     _app = SandboxServer(
       SandboxConfig.default
-        .copy(port = 0, damlPackageContainer = DamlPackageContainer(List(new File("//TODO")))))
+        .copy(port = 0, damlPackageContainer = DamlPackageContainer(List.empty)))
     _app.start()
   }
 
   def close(): Unit = {
-    println("Stopping Sandbox Application")
     _app.close()
     _app = null
   }
