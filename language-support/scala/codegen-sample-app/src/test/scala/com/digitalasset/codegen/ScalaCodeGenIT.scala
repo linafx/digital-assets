@@ -104,7 +104,7 @@ class ScalaCodeGenIT
   )
 
   private val sandbox: SandboxServer = SandboxServer(serverConfig)
-  
+
   private val applicationId = ledgerId + "-client"
   private val decoder: DecoderType = EventDecoder.createdEventToContractRef
   private val timeProvider = TimeProvider.UTC
