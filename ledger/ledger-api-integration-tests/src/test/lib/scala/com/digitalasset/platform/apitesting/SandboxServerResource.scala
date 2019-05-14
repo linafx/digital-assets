@@ -31,7 +31,7 @@ class SandboxServerResource(sandboxConfig: SandboxConfig) extends Resource[Platf
   override def setup(): Unit = {
     sandboxServer = SandboxServer(sandboxConfig)
 
-    eventLoopGroup = createEventLoopGroup(sandboxServer.getMaterializer.system.name + "-client")
+    eventLoopGroup = createEventLoopGroup("api-client")
 
     channel = {
       val channelBuilder: NettyChannelBuilder = NettyChannelBuilder

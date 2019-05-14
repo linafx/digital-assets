@@ -138,9 +138,6 @@ class SandboxServer(actorSystemName: String, config: => SandboxConfig) extends A
 
   }
 
-  //TODO: why is this exposed???
-  def getMaterializer: ActorMaterializer = state.infrastructure.materializer
-
   def port: Int = state.apiServerState.port
 
   /** the reset service is special, since it triggers a server shutdown */

@@ -26,7 +26,7 @@ class SandboxServerResource(config: SandboxConfig) extends Resource[Channel] {
 
   override def setup(): Unit = {
     sandboxServer = SandboxServer(config)
-    eventLoopGroup = createEventLoopGroup(sandboxServer.getMaterializer.system.name + "-client")
+    eventLoopGroup = createEventLoopGroup("api-client")
 
     channel = {
       val channelBuilder: NettyChannelBuilder = NettyChannelBuilder
