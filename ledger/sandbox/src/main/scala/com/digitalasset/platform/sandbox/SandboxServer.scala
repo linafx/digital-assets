@@ -12,6 +12,7 @@ import com.digitalasset.api.util.TimeProvider
 import com.digitalasset.daml.lf.data.ImmArray
 import com.digitalasset.daml.lf.engine.Engine
 import com.digitalasset.grpc.adapter.ExecutionSequencerFactory
+import com.digitalasset.ledger.backend.api.v1.LedgerBackend
 import com.digitalasset.ledger.server.LedgerApiServer.{ApiServices, LedgerApiServer}
 import com.digitalasset.platform.sandbox.SandboxServer.{
   asyncTolerance,
@@ -87,13 +88,15 @@ class SandboxServer(actorSystemName: String, config: => SandboxConfig) extends A
   case class ApiServerState(
       ledgerId: String,
       apiServer: LedgerApiServer,
+      ledgerBackend: LedgerBackend,
       stopHeartbeats: () => Unit //TODO: can this be in the server?
   ) extends AutoCloseable {
     def port: Int = apiServer.port
 
     override def close: Unit = {
       stopHeartbeats()
-      apiServer.close() // fully tear down the old server.
+      apiServer.close() //fully tear down the old server.
+      ledgerBackend.close()
     }
   }
 
@@ -111,26 +114,26 @@ class SandboxServer(actorSystemName: String, config: => SandboxConfig) extends A
     }
   }
 
-  @volatile private var state: State = _
+  @volatile private var sandboxState: SandboxState = _
 
-  case class State(apiServerState: ApiServerState, infrastructure: Infrastructure)
+  case class SandboxState(apiServerState: ApiServerState, infra: Infrastructure)
       extends AutoCloseable {
     override def close(): Unit = {
       apiServerState.close()
-      infrastructure.close()
+      infra.close()
     }
 
     def resetAndRestartServer(): Future[Unit] = {
-      implicit val ec: ExecutionContext = state.infrastructure.executionContext
+      implicit val ec: ExecutionContext = sandboxState.infra.executionContext
       val apiServicesClosed = apiServerState.apiServer.servicesClosed()
       //need to run this async otherwise the callback kills the server under the in-flight reset service request!
       Future {
         apiServerState.close // fully tear down the old server
         //TODO: eliminate the state mutation somehow
         //yes, it's horrible that we mutate the state here, but believe me, it's still an improvement to what we had before!
-        state =
-          copy(apiServerState = buildAndStartApiServer(infrastructure, SqlStartMode.AlwaysReset))
-      }(infrastructure.executionContext)
+        sandboxState =
+          copy(apiServerState = buildAndStartApiServer(infra, SqlStartMode.AlwaysReset))
+      }(infra.executionContext)
 
       // waits for the services to be closed, so we can guarantee that future API calls after finishing the reset will never be handled by the old one
       apiServicesClosed
@@ -138,16 +141,16 @@ class SandboxServer(actorSystemName: String, config: => SandboxConfig) extends A
 
   }
 
-  def port: Int = state.apiServerState.port
+  def port: Int = sandboxState.apiServerState.port
 
   /** the reset service is special, since it triggers a server shutdown */
   private val resetService: SandboxResetService = new SandboxResetService(
-    () => state.apiServerState.ledgerId,
-    () => state.infrastructure.executionContext,
-    () => state.resetAndRestartServer()
+    () => sandboxState.apiServerState.ledgerId,
+    () => sandboxState.infra.executionContext,
+    () => sandboxState.resetAndRestartServer()
   )
 
-  state = start()
+  sandboxState = start()
 
   @SuppressWarnings(Array("org.wartremover.warts.ExplicitImplicitTypes"))
   private def buildAndStartApiServer(
@@ -216,7 +219,7 @@ class SandboxServer(actorSystemName: String, config: => SandboxConfig) extends A
                 )))(am, esf)
           .withServices(List(resetService)),
       // NOTE(JM): Re-use the same port after reset.
-      Option(state).fold(config.port)(_.apiServerState.port),
+      Option(sandboxState).fold(config.port)(_.apiServerState.port),
       config.address,
       config.tlsConfig.flatMap(_.server)
     )
@@ -224,6 +227,7 @@ class SandboxServer(actorSystemName: String, config: => SandboxConfig) extends A
     val newState = ApiServerState(
       ledgerId,
       apiServer,
+      ledgerBackend,
       stopHeartbeats
     )
 
@@ -240,17 +244,15 @@ class SandboxServer(actorSystemName: String, config: => SandboxConfig) extends A
     newState
   }
 
-  private def start(): State = {
+  private def start(): SandboxState = {
     val actorSystem = ActorSystem(actorSystemName)
     val infrastructure =
       Infrastructure(actorSystem, ActorMaterializer()(actorSystem), MetricsManager())
     val apiState = buildAndStartApiServer(infrastructure)
 
-    State(apiState, infrastructure)
+    SandboxState(apiState, infrastructure)
   }
 
-  override def close(): Unit = {
-    state.close()
-    //TODO: stop ledger backend here instead!
-  }
+  override def close(): Unit = sandboxState.close()
+
 }

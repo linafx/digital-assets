@@ -14,8 +14,8 @@ import com.digitalasset.ledger.backend.api.v1.LedgerBackend
 import com.digitalasset.ledger.client.services.commands.CommandSubmissionFlow
 import com.digitalasset.platform.api.grpc.GrpcApiUtil
 import com.digitalasset.platform.sandbox.config.{SandboxConfig, SandboxContext}
-import com.digitalasset.platform.sandbox.services.transaction.SandboxTransactionService
 import com.digitalasset.platform.sandbox.services._
+import com.digitalasset.platform.sandbox.services.transaction.SandboxTransactionService
 import com.digitalasset.platform.sandbox.stores.ledger.CommandExecutorImpl
 import com.digitalasset.platform.server.api.validation.IdentifierResolver
 import com.digitalasset.platform.server.services.command.ReferenceCommandService
@@ -27,7 +27,6 @@ import io.grpc.protobuf.services.ProtoReflectionService
 import org.slf4j.LoggerFactory
 
 import scala.collection.immutable
-
 import scala.concurrent.{ExecutionContext, Future}
 
 trait ApiServices extends AutoCloseable {
@@ -153,11 +152,6 @@ object ApiServices {
         commandService,
         activeContractsService,
         reflectionService
-      )) {
-      override def close(): Unit = {
-        super.close()
-        ledgerBackend.close() //TODO: close this outside!
-      }
-    }
+      ))
   }
 }
