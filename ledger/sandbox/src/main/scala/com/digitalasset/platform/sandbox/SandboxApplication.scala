@@ -39,8 +39,12 @@ object SandboxApplication {
         ledgerId: String,
         apiServer: LedgerApiServer,
         stopHeartbeats: () => Unit
-    ) {
+    ) extends AutoCloseable {
       def port: Int = apiServer.port
+      override def close: Unit = {
+        state.stopHeartbeats()
+        state.apiServer.close() // fully tear down the old server.
+      }
     }
 
     case class InfraState(
@@ -49,7 +53,7 @@ object SandboxApplication {
         metricsManager: MetricsManager)
         extends AutoCloseable {
       def executionContext: ExecutionContext = materializer.executionContext
-      def close: Unit = {
+      override def close: Unit = {
         materializer.shutdown()
         Await.result(actorSystem.terminate(), asyncTolerance)
         metricsManager.close()
@@ -77,10 +81,9 @@ object SandboxApplication {
 
     // returns with a Future firing when all services have been closed!
     private def resetAndRestartServer(): Future[Unit] = {
-      state.stopHeartbeats()
       //need to run this async otherwise the callback kills the server under the in-flight reset service request!
       Future {
-        state.apiServer.close() // fully tear down the old server.
+        state.close // fully tear down the old server.
         buildAndStartServer(SqlStartMode.AlwaysReset)
       }(infraState.executionContext)
 
@@ -151,12 +154,12 @@ object SandboxApplication {
                     ledger.publishHeartbeat
                   )))(am, esf)
             .withServices(List(resetService)),
+        // NOTE(JM): Re-use the same port after reset.
         Option(state).fold(config.port)(_.port),
         config.address,
         config.tlsConfig.flatMap(_.server)
       )
 
-      // NOTE(JM): Re-use the same port after reset.
       state = State(
         ledgerId,
         apiServer,
@@ -184,7 +187,7 @@ object SandboxApplication {
     }
 
     override def close(): Unit = {
-      Option(state).foreach(_.stopHeartbeats)
+      Option(state).foreach(_.close)
       Option(infraState).foreach(_.close())
       //TODO: stop ledger backend here instead!
     }
