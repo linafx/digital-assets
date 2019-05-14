@@ -35,17 +35,30 @@ object SandboxApplication {
 
   class SandboxServer(actorSystemName: String, config: => SandboxConfig) extends AutoCloseable {
 
+    case class State(
+        ledgerId: String,
+        port: Int,
+        apiServer: LedgerApiServer,
+        stopHeartbeats: () => Unit
+    )
+
+    case class InfraState(
+        actorSystem: ActorSystem,
+        materializer: ActorMaterializer,
+        metricsManager: MetricsManager) {
+      def executionContext: ExecutionContext = materializer.executionContext
+    }
+
+    @volatile private var infraState: InfraState = _
+
     //TODO: get rid of these vars! Stateful resources should be created as vals when the owner object is created.
-    @volatile private var system: ActorSystem = _
-    @volatile private var materializer: ActorMaterializer = _
     @volatile private var server: LedgerApiServer = _
     @volatile private var ledgerId: String = _
     @volatile private var stopHeartbeats: () => Unit = () => ()
-    @volatile private var metricsManager: MetricsManager = _
-
     @volatile var port: Int = config.port
 
-    def getMaterializer: ActorMaterializer = materializer
+    //TODO: why is this exposed???
+    def getMaterializer: ActorMaterializer = infraState.materializer
 
     // We memoize the engine between resets so we avoid the expensive
     // repeated validation of the sames packages after each reset
@@ -54,7 +67,7 @@ object SandboxApplication {
     /** the reset service is special, since it triggers a server shutdown */
     private val resetService: SandboxResetService = new SandboxResetService(
       () => ledgerId,
-      () => materializer.executionContext,
+      () => infraState.executionContext,
       () => resetAndRestartServer()
     )
 
@@ -65,7 +78,7 @@ object SandboxApplication {
       Future {
         server.close() // fully tear down the old server.
         buildAndStartServer(SqlStartMode.AlwaysReset)
-      }(materializer.executionContext)
+      }(infraState.executionContext)
 
       server.servicesClosed()
     }
@@ -73,9 +86,9 @@ object SandboxApplication {
     @SuppressWarnings(Array("org.wartremover.warts.ExplicitImplicitTypes"))
     private def buildAndStartServer(
         startMode: SqlStartMode = SqlStartMode.ContinueIfExists): Unit = {
-      implicit val mat = materializer
-      implicit val ec: ExecutionContext = mat.system.dispatcher
-      implicit val mm: MetricsManager = metricsManager
+      implicit val mat = infraState.materializer
+      implicit val ec: ExecutionContext = infraState.executionContext
+      implicit val mm: MetricsManager = infraState.metricsManager
 
       ledgerId = config.ledgerIdMode.ledgerId()
 
@@ -154,19 +167,22 @@ object SandboxApplication {
       )
     }
 
+    //TODO: make this private!
     def start(): Unit = {
-      system = ActorSystem(actorSystemName)
-      materializer = ActorMaterializer()(system)
-      metricsManager = MetricsManager()
+      val actorSystem = ActorSystem(actorSystemName)
+      infraState = InfraState(actorSystem, ActorMaterializer()(actorSystem), MetricsManager())
+
       buildAndStartServer()
     }
 
     override def close(): Unit = {
       stopHeartbeats()
-      Option(server).foreach(_.close())
-      Option(materializer).foreach(_.shutdown())
-      Option(system).foreach(s => Await.result(s.terminate(), asyncTolerance))
-      Option(metricsManager).foreach(_.close())
+      Option(infraState).foreach { is =>
+        is.materializer.shutdown()
+        Await.result(is.actorSystem.terminate(), asyncTolerance)
+        is.metricsManager.close()
+      }
+      //TODO: stop ledger backend here instead!
     }
   }
 
