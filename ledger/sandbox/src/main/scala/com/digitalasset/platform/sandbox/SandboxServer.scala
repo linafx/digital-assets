@@ -45,6 +45,10 @@ object SandboxServer {
       config
     )
 
+  // We memoize the engine between resets so we avoid the expensive
+  // repeated validation of the sames packages after each reset
+  private val engine = Engine()
+
   private def scheduleHeartbeats(timeProvider: TimeProvider, onTimeChange: Instant => Future[Unit])(
       implicit mat: ActorMaterializer,
       ec: ExecutionContext) =
@@ -83,21 +87,23 @@ class SandboxServer(actorSystemName: String, config: => SandboxConfig) extends A
   case class ApiServerState(
       ledgerId: String,
       apiServer: LedgerApiServer,
-      stopHeartbeats: () => Unit
+      stopHeartbeats: () => Unit //TODO: can this be in the server?
   ) extends AutoCloseable {
     def port: Int = apiServer.port
+
     override def close: Unit = {
-      apiState.stopHeartbeats()
-      apiState.apiServer.close() // fully tear down the old server.
+      stopHeartbeats()
+      apiServer.close() // fully tear down the old server.
     }
   }
 
-  case class InfraState(
+  case class Infrastructure(
       actorSystem: ActorSystem,
       materializer: ActorMaterializer,
       metricsManager: MetricsManager)
       extends AutoCloseable {
     def executionContext: ExecutionContext = materializer.executionContext
+
     override def close: Unit = {
       materializer.shutdown()
       Await.result(actorSystem.terminate(), asyncTolerance)
@@ -105,46 +111,54 @@ class SandboxServer(actorSystemName: String, config: => SandboxConfig) extends A
     }
   }
 
-  //TODO: these vars are not necessary anymore
-  @volatile private var apiState: ApiServerState = _
-  @volatile private var infraState: InfraState = _
+  @volatile private var state: State = _
+
+  case class State(apiServerState: ApiServerState, infrastructure: Infrastructure)
+      extends AutoCloseable {
+    override def close(): Unit = {
+      apiServerState.close()
+      infrastructure.close()
+    }
+
+    def resetAndRestartServer(): Future[Unit] = {
+      implicit val ec: ExecutionContext = state.infrastructure.executionContext
+      val apiServicesClosed = apiServerState.apiServer.servicesClosed()
+      //need to run this async otherwise the callback kills the server under the in-flight reset service request!
+      Future {
+        apiServerState.close // fully tear down the old server
+        //TODO: eliminate the state mutation somehow
+        //yes, it's horrible that we mutate the state here, but believe me, it's still an improvement to what we had before!
+        state =
+          copy(apiServerState = buildAndStartApiServer(infrastructure, SqlStartMode.AlwaysReset))
+      }(infrastructure.executionContext)
+
+      // waits for the services to be closed, so we can guarantee that future API calls after finishing the reset will never be handled by the old one
+      apiServicesClosed
+    }
+
+  }
 
   //TODO: why is this exposed???
-  def getMaterializer: ActorMaterializer = infraState.materializer
+  def getMaterializer: ActorMaterializer = state.infrastructure.materializer
 
-  def port: Int = apiState.port
-
-  // We memoize the engine between resets so we avoid the expensive
-  // repeated validation of the sames packages after each reset
-  private val engine = Engine()
+  def port: Int = state.apiServerState.port
 
   /** the reset service is special, since it triggers a server shutdown */
   private val resetService: SandboxResetService = new SandboxResetService(
-    () => apiState.ledgerId,
-    () => infraState.executionContext,
-    () => resetAndRestartServer()
+    () => state.apiServerState.ledgerId,
+    () => state.infrastructure.executionContext,
+    () => state.resetAndRestartServer()
   )
 
-  start()
-
-  // returns with a Future firing when all services have been closed!
-  private def resetAndRestartServer(): Future[Unit] = {
-    val servicesClosed = apiState.apiServer.servicesClosed()
-    //need to run this async otherwise the callback kills the server under the in-flight reset service request!
-    Future {
-      apiState.close // fully tear down the old server.
-      apiState = buildAndStartApiServer(SqlStartMode.AlwaysReset)
-    }(infraState.executionContext)
-
-    servicesClosed
-  }
+  state = start()
 
   @SuppressWarnings(Array("org.wartremover.warts.ExplicitImplicitTypes"))
   private def buildAndStartApiServer(
+      infra: Infrastructure,
       startMode: SqlStartMode = SqlStartMode.ContinueIfExists): ApiServerState = {
-    implicit val mat = infraState.materializer
-    implicit val ec: ExecutionContext = infraState.executionContext
-    implicit val mm: MetricsManager = infraState.metricsManager
+    implicit val mat = infra.materializer
+    implicit val ec: ExecutionContext = infra.executionContext
+    implicit val mm: MetricsManager = infra.metricsManager
 
     val ledgerId = config.ledgerIdMode.ledgerId()
 
@@ -188,13 +202,14 @@ class SandboxServer(actorSystemName: String, config: => SandboxConfig) extends A
     val ledgerBackend = new SandboxLedgerBackend(ledger)
 
     val stopHeartbeats = scheduleHeartbeats(timeProvider, ledger.publishHeartbeat)
+
     val apiServer = LedgerApiServer(
       (am: ActorMaterializer, esf: ExecutionSequencerFactory) =>
         ApiServices
           .create(
             config,
             ledgerBackend,
-            engine,
+            SandboxServer.engine,
             timeProvider,
             timeServiceBackendO
               .map(
@@ -204,7 +219,7 @@ class SandboxServer(actorSystemName: String, config: => SandboxConfig) extends A
                 )))(am, esf)
           .withServices(List(resetService)),
       // NOTE(JM): Re-use the same port after reset.
-      Option(apiState).fold(config.port)(_.port),
+      Option(state).fold(config.port)(_.apiServerState.port),
       config.address,
       config.tlsConfig.flatMap(_.server)
     )
@@ -228,17 +243,17 @@ class SandboxServer(actorSystemName: String, config: => SandboxConfig) extends A
     newState
   }
 
-  //TODO: make this private!
-  private def start(): Unit = {
+  private def start(): State = {
     val actorSystem = ActorSystem(actorSystemName)
-    infraState = InfraState(actorSystem, ActorMaterializer()(actorSystem), MetricsManager())
-    apiState = buildAndStartApiServer()
-    //TODO return these states instead of mutating
+    val infrastructure =
+      Infrastructure(actorSystem, ActorMaterializer()(actorSystem), MetricsManager())
+    val apiState = buildAndStartApiServer(infrastructure)
+
+    State(apiState, infrastructure)
   }
 
   override def close(): Unit = {
-    Option(apiState).foreach(_.close)
-    Option(infraState).foreach(_.close())
+    state.close()
     //TODO: stop ledger backend here instead!
   }
 }
