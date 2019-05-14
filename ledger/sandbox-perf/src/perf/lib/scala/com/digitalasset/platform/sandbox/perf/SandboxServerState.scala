@@ -9,13 +9,12 @@ import com.digitalasset.platform.sandbox.config.{DamlPackageContainer, SandboxCo
 class SandboxServerState {
 
   @volatile
-  private var _app: SandboxServer.SandboxServer = null
+  private var _app: SandboxServer = null
 
   def setup(): Unit = {
     _app = SandboxServer(
       SandboxConfig.default
         .copy(port = 0, damlPackageContainer = DamlPackageContainer(List.empty)))
-    _app.start()
   }
 
   def close(): Unit = {
@@ -23,6 +22,6 @@ class SandboxServerState {
     _app = null
   }
 
-  def app: SandboxServer.SandboxServer = _app
+  def app: SandboxServer = _app
 
 }
