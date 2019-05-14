@@ -45,7 +45,7 @@ object SandboxConfig {
 
   val DefaultPort = 6865
 
-  def default: SandboxConfig = {
+  def default: SandboxConfig =
     SandboxConfig(
       None,
       DefaultPort,
@@ -58,7 +58,6 @@ object SandboxConfig {
       ledgerIdMode = LedgerIdMode.Random,
       jdbcUrl = None
     )
-  }
 
   lazy val defaultCommandConfig =
     CommandConfiguration(

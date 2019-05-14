@@ -31,7 +31,6 @@ import com.digitalasset.ledger.api.v1.TransactionServiceOuterClass.{
   GetTransactionsResponse
 }
 import com.digitalasset.ledger.api.v1.{CommandServiceGrpc, TransactionServiceGrpc}
-import com.digitalasset.platform.sandbox.SandboxApplication
 import com.digitalasset.platform.sandbox.config.{DamlPackageContainer, LedgerIdMode, SandboxConfig}
 import com.digitalasset.platform.sandbox.services.SandboxServerResource
 import com.digitalasset.platform.services.time.{TimeModel, TimeProviderType}
@@ -56,7 +55,7 @@ class CodegenLedgerTest extends FlatSpec with Matchers {
       timeProviderType = TimeProviderType.WallClock,
       timeModel = TimeModel.reasonableDefault
     )
-    val sandbox = new SandboxServerResource(SandboxApplication(cfg))
+    val sandbox = new SandboxServerResource(cfg)
     sandbox.setup()
     try {
       testCode(sandbox.value)

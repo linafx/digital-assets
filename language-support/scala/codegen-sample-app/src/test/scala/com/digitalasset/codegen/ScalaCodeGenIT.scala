@@ -30,8 +30,7 @@ import com.digitalasset.ledger.client.configuration.{
   LedgerClientConfiguration,
   LedgerIdRequirement
 }
-import com.digitalasset.platform.sandbox.SandboxApplication
-import com.digitalasset.platform.sandbox.SandboxApplication.SandboxServer
+import com.digitalasset.platform.sandbox.SandboxServer
 import com.digitalasset.platform.sandbox.config.{DamlPackageContainer, LedgerIdMode, SandboxConfig}
 import com.digitalasset.platform.services.time.TimeProviderType
 import com.digitalasset.sample.EventDecoder
@@ -104,9 +103,8 @@ class ScalaCodeGenIT
     ledgerIdMode = LedgerIdMode.Predefined(ledgerId),
   )
 
-  private val sandbox: SandboxServer = SandboxApplication(serverConfig)
-  sandbox.start()
-
+  private val sandbox: SandboxServer = SandboxServer(serverConfig)
+  
   private val applicationId = ledgerId + "-client"
   private val decoder: DecoderType = EventDecoder.createdEventToContractRef
   private val timeProvider = TimeProvider.UTC
