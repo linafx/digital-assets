@@ -172,6 +172,8 @@ quickstartTests quickstartDir mvnDir = testGroup "quickstart" $
                   (socket (addrFamily addr) (addrSocketType addr) (addrProtocol addr))
                   close
                   (\s -> connect s (addrAddress addr))
+              -- waitForProcess' will block on Windows so we explicitely kill the process.
+              terminateProcess ph
     ] <>
     -- The mvn tests seem to fail on Windows for some reason so for now we disable them.
     -- mvn itself does seem to work fine outside of this test so it seems to be some
@@ -203,6 +205,10 @@ quickstartTests quickstartDir mvnDir = testGroup "quickstart" $
                   resp <- httpLbs req manager
                   responseBody resp @?=
                       "{\"0\":{\"issuer\":\"EUR_Bank\",\"owner\":\"Alice\",\"currency\":\"EUR\",\"amount\":100.0,\"observers\":[]}}"
+                  -- waitForProcess' will block on Windows so we explicitely kill the process.
+                  terminateProcess ph
+              -- waitForProcess' will block on Windows so we explicitely kill the process.
+              terminateProcess ph
     ]
     where
         mvnRepoFlag = "-Dmaven.repo.local=" <> mvnDir
