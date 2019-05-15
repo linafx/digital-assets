@@ -14,7 +14,7 @@ import io.netty.channel.EventLoopGroup
 import io.netty.channel.nio.NioEventLoopGroup
 import io.netty.util.concurrent.DefaultThreadFactory
 
-class SandboxServerResource(config: SandboxConfig) extends Resource[Channel] {
+class SandboxServerResource(config: => SandboxConfig) extends Resource[Channel] {
   @volatile
   private var eventLoopGroup: EventLoopGroup = _
   @volatile
