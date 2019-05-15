@@ -14,7 +14,7 @@ object SandboxMain extends App {
 
   private val logger = LoggerFactory.getLogger(this.getClass)
 
-  private val sandboxServer: SandboxServer =
+  private lazy val sandboxServer: SandboxServer =
     Cli.parse(args).fold(sys.exit(1))(config => SandboxServer(config))
 
   private val closed = new AtomicBoolean(false)
