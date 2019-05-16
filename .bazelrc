@@ -89,4 +89,6 @@ build:darwin --protocopt=--include_source_info
 # https://github.com/protocolbuffers/protobuf/blob/master/src/google/protobuf/compiler/command_line_interface.cc#L1363
 #build:windows --protocopt=--include_source_info
 
+build:windows --incompatible_windows_escape_jvm_flags
+
 try-import %workspace%/.bazelrc.local

@@ -2,14 +2,14 @@ Bazel 0.24 added the new --incompatible_windows_escape_jvm_flags, defaulting to
 off. The Java launcher expects this flag ot be set either 0 or 1, which
 rules_scala doesn't provide, yet. This patch sets that flag in rules_scala
 diff --git a/src/java/io/bazel/rulesscala/exe/LauncherFileWriter.java b/src/java/io/bazel/rulesscala/exe/LauncherFileWriter.java
-index f54a578..533e813 100644
+index f54a578..ccba7db 100644
 --- a/src/java/io/bazel/rulesscala/exe/LauncherFileWriter.java
 +++ b/src/java/io/bazel/rulesscala/exe/LauncherFileWriter.java
 @@ -36,6 +36,7 @@ public class LauncherFileWriter {
              .addKeyValuePair("jar_bin_path", jarBinPath)
              .addKeyValuePair("java_start_class", javaStartClass)
              .addKeyValuePair("classpath", classpath)
-+            .addKeyValuePair("escape_jvmflags", "0")
++            .addKeyValuePair("escape_jvmflags", "1")
              .addJoinedValues("jvm_flags", " ", jvmFlags)
              .build();
  
