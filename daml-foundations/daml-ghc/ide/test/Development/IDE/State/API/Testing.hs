@@ -43,7 +43,7 @@ import DA.Service.Daml.Compiler.Impl.Scenario as SS
 import Development.IDE.State.Rules.Daml
 import qualified Development.IDE.Logger as Logger
 import           Development.IDE.Types.LSP
-import DA.Daml.GHC.Compiler.Options (defaultOptionsIO)
+import DA.Daml.GHC.Compiler.Options (Options(..), defaultOptionsIO)
 import Language.Haskell.LSP.Types (uriToFilePath, Range)
 
 -- * external dependencies
@@ -103,10 +103,11 @@ newtype ShakeTest t = ShakeTest (ExceptT ShakeTestError (ReaderT ShakeTestEnv IO
 runShakeTest :: Maybe SS.Handle -> ShakeTest () -> IO (Either ShakeTestError ShakeTestResults)
 runShakeTest mbScenarioService (ShakeTest m) = do
     options <- defaultOptionsIO Nothing -- TODO: improve?
+    options <- pure options { optDebug = True }
     virtualResources <- newTVarIO Map.empty
     let eventLogger (EventVirtualResourceChanged vr doc) = modifyTVar' virtualResources(Map.insert vr doc)
         eventLogger _ = pure ()
-    service <- API.initialise (mainRule options) (Just (atomically . eventLogger)) Logger.makeNopHandle options mbScenarioService
+    service <- API.initialise (mainRule options) (Just (atomically . eventLogger)) (Logger.makeOneHandle $ T.IO.hPutStrLn stderr)  options mbScenarioService
     result <- withSystemTempDirectory "shake-api-test" $ \testDirPath -> do
         let ste = ShakeTestEnv
                 { steService = service
