@@ -61,11 +61,11 @@ throwIfCallError x = Left $ GRPCIOCallError x
 
 grpcDebug :: String -> IO ()
 {-# INLINE grpcDebug #-}
-#ifdef DEBUG
+
 grpcDebug = grpcDebug'
-#else
-grpcDebug _ = return ()
-#endif
+-- #else
+-- grpcDebug _ = return ()
+-- #endif
 
 grpcDebug' :: String -> IO ()
 {-# INLINE grpcDebug' #-}
