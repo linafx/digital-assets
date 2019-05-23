@@ -25,16 +25,24 @@ import Control.Monad.IO.Class
 
 import DA.Service.Daml.Compiler.Impl.Scenario as SS
 import           Development.IDE.Types.LSP
-import qualified DA.Service.Logger.Impl.Pure as Logger
+-- import qualified DA.Service.Logger.Impl.Pure as Logger
+import qualified DA.Service.Logger.Impl.IO as Logger
 import Development.IDE.State.API.Testing
 
+-- import qualified Data.Text.IO as T
+
+-- import System.IO
+
 main :: IO ()
-main = with (SS.startScenarioService (\_ -> pure ()) Logger.makeNopHandle) $ \scenarioService -> do
-  -- The scenario service is a shared resource so running tests in parallel doesn’t work properly.
-  setEnv "TASTY_NUM_THREADS" "1" True
-  -- The startup of the scenario service is fairly expensive so instead of launching a separate
-  -- service for each test, we launch a single service that is shared across all tests.
-  Tasty.deterministicMain (ideTests (Just scenarioService))
+main = do
+  putStrLn "starting up"
+  log <- Logger.newStdoutLogger "scenario"
+  with (SS.startScenarioService (\_ -> pure ()) log) $ \scenarioService -> do
+    -- The scenario service is a shared resource so running tests in parallel doesn’t work properly.
+    setEnv "TASTY_NUM_THREADS" "1" True
+    -- The startup of the scenario service is fairly expensive so instead of launching a separate
+    -- service for each test, we launch a single service that is shared across all tests.
+    Tasty.deterministicMain (ideTests (Just scenarioService))
 
 ideTests :: Maybe SS.Handle -> Tasty.TestTree
 ideTests mbScenarioService =
