@@ -184,7 +184,9 @@ start opts@Options{..} = do
             either fail resume =<< takeMVar portMVar
   liftIO $ optLogInfo $ "Scenario service backend running on port " <> show port
   let grpcConfig = ClientConfig (Host "localhost") (Port port) [] Nothing
+  liftIO $ optLogInfo $ "Opening GRPC connection"
   client <- managed (withGRPCClient grpcConfig)
+  liftIO $ optLogInfo $ "Opened GRPC connection"
   return $
     Handle
     { hClient = client
