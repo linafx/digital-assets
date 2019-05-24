@@ -56,11 +56,11 @@ common_haskell_flags = [
     "-Wincomplete-uni-patterns",
     "-Wno-name-shadowing",
     "-fno-omit-yields",
-    "-threaded",
+    # "-threaded",
     "-rtsopts",
 
     # run on two cores, disable idle & parallel GC
-    "-with-rtsopts=-N2 -qg -I0",
+    # "-with-rtsopts=-N2 -qg -I0",
 ]
 
 def _wrap_rule(rule, name = "", deps = [], hazel_deps = [], compiler_flags = [], **kwargs):
