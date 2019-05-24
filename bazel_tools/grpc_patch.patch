@@ -1,19 +1,19 @@
 diff --git a/src/core/lib/surface/init.cc b/src/core/lib/surface/init.cc
-index 2a6d307..6280614 100644
+index 2a6d307..8da9fc5 100644
 --- a/src/core/lib/surface/init.cc
 +++ b/src/core/lib/surface/init.cc
 @@ -123,14 +123,19 @@ void grpc_register_plugin(void (*init)(void), void (*destroy)(void)) {
  
  void grpc_init(void) {
    int i;
-+  printf("grpc_once_init\n");
++  fprintf(stderr, "grpc_once_init\n");
    gpr_once_init(&g_basic_init, do_basic_init);
  
-+  printf("mutex lock\n");
++  fprintf(stderr, "mutex lock\n");
    grpc_core::MutexLock lock(&g_init_mu);
-+  printf("before if\n");
++  fprintf(stderr, "before if\n");
    if (++g_initializations == 1) {
-+    printf("in if\n");
++    fprintf(stderr, "in if\n");
      if (g_shutting_down) {
        g_shutting_down = false;
        gpr_cv_broadcast(g_shutting_down_cv);
