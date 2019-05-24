@@ -308,8 +308,10 @@ data ConnectivityState = ChannelIdle
 
 
 grpcInit :: IO ()
-grpcInit =
+grpcInit = do
+  putStrLn "grpcInit"
   grpcInit'_ >>
+  putStrLn "grpcInit returned"
   return ()
 
 {-# LINE 141 "nix/third-party/gRPC-haskell/core/src/Network/GRPC/Unsafe.chs" #-}
