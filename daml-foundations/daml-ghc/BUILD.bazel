@@ -59,6 +59,7 @@ da_haskell_test(
     main_function = "DA.Test.ShakeIdeClient.main",
     src_strip_prefix = "test-src",
     visibility = ["//visibility:public"],
+    compiler_flags = ["-debug"],
     deps = [
         "//compiler/haskell-ide-core",
         "//daml-foundations/daml-ghc/daml-compiler",
