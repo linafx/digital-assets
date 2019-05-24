@@ -15,6 +15,7 @@ da_haskell_library(
     deps = [
         "//nix/third-party/gRPC-haskell/core:grpc-haskell-core",
     ],
+    compiler_flags = [ "-DDEBUG", "-DGRPC_HASKELL_DEBUG" ],
 )
 
 da_haskell_binary(

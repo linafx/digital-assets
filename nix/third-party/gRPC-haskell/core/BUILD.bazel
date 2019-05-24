@@ -43,6 +43,7 @@ da_haskell_library(
     deps = [
         ":fat_cbits",
     ],
+    compiler_flags = ["-DDEBUG", "-DGRPC_HASKELL_DEBUG"],
 )
 
 cc_library(
@@ -54,6 +55,7 @@ cc_library(
     deps = [
         "@com_github_grpc_grpc//:grpc",
     ],
+    compiler_flags = ["-DDEBUG", "-DGRPC_HASKELL_DEBUG"],
 )
 
 fat_cc_library(
