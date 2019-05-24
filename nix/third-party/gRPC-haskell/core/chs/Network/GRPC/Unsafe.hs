@@ -789,7 +789,7 @@ foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-has
 foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h destroy_call_details"
   destroyCallDetails'_ :: ((CallDetails) -> (IO ()))
 
-foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_init"
+foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_init"
   grpcInit'_ :: (IO ())
 
 foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_shutdown"
