@@ -13,6 +13,7 @@ import qualified Foreign.Marshal.Utils as C2HSImp
 import qualified Foreign.Ptr as C2HSImp
 import qualified Foreign.Storable as C2HSImp
 
+import Control.Concurrent
 
 
 import Control.Exception (bracket)
@@ -310,6 +311,9 @@ data ConnectivityState = ChannelIdle
 grpcInit :: IO ()
 grpcInit = do
   putStrLn "grpcInit"
+  tId <- myThreadId
+  isBound <- isCurrentThreadBound
+  print (tId, isBound)
   grpcInit'_
   putStrLn "grpcInit returned"
   return ()

@@ -29,6 +29,8 @@ import           Development.IDE.Types.LSP
 import qualified DA.Service.Logger.Impl.IO as Logger
 import Development.IDE.State.API.Testing
 
+import Control.Concurrent
+
 -- import qualified Data.Text.IO as T
 
 -- import System.IO
@@ -36,6 +38,9 @@ import Development.IDE.State.API.Testing
 main :: IO ()
 main = do
   putStrLn "starting up"
+  tId <- myThreadId
+  isBound <- isCurrentThreadBound
+  print (tId, isBound)
   log <- Logger.newStdoutLogger "scenario"
   with (SS.startScenarioService (\_ -> pure ()) log) $ \scenarioService -> do
     -- The scenario service is a shared resource so running tests in parallel doesn’t work properly.
