@@ -94,4 +94,8 @@ defaultServiceOptions = ServiceOptions
   }
 
 withGRPCClient :: ClientConfig -> (Client -> IO a) -> IO a
-withGRPCClient c f = withGRPC $ \grpc -> withClient grpc c $ \client -> f client
+withGRPCClient c f = withGRPC $ \grpc -> do
+    putStrLn "got grpc, withClienting"
+    withClient grpc c $ \client -> do
+        putStrLn "got client"
+        f client
