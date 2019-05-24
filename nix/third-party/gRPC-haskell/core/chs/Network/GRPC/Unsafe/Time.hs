@@ -187,23 +187,23 @@ withConvertedClockType cptr ctype = bracket (convertClockType cptr ctype)
 foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Time.chs/Network/GRPC/Unsafe/Time.chs.h timespec_destroy"
   timespecDestroy'_ :: ((CTimeSpecPtr) -> (IO ()))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Time.chs/Network/GRPC/Unsafe/Time.chs.h gpr_inf_future_"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Time.chs/Network/GRPC/Unsafe/Time.chs.h gpr_inf_future_"
   gprInfFuture'_ :: (C2HSImp.CInt -> (IO (CTimeSpecPtr)))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Time.chs/Network/GRPC/Unsafe/Time.chs.h gpr_now_"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Time.chs/Network/GRPC/Unsafe/Time.chs.h gpr_now_"
   gprNow'_ :: (C2HSImp.CInt -> (IO (CTimeSpecPtr)))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Time.chs/Network/GRPC/Unsafe/Time.chs.h gpr_time_to_millis_"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Time.chs/Network/GRPC/Unsafe/Time.chs.h gpr_time_to_millis_"
   gprTimeToMillis'_ :: ((CTimeSpecPtr) -> (IO C2HSImp.CInt))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Time.chs/Network/GRPC/Unsafe/Time.chs.h seconds_to_deadline"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Time.chs/Network/GRPC/Unsafe/Time.chs.h seconds_to_deadline"
   secondsToDeadline'_ :: (C2HSImp.CLong -> (IO (CTimeSpecPtr)))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Time.chs/Network/GRPC/Unsafe/Time.chs.h millis_to_deadline"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Time.chs/Network/GRPC/Unsafe/Time.chs.h millis_to_deadline"
   millisToDeadline'_ :: (C2HSImp.CLong -> (IO (CTimeSpecPtr)))
 
 foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Time.chs/Network/GRPC/Unsafe/Time.chs.h infinite_deadline"
   infiniteDeadline'_ :: (IO (CTimeSpecPtr))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Time.chs/Network/GRPC/Unsafe/Time.chs.h convert_clock_type"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Time.chs/Network/GRPC/Unsafe/Time.chs.h convert_clock_type"
   convertClockType'_ :: ((CTimeSpecPtr) -> (C2HSImp.CInt -> (IO (CTimeSpecPtr))))

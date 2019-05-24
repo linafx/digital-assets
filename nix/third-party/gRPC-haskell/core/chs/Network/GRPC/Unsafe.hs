@@ -783,106 +783,106 @@ foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-has
 foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h destroy_call_details"
   destroyCallDetails'_ :: ((CallDetails) -> (IO ()))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_init"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_init"
   grpcInit'_ :: (IO ())
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_shutdown"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_shutdown"
   grpcShutdown'_ :: (IO ())
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_version_string"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_version_string"
   grpcVersionString'_ :: (IO (C2HSImp.Ptr C2HSImp.CChar))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_completion_queue_create_for_next"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_completion_queue_create_for_next"
   grpcCompletionQueueCreateForNext'_ :: ((C2HSImp.Ptr ()) -> (IO (CompletionQueue)))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_completion_queue_create_for_pluck"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_completion_queue_create_for_pluck"
   grpcCompletionQueueCreateForPluck'_ :: ((C2HSImp.Ptr ()) -> (IO (CompletionQueue)))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_completion_queue_next_"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_completion_queue_next_"
   grpcCompletionQueueNext'_ :: ((CompletionQueue) -> ((CTimeSpecPtr) -> ((C2HSImp.Ptr ()) -> (IO (C2HSImp.Ptr ())))))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_completion_queue_pluck_"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_completion_queue_pluck_"
   grpcCompletionQueuePluck'_ :: ((CompletionQueue) -> ((C2HSImp.Ptr ()) -> ((CTimeSpecPtr) -> ((C2HSImp.Ptr ()) -> (IO (C2HSImp.Ptr ()))))))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_completion_queue_shutdown"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_completion_queue_shutdown"
   grpcCompletionQueueShutdown'_ :: ((CompletionQueue) -> (IO ()))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_completion_queue_destroy"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_completion_queue_destroy"
   grpcCompletionQueueDestroy'_ :: ((CompletionQueue) -> (IO ()))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_channel_create_call_"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_channel_create_call_"
   grpcChannelCreateCall'_ :: ((Channel) -> ((Call) -> (C2HSImp.CUInt -> ((CompletionQueue) -> ((C2HSImp.Ptr C2HSImp.CChar) -> ((C2HSImp.Ptr C2HSImp.CChar) -> ((CTimeSpecPtr) -> ((C2HSImp.Ptr ()) -> (IO (Call))))))))))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_insecure_channel_create"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_insecure_channel_create"
   grpcInsecureChannelCreate'_ :: ((C2HSImp.Ptr C2HSImp.CChar) -> ((GrpcChannelArgs) -> ((C2HSImp.Ptr ()) -> (IO (Channel)))))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_channel_register_call"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_channel_register_call"
   grpcChannelRegisterCall'_ :: ((Channel) -> ((C2HSImp.Ptr C2HSImp.CChar) -> ((C2HSImp.Ptr C2HSImp.CChar) -> ((C2HSImp.Ptr ()) -> (IO (C2HSImp.Ptr ()))))))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_channel_create_registered_call_"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_channel_create_registered_call_"
   grpcChannelCreateRegisteredCall'_ :: ((Channel) -> ((Call) -> (C2HSImp.CUInt -> ((CompletionQueue) -> ((C2HSImp.Ptr ()) -> ((CTimeSpecPtr) -> ((C2HSImp.Ptr ()) -> (IO (Call)))))))))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_channel_check_connectivity_state"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_channel_check_connectivity_state"
   grpcChannelCheckConnectivityState'_ :: ((Channel) -> (C2HSImp.CInt -> (IO C2HSImp.CInt)))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_channel_watch_connectivity_state_"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_channel_watch_connectivity_state_"
   grpcChannelWatchConnectivityState'_ :: ((Channel) -> (C2HSImp.CInt -> ((CTimeSpecPtr) -> ((CompletionQueue) -> ((C2HSImp.Ptr ()) -> (IO ()))))))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_channel_ping"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_channel_ping"
   grpcChannelPing'_ :: ((Channel) -> ((CompletionQueue) -> ((C2HSImp.Ptr ()) -> ((C2HSImp.Ptr ()) -> (IO ())))))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_channel_destroy"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_channel_destroy"
   grpcChannelDestroy'_ :: ((Channel) -> (IO ()))
 
 foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_call_start_batch"
   grpcCallStartBatch'_ :: ((Call) -> ((OpArray) -> (C2HSImp.CULong -> ((C2HSImp.Ptr ()) -> ((C2HSImp.Ptr ()) -> (IO C2HSImp.CInt))))))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_call_cancel"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_call_cancel"
   grpcCallCancel'_ :: ((Call) -> ((C2HSImp.Ptr ()) -> (IO C2HSImp.CInt)))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_call_cancel_with_status"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_call_cancel_with_status"
   grpcCallCancelWithStatus'_ :: ((Call) -> (C2HSImp.CInt -> ((C2HSImp.Ptr C2HSImp.CChar) -> ((C2HSImp.Ptr ()) -> (IO C2HSImp.CInt)))))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_call_ref"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_call_ref"
   grpcCallRef'_ :: ((Call) -> (IO ()))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_call_unref"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_call_unref"
   grpcCallUnref'_ :: ((Call) -> (IO ()))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_call_get_peer"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_call_get_peer"
   grpcCallGetPeer'_ :: ((Call) -> (IO (C2HSImp.Ptr C2HSImp.CChar)))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h gpr_free"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h gpr_free"
   gprFree'_ :: ((C2HSImp.Ptr ()) -> (IO ()))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_server_create"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_server_create"
   grpcServerCreate'_ :: ((GrpcChannelArgs) -> ((C2HSImp.Ptr ()) -> (IO (Server))))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_server_register_method_"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_server_register_method_"
   grpcServerRegisterMethod'_ :: ((Server) -> ((C2HSImp.Ptr C2HSImp.CChar) -> ((C2HSImp.Ptr C2HSImp.CChar) -> (C2HSImp.CInt -> (IO (C2HSImp.Ptr ()))))))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_server_register_completion_queue"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_server_register_completion_queue"
   grpcServerRegisterCompletionQueue'_ :: ((Server) -> ((CompletionQueue) -> ((C2HSImp.Ptr ()) -> (IO ()))))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_server_add_insecure_http2_port"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_server_add_insecure_http2_port"
   grpcServerAddInsecureHttp2Port'_ :: ((Server) -> ((C2HSImp.Ptr C2HSImp.CChar) -> (IO C2HSImp.CInt)))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_server_start"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_server_start"
   grpcServerStart'_ :: ((Server) -> (IO ()))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_server_shutdown_and_notify"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_server_shutdown_and_notify"
   grpcServerShutdownAndNotify'_ :: ((Server) -> ((CompletionQueue) -> ((C2HSImp.Ptr ()) -> (IO ()))))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_server_cancel_all_calls"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_server_cancel_all_calls"
   grpcServerCancelAllCalls'_ :: ((Server) -> (IO ()))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_server_destroy"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_server_destroy"
   grpcServerDestroy'_ :: ((Server) -> (IO ()))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_server_request_call"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_server_request_call"
   grpcServerRequestCall'_ :: ((Server) -> ((C2HSImp.Ptr (Call)) -> ((CallDetails) -> ((MetadataArray) -> ((CompletionQueue) -> ((CompletionQueue) -> ((C2HSImp.Ptr ()) -> (IO C2HSImp.CInt))))))))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_server_request_registered_call"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_server_request_registered_call"
   grpcServerRequestRegisteredCall'_ :: ((Server) -> ((C2HSImp.Ptr ()) -> ((C2HSImp.Ptr (Call)) -> ((CTimeSpecPtr) -> ((MetadataArray) -> ((C2HSImp.Ptr (ByteBuffer)) -> ((CompletionQueue) -> ((CompletionQueue) -> ((C2HSImp.Ptr ()) -> (IO C2HSImp.CInt))))))))))
 
 foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h call_details_get_method"
@@ -891,5 +891,5 @@ foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-has
 foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h call_details_get_host"
   callDetailsGetHost'_ :: ((CallDetails) -> (IO (Slice)))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h call_details_get_deadline"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h call_details_get_deadline"
   callDetailsGetDeadline'_ :: ((CallDetails) -> (IO (CTimeSpecPtr)))

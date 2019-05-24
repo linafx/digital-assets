@@ -583,7 +583,7 @@ foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-has
 foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Security.chs/Network/GRPC/Unsafe/Security.chs.h grpc_ssl_credentials_create_internal"
   sslCredentialsCreateInternal'_ :: ((C2HSImp.Ptr C2HSImp.CChar) -> ((C2HSImp.Ptr C2HSImp.CChar) -> ((C2HSImp.Ptr C2HSImp.CChar) -> (IO (ChannelCredentials)))))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Security.chs/Network/GRPC/Unsafe/Security.chs.h grpc_call_set_credentials"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Security.chs/Network/GRPC/Unsafe/Security.chs.h grpc_call_set_credentials"
   callSetCredentials'_ :: ((Call) -> ((CallCredentials) -> (IO C2HSImp.CInt)))
 
 foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Security.chs/Network/GRPC/Unsafe/Security.chs.h grpc_call_credentials_release"
@@ -595,17 +595,17 @@ foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-has
 foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Security.chs/Network/GRPC/Unsafe/Security.chs.h grpc_server_credentials_release"
   serverCredentialsRelease'_ :: ((ServerCredentials) -> (IO ()))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Security.chs/Network/GRPC/Unsafe/Security.chs.h ssl_server_credentials_create_internal"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Security.chs/Network/GRPC/Unsafe/Security.chs.h ssl_server_credentials_create_internal"
   sslServerCredentialsCreateInternal'_ :: ((C2HSImp.Ptr C2HSImp.CChar) -> ((C2HSImp.Ptr C2HSImp.CChar) -> ((C2HSImp.Ptr C2HSImp.CChar) -> (C2HSImp.CInt -> (IO (ServerCredentials))))))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Security.chs/Network/GRPC/Unsafe/Security.chs.h grpc_server_add_secure_http2_port"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Security.chs/Network/GRPC/Unsafe/Security.chs.h grpc_server_add_secure_http2_port"
   serverAddSecureHttp2Port'_ :: ((Server) -> ((C2HSImp.Ptr C2HSImp.CChar) -> ((ServerCredentials) -> (IO C2HSImp.CInt))))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Security.chs/Network/GRPC/Unsafe/Security.chs.h grpc_secure_channel_create"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Security.chs/Network/GRPC/Unsafe/Security.chs.h grpc_secure_channel_create"
   secureChannelCreate'_ :: ((ChannelCredentials) -> ((C2HSImp.Ptr C2HSImp.CChar) -> ((GrpcChannelArgs) -> ((C2HSImp.Ptr ()) -> (IO (Channel))))))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Security.chs/Network/GRPC/Unsafe/Security.chs.h grpc_server_credentials_set_auth_metadata_processor_"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Security.chs/Network/GRPC/Unsafe/Security.chs.h grpc_server_credentials_set_auth_metadata_processor_"
   serverCredentialsSetAuthMetadataProcessor'_ :: ((ServerCredentials) -> ((AuthMetadataProcessor) -> (IO ())))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Security.chs/Network/GRPC/Unsafe/Security.chs.h grpc_metadata_credentials_create_from_plugin_"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Security.chs/Network/GRPC/Unsafe/Security.chs.h grpc_metadata_credentials_create_from_plugin_"
   metadataCredentialsCreateFromPlugin'_ :: ((MetadataCredentialsPlugin) -> (IO (CallCredentials)))

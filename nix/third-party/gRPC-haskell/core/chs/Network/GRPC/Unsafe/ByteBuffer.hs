@@ -212,10 +212,10 @@ foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-has
 foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_ByteBuffer.chs/Network/GRPC/Unsafe/ByteBuffer.chs.h destroy_receiving_byte_buffer"
   destroyReceivingByteBuffer'_ :: ((C2HSImp.Ptr (ByteBuffer)) -> (IO ()))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_ByteBuffer.chs/Network/GRPC/Unsafe/ByteBuffer.chs.h grpc_raw_byte_buffer_create"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_ByteBuffer.chs/Network/GRPC/Unsafe/ByteBuffer.chs.h grpc_raw_byte_buffer_create"
   grpcRawByteBufferCreate'_ :: ((Slice) -> (C2HSImp.CULong -> (IO (ByteBuffer))))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_ByteBuffer.chs/Network/GRPC/Unsafe/ByteBuffer.chs.h grpc_raw_compressed_byte_buffer_create"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_ByteBuffer.chs/Network/GRPC/Unsafe/ByteBuffer.chs.h grpc_raw_compressed_byte_buffer_create"
   grpcRawCompressedByteBufferCreate'_ :: ((Slice) -> (C2HSImp.CULong -> (C2HSImp.CInt -> (IO (ByteBuffer)))))
 
 foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_ByteBuffer.chs/Network/GRPC/Unsafe/ByteBuffer.chs.h grpc_byte_buffer_copy"
@@ -233,7 +233,7 @@ foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-has
 foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_ByteBuffer.chs/Network/GRPC/Unsafe/ByteBuffer.chs.h byte_buffer_reader_destroy"
   byteBufferReaderDestroy'_ :: ((ByteBufferReader) -> (IO ()))
 
-foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_ByteBuffer.chs/Network/GRPC/Unsafe/ByteBuffer.chs.h grpc_byte_buffer_reader_next"
+foreign import ccall interruptible "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_ByteBuffer.chs/Network/GRPC/Unsafe/ByteBuffer.chs.h grpc_byte_buffer_reader_next"
   grpcByteBufferReaderNext'_ :: ((ByteBufferReader) -> ((Slice) -> (IO C2HSImp.CInt)))
 
 foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_ByteBuffer.chs/Network/GRPC/Unsafe/ByteBuffer.chs.h grpc_byte_buffer_reader_readall_"
