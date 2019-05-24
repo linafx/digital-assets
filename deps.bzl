@@ -152,6 +152,7 @@ def daml_deps():
             sha256 = "8da7f32cc8978010d2060d740362748441b81a34e5425e108596d3fcd63a97f2",
             patches = [
                 "@com_github_digital_asset_daml//bazel_tools:grpc-bazel-mingw.patch",
+                "@com_github_digital_asset_daml//bazel_tools:grpc_patch.patch",
             ],
             patch_args = ["-p1"],
         )
