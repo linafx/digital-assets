@@ -310,7 +310,7 @@ data ConnectivityState = ChannelIdle
 grpcInit :: IO ()
 grpcInit = do
   putStrLn "grpcInit"
-  grpcInit'_ >>
+  grpcInit'_
   putStrLn "grpcInit returned"
   return ()
 
