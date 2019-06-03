@@ -20,6 +20,7 @@ import qualified Data.Map.Strict as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Development.Shake
+import System.FilePath
 
 import qualified Development.IDE.Logger as Logger
 import Development.IDE.State.Service hiding (initialise)
@@ -35,6 +36,8 @@ import qualified DA.Daml.LF.ScenarioServiceClient as SS
 data DamlEnv = DamlEnv
   { envScenarioService :: Maybe SS.Handle
   , envOpenVirtualResources :: Var (Set VirtualResource)
+  --  We maintain the invariant that the filepaths have
+  -- been normalized.
   , envScenarioContexts :: Var (Map FilePath SS.ContextId)
   -- ^ This is a map from the file for which the context was created to
   -- the context id. We use this to track which scenario contexts
@@ -68,8 +71,9 @@ getDamlServiceEnv = getIdeGlobalAction
 setOpenVirtualResources :: IdeState -> Set VirtualResource -> IO ()
 setOpenVirtualResources state resources = do
     DamlEnv{..} <- getIdeGlobalState state
-    modifyVar_ envOpenVirtualResources $ const $ return resources
+    modifyVar_ envOpenVirtualResources $ const $ return (Set.map normaliseVR resources)
     void $ shakeRun state []
+    where normaliseVR vr = vr { vrScenarioFile = normalise $ vrScenarioFile vr }
 
 initialise
     :: Rules ()

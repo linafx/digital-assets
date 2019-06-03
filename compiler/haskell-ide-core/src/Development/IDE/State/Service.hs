@@ -30,6 +30,7 @@ import qualified Data.Set                                 as Set
 import           Development.IDE.Functions.GHCError
 import           Development.Shake                        hiding (Diagnostic, Env, newCache)
 import           Development.IDE.Types.LSP as Compiler
+import System.FilePath
 
 import           UniqSupply
 
@@ -41,7 +42,8 @@ data Env = Env
     { envOptions       :: IdeOptions
       -- ^ Compiler options.
     , envOfInterestVar :: Var (Set FilePath)
-      -- ^ The files of interest.
+      -- ^ The files of interest. We maintain the invariant that
+      -- they have been normalised.
     , envUniqSupplyVar :: Var UniqSupply
       -- ^ The unique supply of names used by the compiler.
     }
@@ -112,7 +114,7 @@ setFilesOfInterest :: IdeState -> Set FilePath -> IO ()
 setFilesOfInterest state files = do
     Env{..} <- getIdeGlobalState state
     -- update vars synchronously
-    modifyVar_ envOfInterestVar $ const $ return files
+    modifyVar_ envOfInterestVar $ const $ return (Set.map normalise files)
 
     -- run shake to update results regarding the files of interest
     void $ shakeRun state []

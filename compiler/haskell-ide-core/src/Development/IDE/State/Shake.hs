@@ -80,6 +80,7 @@ data ShakeExtras = ShakeExtras
     ,logger :: Logger.Handle
     ,globals :: Var (Map.HashMap TypeRep Dynamic)
     ,state :: Var Values
+    -- We maintain the invariant that the filepaths have been normalised.
     ,diagnostics :: Var (ProjectDiagnostics Key)
     }
 
@@ -346,7 +347,11 @@ type instance RuleResult (Q k) = A (RuleResult k)
 -- | Compute the value
 uses :: IdeRule k v
     => k -> [FilePath] -> Action [Maybe v]
-uses key files = map (\(A value _) -> value) <$> apply (map (Q . (key,)) files)
+uses key files = map (\(A value _) -> value) <$> apply (map (\f -> Q (key, normalise' f)) files)
+    where normalise' f
+              -- We use the empty string when we don’t have a filepath.
+              | null f = f
+              | otherwise = normalise f
 
 defineEarlyCutoff
     :: IdeRule k v
