@@ -236,4 +236,127 @@ instance TemplateKey Enrollment Registration where
 ### Example (3)
 
 The final example shows a generic proposal template.
-It is generic in the argument template type.
+
+```haskell
+template Template t => Proposal t with
+    asset : t
+    receivers : [Party]
+    name : Text
+  where
+    signatory (signatory t \\ receivers)
+    observer receivers
+    key (signatory this, name)
+    maintainer (fst key)
+    choice Accept : ContractId t
+      controller receivers
+      do
+        create asset
+```
+
+Notice that the `Proposal` template has a type argument `t` with a `Template` constraint preceding it.
+We also specify a primary key for the Proposal template by combining data from the underlying template as well as the proposal.
+This desugars to the following declarations.
+
+```haskell
+data Proposal t = Proposal with
+    asset : t
+    receivers : [Party]
+    name : Party
+  deriving (Eq, Show)
+
+data Accept = Accept with
+  deriving (Eq, Show)
+
+class Template t => ProposalInstance t where
+    signatoryProposal : Proposal t -> [Party]
+    signatoryProposal this@Proposal{..} = signatory asset \\ receivers
+    observerProposal : Proposal t -> [Party]
+    observerProposal this@Proposal{..} = receivers
+    ensureProposal : Proposal t -> Bool
+    ensureProposal this@Proposal{..} = True
+    agreementProposal : Proposal t -> Text
+    agreementProposal this@Proposal{..} = implode
+        [ "Proposal:\n"
+        , "* proposers: " <> show (signatory this) <> "\n"
+        , "* receivers: " <> show receivers <> "\n"
+        , "* agreement: " <> agreement asset
+        ]
+    createProposal : Proposal t -> Update (ContractId (Proposal t))
+    createProposal = error "code will be injected by the compiler"
+    fetchProposal : ContractId (Proposal t) -> Update (Proposal t)
+    fetchProposal = error "code will be injected by the compiler"
+    archiveProposal : ContractId (Proposal t) -> Update ()
+    archiveProposal cid = exerciseProposalArchive cid Archive
+
+    hasKeyProposal : HasKey (Proposal t)
+    hasKeyProposal = HasKey
+    keyProposal : Proposal t -> ([Party], Text)
+    keyProposal this@Proposal{..} = (signatory this, name)
+    maintainerProposal : HasKey (Proposal t) -> ([Party], Text) -> [Party]
+    maintainerProposal HasKey key = fst key
+    fetchByKeyProposal : ([Party], Text) -> Update (ContractId (Proposal t), Proposal t)
+    fetchByKeyProposal = error "code will be injected by the compiler"
+    lookupByKeyProposal : ([Party], Text) -> Update (Optional (ContractId (Proposal t)))
+    lookupByKeyProposal = error "code will be injected by the compiler"
+
+    consumptionProposalArchive : PreConsuming (Proposal t)
+    consumptionProposalArchive = PreConsuming
+    controllerProposalArchive : Proposal t -> Archive -> [Party]
+    controllerProposalArchive this@Proposal{..} arg@Archive = signatoryProposal this
+    actionProposalArchive : ContractId (Proposal t) -> Proposal t -> Archive -> Update ()
+    actionProposalArchive self this@Proposal{..} arg@Archive = pure ()
+    exerciseProposalArchive : ContractId (Proposal t) -> Archive -> Update ()
+    exerciseProposalArchive = error "code will be injected by the compiler"
+
+    consumptionProposalAccept : PreConsuming (Proposal t)
+    consumptionProposalAccept = PreConsuming
+    controllerProposalAccept : Proposal t -> Accept -> [Party]
+    controllerProposalAccept this@Proposal{..} arg@Accept = receivers
+    actionProposalAccept : ContractId (Proposal t) -> Proposal t -> Accept -> Update (ContractId t)
+    actionProposalAccept self this@Proposal{..} arg@Accept = do
+        create asset
+    exerciseProposalAccept : ContractId (Proposal t) -> Accept -> Update (ContractId t)
+    exerciseProposalAccept = error "code will be injected by the compiler"
+
+instance ProposalInstance t => Template (Proposal t) where
+    signatory = signatoryProposal
+    observer = observerProposal
+    ensure = ensureProposal
+    agreement = agreementProposal
+    create = createProposal
+    fetch = fetchProposal
+    archive = archiveProposal
+
+instance ProposalInstance t => TemplateKey (Proposal t) ([Party], Text) where
+    key = keyProposal
+    fetchByKey = fetchByKeyProposal
+    lookupByKey = lookupByKeyProposal
+
+instance ProposalInstance t => Choice (Proposal t) Accept (ContractId t) where
+    exercise = exerciseProposalAccept
+
+instance ProposalInstance t => Choice (Proposal t) Archive () where
+    exercise = exerciseProposalArchive
+```
+
+### Example (3)(cont)
+
+We showed the generic proposal template above, but have not showed what an instance looks like.
+Let's instantiate the `Proposal` template with the `Iou` (concrete) template from Example 1.
+This is done using the syntax below.
+
+```haskell
+template instance ProposalIou = Proposal Iou
+```
+
+This allows us to create and exercise choices on a proposal contract instantiated to an Iou contract.
+The name `ProposalIou` is not needed in DAML code but is required when creating contracts via the Ledger API
+(as client languages may not be able to express generic template and type instantiation).
+The `template instance` desugars to the following declarations.
+
+```haskell
+newtype ProposalIou = ProposalIou (Proposal Iou)
+instance ProposalInstance Iou where
+```
+
+The `instance` here simply leverages the implementation of the `ProposalInstance` class.
