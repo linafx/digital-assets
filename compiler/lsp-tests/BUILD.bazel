@@ -26,5 +26,6 @@ da_haskell_test(
     deps = [
         "//daml-foundations/daml-ghc/test-lib",
         "//libs-haskell/bazel-runfiles",
+        "//compiler/haskell-ide-core",
     ],
 )
