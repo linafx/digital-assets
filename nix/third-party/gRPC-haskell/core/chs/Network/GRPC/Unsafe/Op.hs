@@ -419,34 +419,34 @@ foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-has
   destroyStatusCodePtr'_ :: ((C2HSImp.Ptr C2HSImp.CInt) -> (IO ()))
 
 foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Op.chs/Network/GRPC/Unsafe/Op.chs.h op_array_create"
-  opArrayCreate'_ :: (C2HSImp.CULong -> (IO (OpArray)))
+  opArrayCreate'_ :: (C2HSImp.CULLong -> (IO (OpArray)))
 
 foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Op.chs/Network/GRPC/Unsafe/Op.chs.h op_array_destroy"
-  opArrayDestroy'_ :: ((OpArray) -> (C2HSImp.CULong -> (IO ())))
+  opArrayDestroy'_ :: ((OpArray) -> (C2HSImp.CULLong -> (IO ())))
 
 foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Op.chs/Network/GRPC/Unsafe/Op.chs.h op_send_initial_metadata"
-  opSendInitialMetadata'_ :: ((OpArray) -> (C2HSImp.CULong -> ((MetadataKeyValPtr) -> (C2HSImp.CULong -> (IO ())))))
+  opSendInitialMetadata'_ :: ((OpArray) -> (C2HSImp.CULLong -> ((MetadataKeyValPtr) -> (C2HSImp.CULLong -> (IO ())))))
 
 foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Op.chs/Network/GRPC/Unsafe/Op.chs.h op_send_initial_metadata_empty"
-  opSendInitialMetadataEmpty'_ :: ((OpArray) -> (C2HSImp.CULong -> (IO ())))
+  opSendInitialMetadataEmpty'_ :: ((OpArray) -> (C2HSImp.CULLong -> (IO ())))
 
 foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Op.chs/Network/GRPC/Unsafe/Op.chs.h op_send_message"
-  opSendMessage'_ :: ((OpArray) -> (C2HSImp.CULong -> ((ByteBuffer) -> (IO ()))))
+  opSendMessage'_ :: ((OpArray) -> (C2HSImp.CULLong -> ((ByteBuffer) -> (IO ()))))
 
 foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Op.chs/Network/GRPC/Unsafe/Op.chs.h op_send_close_client"
-  opSendCloseClient'_ :: ((OpArray) -> (C2HSImp.CULong -> (IO ())))
+  opSendCloseClient'_ :: ((OpArray) -> (C2HSImp.CULLong -> (IO ())))
 
 foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Op.chs/Network/GRPC/Unsafe/Op.chs.h op_recv_initial_metadata"
-  opRecvInitialMetadata'_ :: ((OpArray) -> (C2HSImp.CULong -> ((C2HSImp.Ptr (MetadataArray)) -> (IO ()))))
+  opRecvInitialMetadata'_ :: ((OpArray) -> (C2HSImp.CULLong -> ((C2HSImp.Ptr (MetadataArray)) -> (IO ()))))
 
 foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Op.chs/Network/GRPC/Unsafe/Op.chs.h op_recv_message"
-  opRecvMessage'_ :: ((OpArray) -> (C2HSImp.CULong -> ((C2HSImp.Ptr (ByteBuffer)) -> (IO ()))))
+  opRecvMessage'_ :: ((OpArray) -> (C2HSImp.CULLong -> ((C2HSImp.Ptr (ByteBuffer)) -> (IO ()))))
 
 foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Op.chs/Network/GRPC/Unsafe/Op.chs.h op_recv_status_client"
-  opRecvStatusClient'_ :: ((OpArray) -> (C2HSImp.CULong -> ((C2HSImp.Ptr (MetadataArray)) -> ((C2HSImp.Ptr C2HSImp.CInt) -> ((Slice) -> (IO ()))))))
+  opRecvStatusClient'_ :: ((OpArray) -> (C2HSImp.CULLong -> ((C2HSImp.Ptr (MetadataArray)) -> ((C2HSImp.Ptr C2HSImp.CInt) -> ((Slice) -> (IO ()))))))
 
 foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Op.chs/Network/GRPC/Unsafe/Op.chs.h op_recv_close_server"
-  opRecvCloseServer'_ :: ((OpArray) -> (C2HSImp.CULong -> ((C2HSImp.Ptr C2HSImp.CInt) -> (IO ()))))
+  opRecvCloseServer'_ :: ((OpArray) -> (C2HSImp.CULLong -> ((C2HSImp.Ptr C2HSImp.CInt) -> (IO ()))))
 
 foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Op.chs/Network/GRPC/Unsafe/Op.chs.h op_send_status_server"
-  opSendStatusServer'_ :: ((OpArray) -> (C2HSImp.CULong -> (C2HSImp.CULong -> ((MetadataKeyValPtr) -> (C2HSImp.CInt -> ((Slice) -> (IO ())))))))
+  opSendStatusServer'_ :: ((OpArray) -> (C2HSImp.CULLong -> (C2HSImp.CULLong -> ((MetadataKeyValPtr) -> (C2HSImp.CInt -> ((Slice) -> (IO ())))))))

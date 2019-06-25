@@ -33,10 +33,10 @@ instance Storable CTimeSpec where
 {-# LINE 18 "nix/third-party/gRPC-haskell/core/src/Network/GRPC/Unsafe/Time.chs" #-}
 
   peek p = fmap CTimeSpec $ TimeSpec
-    <$> liftM fromIntegral ((\ptr -> do {C2HSImp.peekByteOff ptr 0 :: IO C2HSImp.CLong}) p)
+    <$> liftM fromIntegral ((\ptr -> do {C2HSImp.peekByteOff ptr 0 :: IO C2HSImp.CLLong}) p)
     <*> liftM fromIntegral ((\ptr -> do {C2HSImp.peekByteOff ptr 8 :: IO C2HSImp.CInt}) p)
   poke p x = do
-    (\ptr val -> do {C2HSImp.pokeByteOff ptr 0 (val :: C2HSImp.CLong)}) p (fromIntegral $ sec $ timeSpec x)
+    (\ptr val -> do {C2HSImp.pokeByteOff ptr 0 (val :: C2HSImp.CLLong)}) p (fromIntegral $ sec $ timeSpec x)
     (\ptr val -> do {C2HSImp.pokeByteOff ptr 8 (val :: C2HSImp.CInt)}) p (fromIntegral $ nsec $ timeSpec x)
 
 data ClockType = GprClockMonotonic
@@ -197,10 +197,10 @@ foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haske
   gprTimeToMillis'_ :: ((CTimeSpecPtr) -> (IO C2HSImp.CInt))
 
 foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Time.chs/Network/GRPC/Unsafe/Time.chs.h seconds_to_deadline"
-  secondsToDeadline'_ :: (C2HSImp.CLong -> (IO (CTimeSpecPtr)))
+  secondsToDeadline'_ :: (C2HSImp.CLLong -> (IO (CTimeSpecPtr)))
 
 foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Time.chs/Network/GRPC/Unsafe/Time.chs.h millis_to_deadline"
-  millisToDeadline'_ :: (C2HSImp.CLong -> (IO (CTimeSpecPtr)))
+  millisToDeadline'_ :: (C2HSImp.CLLong -> (IO (CTimeSpecPtr)))
 
 foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Time.chs/Network/GRPC/Unsafe/Time.chs.h infinite_deadline"
   infiniteDeadline'_ :: (IO (CTimeSpecPtr))

@@ -836,7 +836,7 @@ foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haske
   grpcChannelDestroy'_ :: ((Channel) -> (IO ()))
 
 foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_call_start_batch"
-  grpcCallStartBatch'_ :: ((Call) -> ((OpArray) -> (C2HSImp.CULong -> ((C2HSImp.Ptr ()) -> ((C2HSImp.Ptr ()) -> (IO C2HSImp.CInt))))))
+  grpcCallStartBatch'_ :: ((Call) -> ((OpArray) -> (C2HSImp.CULLong -> ((C2HSImp.Ptr ()) -> ((C2HSImp.Ptr ()) -> (IO C2HSImp.CInt))))))
 
 foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe.chs/Network/GRPC/Unsafe.chs.h grpc_call_cancel"
   grpcCallCancel'_ :: ((Call) -> ((C2HSImp.Ptr ()) -> (IO C2HSImp.CInt)))

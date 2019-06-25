@@ -38,7 +38,7 @@ deriving instance Show Slice
 -- maybe the established idiom is to do what c2hs does.
 
 -- | Get the length of a slice.
-grpcSliceLength :: (Slice) -> IO ((CULong))
+grpcSliceLength :: (Slice) -> IO ((CULLong))
 grpcSliceLength a1 =
   let {a1' = id a1} in 
   grpcSliceLength'_ a1' >>= \res ->
@@ -111,16 +111,16 @@ byteStringToSlice :: B.ByteString -> IO Slice
 byteStringToSlice bs = B.useAsCStringLen bs $ uncurry grpcSliceFromCopiedBuffer
 
 foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Slice.chs/Network/GRPC/Unsafe/Slice.chs.h grpc_slice_length_"
-  grpcSliceLength'_ :: ((Slice) -> (IO C2HSImp.CULong))
+  grpcSliceLength'_ :: ((Slice) -> (IO C2HSImp.CULLong))
 
 foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Slice.chs/Network/GRPC/Unsafe/Slice.chs.h grpc_slice_malloc_"
-  grpcSliceMalloc'_ :: (C2HSImp.CULong -> (IO (Slice)))
+  grpcSliceMalloc'_ :: (C2HSImp.CULLong -> (IO (Slice)))
 
 foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Slice.chs/Network/GRPC/Unsafe/Slice.chs.h grpc_slice_start_"
   grpcSliceStart'_ :: ((Slice) -> (IO (C2HSImp.Ptr C2HSImp.CUChar)))
 
 foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Slice.chs/Network/GRPC/Unsafe/Slice.chs.h grpc_slice_from_copied_buffer_"
-  grpcSliceFromCopiedBuffer'_ :: ((C2HSImp.Ptr C2HSImp.CChar) -> (C2HSImp.CULong -> (IO (Slice))))
+  grpcSliceFromCopiedBuffer'_ :: ((C2HSImp.Ptr C2HSImp.CChar) -> (C2HSImp.CULLong -> (IO (Slice))))
 
 foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Slice.chs/Network/GRPC/Unsafe/Slice.chs.h free_slice"
   freeSlice'_ :: ((Slice) -> (IO ()))

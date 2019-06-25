@@ -286,13 +286,13 @@ withChannelArgs :: [Arg] -> (GrpcChannelArgs -> IO a) -> IO a
 withChannelArgs args f = bracket (createChannelArgs args) destroyChannelArgs f
 
 foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_ChannelArgs.chs/Network/GRPC/Unsafe/ChannelArgs.chs.h create_arg_array"
-  createArgArray'_ :: (C2HSImp.CULong -> (IO (GrpcArg)))
+  createArgArray'_ :: (C2HSImp.CULLong -> (IO (GrpcArg)))
 
 foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_ChannelArgs.chs/Network/GRPC/Unsafe/ChannelArgs.chs.h create_string_arg"
-  createStringArg'_ :: ((GrpcArg) -> (C2HSImp.CULong -> (C2HSImp.CInt -> ((C2HSImp.Ptr C2HSImp.CChar) -> (IO ())))))
+  createStringArg'_ :: ((GrpcArg) -> (C2HSImp.CULLong -> (C2HSImp.CInt -> ((C2HSImp.Ptr C2HSImp.CChar) -> (IO ())))))
 
 foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_ChannelArgs.chs/Network/GRPC/Unsafe/ChannelArgs.chs.h create_int_arg"
-  createIntArg'_ :: ((GrpcArg) -> (C2HSImp.CULong -> (C2HSImp.CInt -> (C2HSImp.CInt -> (IO ())))))
+  createIntArg'_ :: ((GrpcArg) -> (C2HSImp.CULLong -> (C2HSImp.CInt -> (C2HSImp.CInt -> (IO ())))))
 
 foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_ChannelArgs.chs/Network/GRPC/Unsafe/ChannelArgs.chs.h destroy_arg_array"
-  destroyArgArray'_ :: ((GrpcArg) -> (C2HSImp.CULong -> (IO ())))
+  destroyArgArray'_ :: ((GrpcArg) -> (C2HSImp.CULLong -> (IO ())))

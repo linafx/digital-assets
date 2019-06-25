@@ -82,7 +82,7 @@ withByteBufferPtr
 
 -- | Takes an array of slices and the length of the array and returns a
 -- 'ByteBuffer'.
-grpcRawByteBufferCreate :: (Slice) -> (CULong) -> IO ((ByteBuffer))
+grpcRawByteBufferCreate :: (Slice) -> (CULLong) -> IO ((ByteBuffer))
 grpcRawByteBufferCreate a1 a2 =
   let {a1' = id a1} in 
   let {a2' = fromIntegral a2} in 
@@ -93,7 +93,7 @@ grpcRawByteBufferCreate a1 a2 =
 {-# LINE 54 "nix/third-party/gRPC-haskell/core/src/Network/GRPC/Unsafe/ByteBuffer.chs" #-}
 
 
-grpcRawCompressedByteBufferCreate :: (Slice) -> (CULong) -> (CompressionAlgorithm) -> IO ((ByteBuffer))
+grpcRawCompressedByteBufferCreate :: (Slice) -> (CULLong) -> (CompressionAlgorithm) -> IO ((ByteBuffer))
 grpcRawCompressedByteBufferCreate a1 a2 a3 =
   let {a1' = id a1} in 
   let {a2' = fromIntegral a2} in 
@@ -115,7 +115,7 @@ grpcByteBufferCopy a1 =
 {-# LINE 59 "nix/third-party/gRPC-haskell/core/src/Network/GRPC/Unsafe/ByteBuffer.chs" #-}
 
 
-grpcByteBufferLength :: (ByteBuffer) -> IO ((CULong))
+grpcByteBufferLength :: (ByteBuffer) -> IO ((CULLong))
 grpcByteBufferLength a1 =
   let {a1' = id a1} in 
   grpcByteBufferLength'_ a1' >>= \res ->
@@ -213,16 +213,16 @@ foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-has
   destroyReceivingByteBuffer'_ :: ((C2HSImp.Ptr (ByteBuffer)) -> (IO ()))
 
 foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_ByteBuffer.chs/Network/GRPC/Unsafe/ByteBuffer.chs.h grpc_raw_byte_buffer_create"
-  grpcRawByteBufferCreate'_ :: ((Slice) -> (C2HSImp.CULong -> (IO (ByteBuffer))))
+  grpcRawByteBufferCreate'_ :: ((Slice) -> (C2HSImp.CULLong -> (IO (ByteBuffer))))
 
 foreign import ccall safe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_ByteBuffer.chs/Network/GRPC/Unsafe/ByteBuffer.chs.h grpc_raw_compressed_byte_buffer_create"
-  grpcRawCompressedByteBufferCreate'_ :: ((Slice) -> (C2HSImp.CULong -> (C2HSImp.CInt -> (IO (ByteBuffer)))))
+  grpcRawCompressedByteBufferCreate'_ :: ((Slice) -> (C2HSImp.CULLong -> (C2HSImp.CInt -> (IO (ByteBuffer)))))
 
 foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_ByteBuffer.chs/Network/GRPC/Unsafe/ByteBuffer.chs.h grpc_byte_buffer_copy"
   grpcByteBufferCopy'_ :: ((ByteBuffer) -> (IO (ByteBuffer)))
 
 foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_ByteBuffer.chs/Network/GRPC/Unsafe/ByteBuffer.chs.h grpc_byte_buffer_length"
-  grpcByteBufferLength'_ :: ((ByteBuffer) -> (IO C2HSImp.CULong))
+  grpcByteBufferLength'_ :: ((ByteBuffer) -> (IO C2HSImp.CULLong))
 
 foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_ByteBuffer.chs/Network/GRPC/Unsafe/ByteBuffer.chs.h grpc_byte_buffer_destroy"
   grpcByteBufferDestroy'_ :: ((ByteBuffer) -> (IO ()))

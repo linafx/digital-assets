@@ -266,10 +266,10 @@ foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-has
   metadataArraySetMetadata'_ :: ((MetadataArray) -> ((MetadataKeyValPtr) -> (IO ())))
 
 foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Metadata.chs/Network/GRPC/Unsafe/Metadata.chs.h metadata_array_get_count"
-  metadataArrayGetCount'_ :: ((MetadataArray) -> (IO C2HSImp.CULong))
+  metadataArrayGetCount'_ :: ((MetadataArray) -> (IO C2HSImp.CULLong))
 
 foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Metadata.chs/Network/GRPC/Unsafe/Metadata.chs.h metadata_array_get_capacity"
-  metadataArrayGetCapacity'_ :: ((MetadataArray) -> (IO C2HSImp.CULong))
+  metadataArrayGetCapacity'_ :: ((MetadataArray) -> (IO C2HSImp.CULLong))
 
 foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Metadata.chs/Network/GRPC/Unsafe/Metadata.chs.h metadata_array_create"
   metadataArrayCreate'_ :: (IO (C2HSImp.Ptr (MetadataArray)))
@@ -278,16 +278,16 @@ foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-has
   metadataArrayDestroy'_ :: ((C2HSImp.Ptr (MetadataArray)) -> (IO ()))
 
 foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Metadata.chs/Network/GRPC/Unsafe/Metadata.chs.h metadata_alloc"
-  metadataAlloc'_ :: (C2HSImp.CULong -> (IO (MetadataKeyValPtr)))
+  metadataAlloc'_ :: (C2HSImp.CULLong -> (IO (MetadataKeyValPtr)))
 
 foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Metadata.chs/Network/GRPC/Unsafe/Metadata.chs.h metadata_free"
   metadataFree'_ :: ((MetadataKeyValPtr) -> (IO ()))
 
 foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Metadata.chs/Network/GRPC/Unsafe/Metadata.chs.h set_metadata_key_val"
-  setMetadataKeyVal''_ :: ((C2HSImp.Ptr C2HSImp.CChar) -> ((C2HSImp.Ptr C2HSImp.CChar) -> (C2HSImp.CULong -> ((MetadataKeyValPtr) -> (C2HSImp.CULong -> (IO ()))))))
+  setMetadataKeyVal''_ :: ((C2HSImp.Ptr C2HSImp.CChar) -> ((C2HSImp.Ptr C2HSImp.CChar) -> (C2HSImp.CULLong -> ((MetadataKeyValPtr) -> (C2HSImp.CULLong -> (IO ()))))))
 
 foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Metadata.chs/Network/GRPC/Unsafe/Metadata.chs.h get_metadata_key"
-  getMetadataKey''_ :: ((MetadataKeyValPtr) -> (C2HSImp.CULong -> (IO (Slice))))
+  getMetadataKey''_ :: ((MetadataKeyValPtr) -> (C2HSImp.CULLong -> (IO (Slice))))
 
 foreign import ccall unsafe "bazel-out/k8-fastbuild/bin/nix/third-party/gRPC-haskell/core/chs-src_Network_GRPC_Unsafe_Metadata.chs/Network/GRPC/Unsafe/Metadata.chs.h get_metadata_val"
-  getMetadataVal''_ :: ((MetadataKeyValPtr) -> (C2HSImp.CULong -> (IO (Slice))))
+  getMetadataVal''_ :: ((MetadataKeyValPtr) -> (C2HSImp.CULLong -> (IO (Slice))))

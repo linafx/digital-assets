@@ -97,7 +97,7 @@ data AuthProperty = AuthProperty
 marshalAuthProperty :: Ptr AuthProperty -> IO AuthProperty
 marshalAuthProperty p = do
   n <- packCString =<< ((\ptr -> do {C2HSImp.peekByteOff ptr 0 :: IO (C2HSImp.Ptr C2HSImp.CChar)}) p)
-  vl <- fromIntegral <$> (\ptr -> do {C2HSImp.peekByteOff ptr 16 :: IO C2HSImp.CULong}) p
+  vl <- fromIntegral <$> (\ptr -> do {C2HSImp.peekByteOff ptr 16 :: IO C2HSImp.CULLong}) p
   v <- packCStringLen . (,vl) =<< (\ptr -> do {C2HSImp.peekByteOff ptr 8 :: IO (C2HSImp.Ptr C2HSImp.CChar)}) p
   return $ AuthProperty n v
 
