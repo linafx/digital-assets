@@ -15,6 +15,8 @@ GRPC
 , C.StatusDetails(..)
 ) where
 
+import Debug.Trace
+
 import           Control.Concurrent     (threadDelay, myThreadId)
 import           Control.Exception
 import           Data.Typeable
@@ -28,8 +30,8 @@ import qualified Network.GRPC.Unsafe.Metadata as C
 data GRPC = GRPC
 
 withGRPC :: (GRPC -> IO a) -> IO a
-withGRPC = bracket (C.grpcInit >> return GRPC)
-                   (\_ -> grpcDebug "withGRPC: shutting down" >> C.grpcShutdown)
+withGRPC = bracket (trace ("GRPC init") $ C.grpcInit >> return GRPC)
+                   (\_ -> trace ("GRPC shutdown") $ grpcDebug "withGRPC: shutting down" >> C.grpcShutdown)
 
 -- | Describes all errors that can occur while running a GRPC-related IO
 -- action.

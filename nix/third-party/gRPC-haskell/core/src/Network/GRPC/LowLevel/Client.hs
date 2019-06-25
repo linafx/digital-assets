@@ -11,7 +11,10 @@
 -- `Network.GRPC.LowLevel.Client.Unregistered`.
 module Network.GRPC.LowLevel.Client where
 
+import Debug.Trace
+
 import           Control.Exception                     (bracket, finally)
+import           Control.Concurrent                    (isCurrentThreadBound)
 import           Control.Concurrent.MVar
 import           Control.Monad
 import           Control.Monad.IO.Class
@@ -82,7 +85,9 @@ addMetadataCreds c (Just create) = do
 createChannel :: ClientConfig -> C.GrpcChannelArgs -> IO C.Channel
 createChannel conf@ClientConfig{..} chanargs =
   case clientSSLConfig of
-    Nothing -> C.grpcInsecureChannelCreate e chanargs C.reserved
+    Nothing ->
+      do isB <- isCurrentThreadBound
+         trace ("createChannel - no ssl - is bound: " ++ show(isB)) $ C.grpcInsecureChannelCreate e chanargs C.reserved
     Just (ClientSSLConfig rootCertPath Nothing plugin) ->
       do rootCert <- mapM B.readFile rootCertPath
          C.withChannelCredentials rootCert Nothing Nothing $ \creds -> do
@@ -100,9 +105,9 @@ createChannel conf@ClientConfig{..} chanargs =
 createClient :: GRPC -> ClientConfig -> IO Client
 createClient grpc clientConfig =
   C.withChannelArgs (clientArgs clientConfig) $ \chanargs -> do
-    clientChannel <- createChannel clientConfig chanargs
-    clientCQ <- createCompletionQueue grpc
-    return Client{..}
+    clientChannel <- trace ("createChannel") $ createChannel clientConfig chanargs
+    clientCQ <- trace ("createCompletionQueue") $ createCompletionQueue grpc
+    trace ("returning GRPC Client") $ return Client{..}
 
 destroyClient :: Client -> IO ()
 destroyClient Client{..} = do

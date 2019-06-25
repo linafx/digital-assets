@@ -6,6 +6,9 @@
 {-# LANGUAGE RecordWildCards #-}
 
 module Network.GRPC.Unsafe.ChannelArgs where
+
+import Debug.Trace
+
 import qualified Foreign.C.String as C2HSImp
 import qualified Foreign.C.Types as C2HSImp
 import qualified Foreign.Ptr as C2HSImp
@@ -185,10 +188,10 @@ instance Storable ChannelArgs where
 {-# LINE 35 "nix/third-party/gRPC-haskell/core/src/Network/GRPC/Unsafe/ChannelArgs.chs" #-}
 
   peek p = ChannelArgs <$> fmap fromIntegral
-                                ((\ptr -> do {C2HSImp.peekByteOff ptr 0 :: IO C2HSImp.CULong}) p)
+                                ((\ptr -> do {C2HSImp.peekByteOff ptr 0 :: IO C2HSImp.CULLong}) p)
                        <*> ((\ptr -> do {C2HSImp.peekByteOff ptr 8 :: IO (GrpcArg)}) p)
   poke p ChannelArgs{..} = do
-    (\ptr val -> do {C2HSImp.pokeByteOff ptr 0 (val :: C2HSImp.CULong)}) p $ fromIntegral channelArgsN
+    (\ptr val -> do {C2HSImp.pokeByteOff ptr 0 (val :: C2HSImp.CULLong)}) p $ fromIntegral $ trace ("channelArgsN: " ++ show channelArgsN) $ channelArgsN
     (\ptr val -> do {C2HSImp.pokeByteOff ptr 8 (val :: (GrpcArg))}) p channelArgsArray
 
 createArgArray :: (Int) -> IO ((GrpcArg))
@@ -267,7 +270,7 @@ createArg array (MaxMetadataSize n) i =
 createChannelArgs :: [Arg] -> IO GrpcChannelArgs
 createChannelArgs args = do
   let l = length args
-  array <- createArgArray l
+  array <- trace ("createChannelArgs - length: " ++ show l) $ createArgArray l
   forM_ (zip [0..l] args) $ \(i, arg) -> createArg array arg i
   ptr <- malloc
   poke ptr $ ChannelArgs l array

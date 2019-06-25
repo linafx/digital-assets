@@ -35,6 +35,8 @@ module Network.GRPC.LowLevel.CompletionQueue
   )
 where
 
+import Debug.Trace
+
 import           Control.Concurrent.STM.TVar                    (newTVarIO)
 import           Control.Exception                              (bracket)
 import           Control.Monad.Managed
@@ -67,7 +69,7 @@ createCompletionQueue _ = do
   currentPushers <- newTVarIO 0
   shuttingDown <- newTVarIO False
   nextTag <- newIORef minBound
-  return CompletionQueue{..}
+  trace "returning GRPC CompletionQueue" $ return CompletionQueue{..}
 
 -- | Very simple wrapper around 'grpcCallStartBatch'. Throws 'GRPCIOShutdown'
 -- without calling 'grpcCallStartBatch' if the queue is shutting down.

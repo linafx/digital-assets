@@ -1,0 +1,55 @@
+diff --git a/include/grpc/impl/codegen/grpc_types.h b/include/grpc/impl/codegen/grpc_types.h
+index 79b182c451..b0aa26bb83 100644
+--- a/include/grpc/impl/codegen/grpc_types.h
++++ b/include/grpc/impl/codegen/grpc_types.h
+@@ -129,7 +129,7 @@ typedef struct {
+ 
+     See the description of the \ref grpc_arg_keys "available args" for more
+     details. */
+-typedef struct {
++typedef struct { // <-------
+   size_t num_args;
+   grpc_arg* args;
+ } grpc_channel_args;
+diff --git a/src/core/ext/transport/chttp2/client/insecure/channel_create.cc b/src/core/ext/transport/chttp2/client/insecure/channel_create.cc
+index 8aabcfa200..960c523809 100644
+--- a/src/core/ext/transport/chttp2/client/insecure/channel_create.cc
++++ b/src/core/ext/transport/chttp2/client/insecure/channel_create.cc
+@@ -101,6 +101,10 @@ grpc_channel* grpc_insecure_channel_create(const char* target,
+   // Clean up.
+   grpc_channel_args_destroy(new_args);
+ 
++  GRPC_API_TRACE(
++        "XXXX - grpc_insecure_channel_create(target=%s, args=%p, reserved=%p)", 4,
++        (target, args, reserved, channel));
++
+   return channel != nullptr ? channel
+                             : grpc_lame_client_channel_create(
+                                   target, GRPC_STATUS_INTERNAL,
+diff --git a/src/core/lib/channel/channel_args.cc b/src/core/lib/channel/channel_args.cc
+index e49d532e11..aa12ed4a8b 100644
+--- a/src/core/lib/channel/channel_args.cc
++++ b/src/core/lib/channel/channel_args.cc
+@@ -20,6 +20,7 @@
+ 
+ #include <limits.h>
+ #include <string.h>
++#include <stdio.h>
+ 
+ #include <grpc/compression.h>
+ #include <grpc/grpc.h>
+@@ -76,6 +77,14 @@ static bool should_remove_arg(const grpc_arg* arg, const char** to_remove,
+ grpc_channel_args* grpc_channel_args_copy_and_add_and_remove(
+     const grpc_channel_args* src, const char** to_remove, size_t num_to_remove,
+     const grpc_arg* to_add, size_t num_to_add) {
++
++  printf("XX - src->num_args - size: %zd\n", src->num_args);
++  printf("XX - grpc_channel_args - sizeof: %zd\n", sizeof(src));
++
++  printf("sizeof(int) = %d\n", (int)sizeof(int));
++  printf("sizeof(long) = %d\n", (int)sizeof(long));
++  printf("sizeof(long long) = %d\n", (int)sizeof(long long));
++
+   // Figure out how many args we'll be copying.
+   size_t num_args_to_copy = 0;
+   if (src != nullptr) {
