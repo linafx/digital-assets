@@ -30,8 +30,8 @@ function bazel() {
 # which is a workaround for this problem.
 bazel shutdown
 
-bazel build `-`-experimental_execution_log_file ${ARTIFACT_DIRS}/build_execution_windows.log //...
+bazel build `-`-experimental_execution_log_file ${ARTIFACT_DIRS}/build_execution_windows.log //ledger/ledger-api-test-tool:ledger-api-test-tool-test
 
 bazel shutdown
 
-bazel test `-`-experimental_execution_log_file ${ARTIFACT_DIRS}/test_execution_windows.log //...
+bazel test `-`-experimental_execution_log_file ${ARTIFACT_DIRS}/test_execution_windows.log //ledger/ledger-api-test-tool:ledger-api-test-tool-test
