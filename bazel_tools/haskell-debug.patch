@@ -1,8 +1,16 @@
 diff --git a/haskell/private/actions/link.bzl b/haskell/private/actions/link.bzl
-index f9e4a47..21d50aa 100644
+index f9e4a47..53f9e25 100644
 --- a/haskell/private/actions/link.bzl
 +++ b/haskell/private/actions/link.bzl
-@@ -380,6 +380,7 @@ def link_library_dynamic(hs, cc, dep_info, cc_info, extra_srcs, objects_dir, my_
+@@ -233,6 +233,7 @@ def link_binary(
+     else:
+         params_file = objects_dir_manifest
+ 
++    args.add("-v")
+     hs.toolchain.actions.run_ghc(
+         hs,
+         cc,
+@@ -380,6 +381,7 @@ def link_library_dynamic(hs, cc, dep_info, cc_info, extra_srcs, objects_dir, my_
          with_profiling = False,
      )
  
@@ -10,6 +18,24 @@ index f9e4a47..21d50aa 100644
      hs.toolchain.actions.run_ghc(
          hs,
          cc,
+diff --git a/haskell/providers.bzl b/haskell/providers.bzl
+index f7d09f6..2e0cf92 100644
+--- a/haskell/providers.bzl
++++ b/haskell/providers.bzl
+@@ -341,11 +341,11 @@ def create_link_config(hs, cc_info, binary, args, dynamic = None, pic = None):
+             for lib in cc_static_libs + cc_dynamic_libs
+         ],
+         "library-dirs": depset(direct = [
+-            rel_to_pkgroot(lib.dirname, conf_file.dirname)
++            lib.dirname
+             for lib in cc_static_libs + cc_dynamic_libs
+         ]),
+         "dynamic-library-dirs": depset(direct = [
+-            rel_to_pkgroot(lib.dirname, conf_file.dirname)
++            lib.dirname
+             for lib in cc_static_libs + cc_dynamic_libs
+         ]),
+         # XXX: Set user_link_flags.
 diff --git a/haskell/toolchain.bzl b/haskell/toolchain.bzl
 index 2a453b8..bb8af04 100644
 --- a/haskell/toolchain.bzl
@@ -22,3 +48,14 @@ index 2a453b8..bb8af04 100644
  "${compile_flags[@]}" "${extra_args[@]}" ${param_file_args+"${param_file_args[@]}"}
  """ % (compile_flags_file.path, extra_args_file.path, params_file_src)
  
+diff --git a/tests/binary-with-lib/BUILD.bazel b/tests/binary-with-lib/BUILD.bazel
+index 196d551..79285a3 100644
+--- a/tests/binary-with-lib/BUILD.bazel
++++ b/tests/binary-with-lib/BUILD.bazel
+@@ -23,5 +23,6 @@ haskell_test(
+         ":lib",
+         "//tests/hackage:base",
+         "//tests/hackage:template-haskell",
++        "@haskell_data__default__instances__containers//:lib",
+     ],
+ )

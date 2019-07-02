@@ -48,7 +48,7 @@ def daml_deps():
             patches = [
                 "@com_github_digital_asset_daml//bazel_tools:haskell-drop-fake-static.patch",
                 "@com_github_digital_asset_daml//bazel_tools:haskell-windows-extra-libraries.patch",
-                #"@com_github_digital_asset_daml//bazel_tools:haskell-darwin-symlink-dylib.patch",
+                "@com_github_digital_asset_daml//bazel_tools:haskell-darwin-symlink-dylib.patch",
                 "@com_github_digital_asset_daml//bazel_tools:haskell-ghci-grpc.patch",
                 "@com_github_digital_asset_daml//bazel_tools:haskell_public_ghci_repl_wrapper.patch",
                 # XXX: Remove once upstream PR was merged and we've updated to
