@@ -10,3 +10,15 @@ index f9e4a47..21d50aa 100644
      hs.toolchain.actions.run_ghc(
          hs,
          cc,
+diff --git a/haskell/toolchain.bzl b/haskell/toolchain.bzl
+index 2a453b8..bb8af04 100644
+--- a/haskell/toolchain.bzl
++++ b/haskell/toolchain.bzl
+@@ -80,6 +80,7 @@ while IFS= read -r line; do compile_flags+=("$line"); done < %s
+ while IFS= read -r line; do extra_args+=("$line"); done < %s
+ while IFS= read -r line; do param_file_args+=("$line"); done < %s
+ 
++echo "${compile_flags[@]}" "${extra_args[@]}" ${param_file_args+"${param_file_args[@]}"}
+ "${compile_flags[@]}" "${extra_args[@]}" ${param_file_args+"${param_file_args[@]}"}
+ """ % (compile_flags_file.path, extra_args_file.path, params_file_src)
+ 
