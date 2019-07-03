@@ -1,20 +1,22 @@
 diff --git a/haskell/private/actions/link.bzl b/haskell/private/actions/link.bzl
-index f9e4a47..53f9e25 100644
+index f9e4a47..a59fe8f 100644
 --- a/haskell/private/actions/link.bzl
 +++ b/haskell/private/actions/link.bzl
-@@ -233,6 +233,7 @@ def link_binary(
+@@ -233,6 +233,8 @@ def link_binary(
      else:
          params_file = objects_dir_manifest
  
-+    args.add("-v")
++    args.add("-v3")
++    args.add("-optl-v")
      hs.toolchain.actions.run_ghc(
          hs,
          cc,
-@@ -380,6 +381,7 @@ def link_library_dynamic(hs, cc, dep_info, cc_info, extra_srcs, objects_dir, my_
+@@ -380,6 +382,8 @@ def link_library_dynamic(hs, cc, dep_info, cc_info, extra_srcs, objects_dir, my_
          with_profiling = False,
      )
  
 +    args.add("-v")
++    args.add("-optl-v")
      hs.toolchain.actions.run_ghc(
          hs,
          cc,
@@ -37,14 +39,14 @@ index f7d09f6..2e0cf92 100644
          ]),
          # XXX: Set user_link_flags.
 diff --git a/haskell/toolchain.bzl b/haskell/toolchain.bzl
-index 2a453b8..bb8af04 100644
+index 2a453b8..5e4dc7a 100644
 --- a/haskell/toolchain.bzl
 +++ b/haskell/toolchain.bzl
 @@ -80,6 +80,7 @@ while IFS= read -r line; do compile_flags+=("$line"); done < %s
  while IFS= read -r line; do extra_args+=("$line"); done < %s
  while IFS= read -r line; do param_file_args+=("$line"); done < %s
  
-+echo "${compile_flags[@]}" "${extra_args[@]}" ${param_file_args+"${param_file_args[@]}"}
++echo "${compile_flags[@]}" "${extra_args[@]}" ${param_file_args+"${param_file_args[@]}"} >&2
  "${compile_flags[@]}" "${extra_args[@]}" ${param_file_args+"${param_file_args[@]}"}
  """ % (compile_flags_file.path, extra_args_file.path, params_file_src)
  
