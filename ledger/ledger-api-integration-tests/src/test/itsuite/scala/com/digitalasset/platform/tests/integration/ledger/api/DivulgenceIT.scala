@@ -233,7 +233,7 @@ class DivulgenceIT
     Map(alice -> Filters.defaultInstance, bob -> Filters.defaultInstance))
 
   "should not expose divulged contracts in flat stream" in allFixtures { ctx =>
-    val wfid = testIdsGenerator.testWorkflowId("divulgence-test-workflow-id")
+    val wfid = testIdsGenerator.testWorkflowId("divulgence-test-workflow-id1")
     for {
       beforeTest <- transactionClient(ctx).getLedgerEnd.map(_.getOffset)
       div1Cid <- createDivulgence1(ctx, wfid, 0)
@@ -326,7 +326,7 @@ class DivulgenceIT
   }
 
   "should not expose divulged contracts in ACS" in allFixtures { ctx =>
-    val wfid = testIdsGenerator.testWorkflowId("divulgence-test-workflow-id")
+    val wfid = testIdsGenerator.testWorkflowId("divulgence-test-workflow-id2")
     for {
       beforeTest <- transactionClient(ctx).getLedgerEnd.map(_.getOffset)
       div1Cid <- createDivulgence1(ctx, wfid, 1)
