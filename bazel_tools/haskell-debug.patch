@@ -42,7 +42,7 @@ index f08921a..a25b853 100644
      name = "pkgdb_to_bzl",
      srcs = ["private/pkgdb_to_bzl.py"],
 diff --git a/haskell/cc.bzl b/haskell/cc.bzl
-index 99e70c6..347e54e 100644
+index 99e70c6..e09aea9 100644
 --- a/haskell/cc.bzl
 +++ b/haskell/cc.bzl
 @@ -9,7 +9,7 @@ load(
@@ -54,15 +54,17 @@ index 99e70c6..347e54e 100644
  load("@bazel_skylib//lib:paths.bzl", "paths")
  load(":private/set.bzl", "set")
  load(
-@@ -114,8 +114,37 @@ def cc_interop_info(ctx):
+@@ -114,8 +114,51 @@ def cc_interop_info(ctx):
              cc_wrapper,
          ]
      else:
++        cc_script = ctx.actions.declare_file("cc")
++        cc_script_part = ctx.actions.declare_file("cc_script_part")
++
 +        cc_wrapper = hs_toolchain.cc_wrapper.executable
          cc = cc_toolchain.compiler_executable()
 -        cc_files = ctx.files._cc_toolchain
-+        cc_script = ctx.actions.declare_file("cc")
-+        ctx.actions.write(cc_script, is_executable = True, content = """#!/usr/bin/env bash
++        ctx.actions.write(cc_script_part, content = """
 +set -eou pipefail
 +DIR="$(cd "$(dirname "${{BASH_SOURCE[0]}}")" && pwd)"
 +abs() {{
@@ -86,6 +88,18 @@ index 99e70c6..347e54e 100644
 +                if paths.is_absolute(cc)
 +                else truly_relativize(cc, cc_script.dirname),
 +        ))
++        ctx.actions.run_shell(
++            command = """
++                echo "#!$SHELL" >{output}
++                cat {input} >>{output}
++            """.format(
++                input = cc_script_part.path,
++                output = cc_script.path,
++            ),
++            inputs = [cc_script_part],
++            outputs = [cc_script],
++        )
++
 +        cc_files = ctx.files._cc_toolchain + hs_toolchain.cc_wrapper.inputs.to_list() + [
 +            cc_script,
 +        ]
@@ -117,10 +131,10 @@ index f9e4a47..a59fe8f 100644
          cc,
 diff --git a/haskell/private/cc_wrapper.py b/haskell/private/cc_wrapper.py
 new file mode 100755
-index 0000000..6482d2d
+index 0000000..142620c
 --- /dev/null
 +++ b/haskell/private/cc_wrapper.py
-@@ -0,0 +1,108 @@
+@@ -0,0 +1,120 @@
 +#!/usr/bin/env python3
 +"""CC toolchain wrapper
 +
@@ -134,6 +148,7 @@ index 0000000..6482d2d
 +
 +from contextlib import contextmanager
 +import os
++import shlex
 +import subprocess
 +import sys
 +import tempfile
@@ -148,8 +163,7 @@ index 0000000..6482d2d
 +    for arg in args:
 +        if arg.startswith("@"):
 +            with open(arg[1:], "r") as rsp:
-+                # GHC writes response files with quoted lines.
-+                for inner in handle_args(line.strip().strip('"') for line in rsp):
++                for inner in handle_args(x for line in rsp for x in parse_response_line(line)):
 +                    yield inner
 +        elif arg.startswith("-L") or arg == "--library-path":
 +            if arg == "-L" or arg == "--library-path":
@@ -160,6 +174,17 @@ index 0000000..6482d2d
 +                yield inner
 +        else:
 +            yield arg
++
++
++def parse_response_line(s):
++    # GHC writes response files with quoted lines.
++    return shlex.split(s)
++
++
++def generate_response_line(arg):
++    # Python 2 shlex doesn't provide quote, yet. There's an issue with the
++    # Python toolchain causing this script to be interpreted by Python2.
++    return '"{}"\n'.format(arg.replace('"', '\\"'))
 +
 +
 +def handle_library_path(library_path):
@@ -204,7 +229,8 @@ index 0000000..6482d2d
 +    try:
 +        with tempfile.NamedTemporaryFile(mode="w", prefix="rsp", delete=False) as f:
 +            for arg in args:
-+                f.write('"{}"\n'.format(arg))
++                line = generate_response_line(arg)
++                f.write(line)
 +            f.close()
 +            yield f.name
 +    finally:
@@ -248,7 +274,7 @@ index f7d09f6..2e0cf92 100644
          ]),
          # XXX: Set user_link_flags.
 diff --git a/haskell/toolchain.bzl b/haskell/toolchain.bzl
-index 2a453b8..5a32c8c 100644
+index 2a453b8..9000511 100644
 --- a/haskell/toolchain.bzl
 +++ b/haskell/toolchain.bzl
 @@ -65,6 +65,9 @@ def _run_ghc(hs, cc, inputs, outputs, mnemonic, arguments, params_file = None, e
@@ -261,15 +287,6 @@ index 2a453b8..5a32c8c 100644
      if params_file:
          params_file_src = params_file.path
          extra_inputs.append(params_file)
-@@ -72,7 +75,7 @@ def _run_ghc(hs, cc, inputs, outputs, mnemonic, arguments, params_file = None, e
-         params_file_src = "<(:)"  # a temporary file with no contents
- 
-     script = """
--export PATH=${PATH:-} # otherwise GCC fails on Windows
-+export PATH=${PATH:-}:$(dirname $SHELL) # otherwise GCC fails on Windows
- 
- # this is equivalent to 'readarray'. We do not use 'readarray' in order to
- # support older bash versions.
 @@ -80,6 +83,7 @@ while IFS= read -r line; do compile_flags+=("$line"); done < %s
  while IFS= read -r line; do extra_args+=("$line"); done < %s
  while IFS= read -r line; do param_file_args+=("$line"); done < %s
