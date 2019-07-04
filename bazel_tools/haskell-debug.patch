@@ -193,7 +193,7 @@ index 0000000..ec944e5
 +    )
 diff --git a/haskell/private/cc_wrapper.py.tpl b/haskell/private/cc_wrapper.py.tpl
 new file mode 100644
-index 0000000..cbe82b7
+index 0000000..e2a3421
 --- /dev/null
 +++ b/haskell/private/cc_wrapper.py.tpl
 @@ -0,0 +1,117 @@
@@ -248,7 +248,7 @@ index 0000000..cbe82b7
 +def generate_response_line(arg):
 +    # Python 2 shlex doesn't provide quote, yet. There's an issue with the
 +    # Python toolchain causing this script to be interpreted by Python2.
-+    return '"{}"\n'.format(arg.replace('"', '\\"'))
++    return '"{}"\n'.format(arg.replace("\\", "\\\\").replace('"', '\\"'))
 +
 +
 +def handle_library_path(library_path):
