@@ -42,7 +42,7 @@ index f08921a..a25b853 100644
      name = "pkgdb_to_bzl",
      srcs = ["private/pkgdb_to_bzl.py"],
 diff --git a/haskell/cc.bzl b/haskell/cc.bzl
-index 99e70c6..e09aea9 100644
+index 99e70c6..c6e83d3 100644
 --- a/haskell/cc.bzl
 +++ b/haskell/cc.bzl
 @@ -9,7 +9,7 @@ load(
@@ -54,9 +54,19 @@ index 99e70c6..e09aea9 100644
  load("@bazel_skylib//lib:paths.bzl", "paths")
  load(":private/set.bzl", "set")
  load(
-@@ -114,8 +114,51 @@ def cc_interop_info(ctx):
+@@ -24,6 +24,7 @@ CcInteropInfo = provider(
+         # See the following for why this is needed:
+         # https://stackoverflow.com/questions/52769846/custom-c-rule-with-the-cc-common-api
+         "files": "Files for all tools (input to any action that uses tools)",
++        "manifests": "Manifests for all tools (input to any action that uses tools)",
+         "hdrs": "CC headers",
+         "cpp_flags": "Preprocessor flags",
+         "compiler_flags": "Flags for compilation",
+@@ -113,9 +114,54 @@ def cc_interop_info(ctx):
+         cc_files = ctx.files._cc_toolchain + [
              cc_wrapper,
          ]
++        cc_manifests = []
      else:
 +        cc_script = ctx.actions.declare_file("cc")
 +        cc_script_part = ctx.actions.declare_file("cc_script_part")
@@ -103,10 +113,31 @@ index 99e70c6..e09aea9 100644
 +        cc_files = ctx.files._cc_toolchain + hs_toolchain.cc_wrapper.inputs.to_list() + [
 +            cc_script,
 +        ]
++        cc_manifests = hs_toolchain.cc_wrapper.manifests
 +        cc = cc_script.path
  
      # XXX Workaround https://github.com/bazelbuild/bazel/issues/6876.
      linker_flags = [flag for flag in linker_flags if flag not in ["-shared"]]
+@@ -140,6 +186,7 @@ def cc_interop_info(ctx):
+     return CcInteropInfo(
+         tools = struct(**tools),
+         files = cc_files,
++        manifests = cc_manifests,
+         hdrs = hdrs.to_list(),
+         cpp_flags = cpp_flags,
+         include_args = include_args,
+diff --git a/haskell/private/actions/compile.bzl b/haskell/private/actions/compile.bzl
+index 190935a..f73de26 100644
+--- a/haskell/private/actions/compile.bzl
++++ b/haskell/private/actions/compile.bzl
+@@ -69,6 +69,7 @@ def _process_hsc_file(hs, cc, hsc_flags, hsc_inputs, hsc_file):
+             depset(cc.files),
+             depset(hsc_inputs),
+         ]),
++        input_manifests = cc.manifests,
+         outputs = [hs_out],
+         mnemonic = "HaskellHsc2hs",
+         executable = hs.tools.hsc2hs,
 diff --git a/haskell/private/actions/link.bzl b/haskell/private/actions/link.bzl
 index f9e4a47..a59fe8f 100644
 --- a/haskell/private/actions/link.bzl
@@ -274,7 +305,7 @@ index f7d09f6..2e0cf92 100644
          ]),
          # XXX: Set user_link_flags.
 diff --git a/haskell/toolchain.bzl b/haskell/toolchain.bzl
-index 2a453b8..9000511 100644
+index 2a453b8..7e20b8f 100644
 --- a/haskell/toolchain.bzl
 +++ b/haskell/toolchain.bzl
 @@ -65,6 +65,9 @@ def _run_ghc(hs, cc, inputs, outputs, mnemonic, arguments, params_file = None, e
@@ -295,7 +326,19 @@ index 2a453b8..9000511 100644
  "${compile_flags[@]}" "${extra_args[@]}" ${param_file_args+"${param_file_args[@]}"}
  """ % (compile_flags_file.path, extra_args_file.path, params_file_src)
  
-@@ -173,6 +177,8 @@ fi
+@@ -93,6 +97,11 @@ while IFS= read -r line; do param_file_args+=("$line"); done < %s
+     else:
+         inputs += extra_inputs
+ 
++    if input_manifests != None:
++        input_manifests.extend(cc.manifests)
++    else:
++        input_manifests = cc.manifests
++
+     hs.actions.run_shell(
+         inputs = inputs,
+         input_manifests = input_manifests,
+@@ -173,6 +182,8 @@ fi
          for lib in ctx.attr.libraries
      }
  
@@ -304,19 +347,19 @@ index 2a453b8..9000511 100644
      return [
          platform_common.ToolchainInfo(
              name = ctx.label.name,
-@@ -182,6 +188,11 @@ fi
+@@ -182,6 +193,11 @@ fi
              haddock_flags = ctx.attr.haddock_flags,
              locale = ctx.attr.locale,
              locale_archive = locale_archive,
 +            cc_wrapper = struct(
 +                executable = ctx.executable._cc_wrapper,
 +                inputs = cc_wrapper_inputs,
-+                manifest = cc_wrapper_manifest,
++                manifests = cc_wrapper_manifest,
 +            ),
              osx_cc_wrapper_tpl = ctx.file._osx_cc_wrapper_tpl,
              mode = ctx.var["COMPILATION_MODE"],
              actions = struct(
-@@ -247,6 +258,11 @@ _haskell_toolchain = rule(
+@@ -247,6 +263,11 @@ _haskell_toolchain = rule(
  Label pointing to the locale archive file to use. Mostly useful on NixOS.
  """,
          ),
