@@ -55,6 +55,9 @@ class DivulgenceIT
   protected val templateIds = testTemplateIds.templateIds
   protected val testIdsGenerator = new TestIdsGenerator(config)
 
+  private val alice: String = testIdsGenerator.testPartyName("alice")
+  private val bob: String = testIdsGenerator.testPartyName("bob")
+
   private implicit def party(s: String): Ref.Party = Ref.Party.assertFromString(s)
   private implicit def pkgId(s: String): Ref.PackageId = Ref.PackageId.assertFromString(s)
   private implicit def id(s: String): Ref.Name = Ref.Name.assertFromString(s)
@@ -161,28 +164,28 @@ class DivulgenceIT
   // but that it is visible in the transaction trees.
   case class Setup(div1Cid: String, div2Cid: String)
 
-  private def createDivulgence1(ctx: LedgerContext, workflowId: String): Future[ContractIdString] =
+  private def createDivulgence1(ctx: LedgerContext, workflowId: String, index: Int): Future[ContractIdString] =
     create(
       ctx,
-      testIdsGenerator.testCommandId("create-Divulgence1"),
+      testIdsGenerator.testCommandId(s"create-Divulgence1-$index"),
       workflowId,
-      "alice",
+      alice,
       templateIds.divulgence1,
-      ValueRecord(None, ImmArray(Some[Ref.Name]("div1Party") -> ValueParty("alice")))
+      ValueRecord(None, ImmArray(Some[Ref.Name]("div1Party") -> ValueParty(alice)))
     )
 
-  private def createDivulgence2(ctx: LedgerContext, workflowId: String): Future[ContractIdString] =
+  private def createDivulgence2(ctx: LedgerContext, workflowId: String, index: Int): Future[ContractIdString] =
     create(
       ctx,
-      testIdsGenerator.testCommandId("create-Divulgence2"),
+      testIdsGenerator.testCommandId(s"create-Divulgence2-$index"),
       workflowId,
-      "bob",
+      bob,
       templateIds.divulgence2,
       ValueRecord(
         None,
         ImmArray(
-          Some[Ref.Name]("div2Signatory") -> ValueParty("bob"),
-          Some[Ref.Name]("div2Fetcher") -> ValueParty("alice")))
+          Some[Ref.Name]("div2Signatory") -> ValueParty(bob),
+          Some[Ref.Name]("div2Fetcher") -> ValueParty(alice)))
     )
 
   private def divulgeViaFetch(
@@ -194,7 +197,7 @@ class DivulgenceIT
       ctx,
       testIdsGenerator.testCommandId("exercise-Divulgence2Fetch"),
       workflowId,
-      "alice",
+      alice,
       templateIds.divulgence2,
       div2Cid,
       "Divulgence2Fetch",
@@ -212,7 +215,7 @@ class DivulgenceIT
       ctx,
       testIdsGenerator.testCommandId("exercise-Divulgence2Fetch"),
       workflowId,
-      "alice",
+      alice,
       templateIds.divulgence2,
       div2Cid,
       "Divulgence2Archive",
@@ -225,16 +228,16 @@ class DivulgenceIT
     LedgerOffset.Value
       .Boundary(LedgerOffset.LedgerBoundary.LEDGER_BEGIN))
 
-  private val bobFilter = TransactionFilter(Map("bob" -> Filters.defaultInstance))
+  private val bobFilter = TransactionFilter(Map(bob -> Filters.defaultInstance))
   private val bothFilter = TransactionFilter(
-    Map("alice" -> Filters.defaultInstance, "bob" -> Filters.defaultInstance))
+    Map(alice -> Filters.defaultInstance, bob -> Filters.defaultInstance))
 
   "should not expose divulged contracts in flat stream" in allFixtures { ctx =>
     val wfid = testIdsGenerator.testWorkflowId("divulgence-test-workflow-id")
     for {
       beforeTest <- transactionClient(ctx).getLedgerEnd.map(_.getOffset)
-      div1Cid <- createDivulgence1(ctx, wfid)
-      div2Cid <- createDivulgence2(ctx, wfid)
+      div1Cid <- createDivulgence1(ctx, wfid, 0)
+      div2Cid <- createDivulgence2(ctx, wfid, 0)
       _ <- divulgeViaArchive(ctx, div1Cid, div2Cid, wfid)
       ledgerEnd <- transactionClient(ctx).getLedgerEnd.map(_.getOffset)
       bobFlatTransactions <- transactionClient(ctx)
@@ -316,7 +319,7 @@ class DivulgenceIT
         inside(div1CreateEvent.event.created) {
           case Some(created) =>
             created.contractId shouldBe div1Cid
-            created.witnessParties.toList shouldBe List("alice") // bob does not see
+            created.witnessParties.toList shouldBe List(alice) // bob does not see
         }
       }
     }
@@ -326,8 +329,8 @@ class DivulgenceIT
     val wfid = testIdsGenerator.testWorkflowId("divulgence-test-workflow-id")
     for {
       beforeTest <- transactionClient(ctx).getLedgerEnd.map(_.getOffset)
-      div1Cid <- createDivulgence1(ctx, wfid)
-      div2Cid <- createDivulgence2(ctx, wfid)
+      div1Cid <- createDivulgence1(ctx, wfid, 1)
+      div2Cid <- createDivulgence2(ctx, wfid, 1)
       _ <- divulgeViaFetch(ctx, div1Cid, div2Cid, wfid)
       bobEvents <- acsClient(ctx)
         .getActiveContracts(bobFilter)
@@ -350,16 +353,16 @@ class DivulgenceIT
         bobEvents.head.contractId shouldBe div2Cid
         // note that since the bob filter only concerns bob, here we get only bob as witness, even if alice sees
         // this contract too.
-        bobEvents.head.witnessParties.toList.sorted shouldBe List("bob")
+        bobEvents.head.witnessParties.toList.sorted shouldBe List(bob)
       }
       // alice sees both
       {
         bothEvents.length shouldBe 2
         bothEvents.map(_.contractId: String).sorted shouldBe List[String](div1Cid, div2Cid).sorted
         bothEvents.find(_.contractId == div1Cid).map(_.witnessParties.toList) shouldBe Some(
-          List("alice"))
+          List(alice))
         bothEvents.find(_.contractId == div2Cid).map(_.witnessParties.toList.sorted) shouldBe Some(
-          List("alice", "bob"))
+          List(alice, bob))
       }
     }
   }
