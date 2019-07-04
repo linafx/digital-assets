@@ -1,3 +1,98 @@
+diff --git a/WORKSPACE b/WORKSPACE
+index bb31ed5..2a4fca9 100644
+--- a/WORKSPACE
++++ b/WORKSPACE
+@@ -161,6 +161,7 @@ register_toolchains(
+     "//tests:c2hs-toolchain",
+     "//tests:doctest-toolchain",
+     "//tests:protobuf-toolchain",
++    "//tests:python-toolchain",
+ )
+ 
+ nixpkgs_cc_configure(
+@@ -219,6 +220,12 @@ nixpkgs_package(
+     repository = "@nixpkgs",
+ )
+ 
++nixpkgs_package(
++    name = "python3",
++    attribute_path = "python36",
++    repository = "@nixpkgs",
++)
++
+ nixpkgs_package(
+     name = "sphinx",
+     attribute_path = "python36Packages.sphinx",
+diff --git a/haskell/BUILD.bazel b/haskell/BUILD.bazel
+index f08921a..a25b853 100644
+--- a/haskell/BUILD.bazel
++++ b/haskell/BUILD.bazel
+@@ -21,6 +21,13 @@ exports_files(
+     visibility = ["//tests/unit-tests:__pkg__"],
+ )
+ 
++py_binary(
++    name = "cc_wrapper",
++    srcs = ["private/cc_wrapper.py"],
++    visibility = ["//visibility:public"],
++    python_version = "PY3",
++)
++
+ py_binary(
+     name = "pkgdb_to_bzl",
+     srcs = ["private/pkgdb_to_bzl.py"],
+diff --git a/haskell/cc.bzl b/haskell/cc.bzl
+index 99e70c6..347e54e 100644
+--- a/haskell/cc.bzl
++++ b/haskell/cc.bzl
+@@ -9,7 +9,7 @@ load(
+     "CPP_LINK_DYNAMIC_LIBRARY_ACTION_NAME",
+     "C_COMPILE_ACTION_NAME",
+ )
+-load(":private/path_utils.bzl", "ln")
++load(":private/path_utils.bzl", "ln", "truly_relativize")
+ load("@bazel_skylib//lib:paths.bzl", "paths")
+ load(":private/set.bzl", "set")
+ load(
+@@ -114,8 +114,37 @@ def cc_interop_info(ctx):
+             cc_wrapper,
+         ]
+     else:
++        cc_wrapper = hs_toolchain.cc_wrapper.executable
+         cc = cc_toolchain.compiler_executable()
+-        cc_files = ctx.files._cc_toolchain
++        cc_script = ctx.actions.declare_file("cc")
++        ctx.actions.write(cc_script, is_executable = True, content = """#!/usr/bin/env bash
++set -eou pipefail
++DIR="$(cd "$(dirname "${{BASH_SOURCE[0]}}")" && pwd)"
++abs() {{
++  case "$1" in
++    /*)
++      echo "$1"
++      ;;
++    *)
++      echo "$DIR/$1"
++      ;;
++  esac
++}}
++exec "$(abs "{cc_wrapper}")" "$(abs "{cc}")" $@
++""".format(
++            cc_wrapper =
++                cc_wrapper.path
++                if paths.is_absolute(cc_wrapper.path)
++                else truly_relativize(cc_wrapper.path, cc_script.dirname),
++            cc =
++                cc
++                if paths.is_absolute(cc)
++                else truly_relativize(cc, cc_script.dirname),
++        ))
++        cc_files = ctx.files._cc_toolchain + hs_toolchain.cc_wrapper.inputs.to_list() + [
++            cc_script,
++        ]
++        cc = cc_script.path
+ 
+     # XXX Workaround https://github.com/bazelbuild/bazel/issues/6876.
+     linker_flags = [flag for flag in linker_flags if flag not in ["-shared"]]
 diff --git a/haskell/private/actions/link.bzl b/haskell/private/actions/link.bzl
 index f9e4a47..a59fe8f 100644
 --- a/haskell/private/actions/link.bzl
@@ -20,6 +115,120 @@ index f9e4a47..a59fe8f 100644
      hs.toolchain.actions.run_ghc(
          hs,
          cc,
+diff --git a/haskell/private/cc_wrapper.py b/haskell/private/cc_wrapper.py
+new file mode 100755
+index 0000000..6482d2d
+--- /dev/null
++++ b/haskell/private/cc_wrapper.py
+@@ -0,0 +1,108 @@
++#!/usr/bin/env python3
++"""CC toolchain wrapper
++
++Usage: cc_wrapper TOOL [ARG]...
++
++Performs certain transformations on the given arguments and calls TOOL on these
++transformed arguments. Assumes that TOOL accepts response files prefixed by an
++"@" prefix.
++
++"""
++
++from contextlib import contextmanager
++import os
++import subprocess
++import sys
++import tempfile
++
++
++def handle_args(args):
++    """Argument handling pipe
++
++    Returns a generator over transformed arguments.
++    """
++    args = iter(args)
++    for arg in args:
++        if arg.startswith("@"):
++            with open(arg[1:], "r") as rsp:
++                # GHC writes response files with quoted lines.
++                for inner in handle_args(line.strip().strip('"') for line in rsp):
++                    yield inner
++        elif arg.startswith("-L") or arg == "--library-path":
++            if arg == "-L" or arg == "--library-path":
++                libdir = next(args)
++            else:
++                libdir = arg[2:]
++            for inner in handle_library_path(libdir):
++                yield inner
++        else:
++            yield arg
++
++
++def handle_library_path(library_path):
++    return ["-L" + shorten_path(library_path)]
++
++
++def shorten_path(input_path):
++    exists = os.path.exists(input_path)
++    shortened = input_path
++
++    # Try relativizing to current working directory.
++    rel = os.path.relpath(shortened)
++    if len(rel) < len(shortened):
++        shortened = rel
++
++    # Try normalizing the path if possible.
++    norm = os.path.normpath(shortened)
++    if len(norm) < len(shortened):
++        # Ensure that the path is still correct. Reducing up-level references
++        # may change the meaning of the path in the presence of symbolic links.
++        try:
++            if not exists or os.path.samefile(norm, shortened):
++                shortened = norm
++        except IOError:
++            # stat may fail if the path became invalid or does not exist.
++            pass
++
++    # Try resolving symlinks.
++    try:
++        real = os.path.relpath(os.path.realpath(shortened))
++        if len(real) < len(shortened):
++            shortened = real
++    except IOError:
++        # realpath may fail if the path does not exist.
++        pass
++
++    return shortened
++
++
++@contextmanager
++def response_file(args):
++    try:
++        with tempfile.NamedTemporaryFile(mode="w", prefix="rsp", delete=False) as f:
++            for arg in args:
++                f.write('"{}"\n'.format(arg))
++            f.close()
++            yield f.name
++    finally:
++        try:
++            os.remove(f.name)
++        except OSError:
++            pass
++
++
++def main():
++    if len(sys.argv) < 2:
++        sys.stderr.write(__doc__)
++        sys.exit(1)
++
++    program = sys.argv[1]
++
++    with response_file(handle_args(sys.argv[2:])) as rsp:
++        exit_code = subprocess.call([program, "@" + rsp])
++
++    sys.exit(exit_code)
++
++
++if __name__ == "__main__":
++    main()
 diff --git a/haskell/providers.bzl b/haskell/providers.bzl
 index f7d09f6..2e0cf92 100644
 --- a/haskell/providers.bzl
@@ -39,10 +248,27 @@ index f7d09f6..2e0cf92 100644
          ]),
          # XXX: Set user_link_flags.
 diff --git a/haskell/toolchain.bzl b/haskell/toolchain.bzl
-index 2a453b8..5e4dc7a 100644
+index 2a453b8..32606f3 100644
 --- a/haskell/toolchain.bzl
 +++ b/haskell/toolchain.bzl
-@@ -80,6 +80,7 @@ while IFS= read -r line; do compile_flags+=("$line"); done < %s
+@@ -61,6 +61,7 @@ def _run_ghc(hs, cc, inputs, outputs, mnemonic, arguments, params_file = None, e
+         # Depend on the version file of the Haskell toolchain,
+         # to ensure the version comparison check is run first.
+         hs.toolchain.version_file,
++        hs.toolchain.locale_archive,
+         compile_flags_file,
+         extra_args_file,
+     ] + cc.files
+@@ -72,7 +73,7 @@ def _run_ghc(hs, cc, inputs, outputs, mnemonic, arguments, params_file = None, e
+         params_file_src = "<(:)"  # a temporary file with no contents
+ 
+     script = """
+-export PATH=${PATH:-} # otherwise GCC fails on Windows
++export PATH=${PATH:-}:$(dirname $SHELL) # otherwise GCC fails on Windows
+ 
+ # this is equivalent to 'readarray'. We do not use 'readarray' in order to
+ # support older bash versions.
+@@ -80,6 +81,7 @@ while IFS= read -r line; do compile_flags+=("$line"); done < %s
  while IFS= read -r line; do extra_args+=("$line"); done < %s
  while IFS= read -r line; do param_file_args+=("$line"); done < %s
  
@@ -50,6 +276,77 @@ index 2a453b8..5e4dc7a 100644
  "${compile_flags[@]}" "${extra_args[@]}" ${param_file_args+"${param_file_args[@]}"}
  """ % (compile_flags_file.path, extra_args_file.path, params_file_src)
  
+@@ -173,6 +175,8 @@ fi
+         for lib in ctx.attr.libraries
+     }
+ 
++    (cc_wrapper_inputs, cc_wrapper_manifest) = ctx.resolve_tools(tools = [ctx.attr._cc_wrapper])
++
+     return [
+         platform_common.ToolchainInfo(
+             name = ctx.label.name,
+@@ -182,6 +186,11 @@ fi
+             haddock_flags = ctx.attr.haddock_flags,
+             locale = ctx.attr.locale,
+             locale_archive = locale_archive,
++            cc_wrapper = struct(
++                executable = ctx.executable._cc_wrapper,
++                inputs = cc_wrapper_inputs,
++                manifest = cc_wrapper_manifest,
++            ),
+             osx_cc_wrapper_tpl = ctx.file._osx_cc_wrapper_tpl,
+             mode = ctx.var["COMPILATION_MODE"],
+             actions = struct(
+@@ -247,6 +256,11 @@ _haskell_toolchain = rule(
+ Label pointing to the locale archive file to use. Mostly useful on NixOS.
+ """,
+         ),
++        "_cc_wrapper": attr.label(
++            cfg = "host",
++            default = Label("@io_tweag_rules_haskell//haskell:cc_wrapper"),
++            executable = True,
++        ),
+         "_osx_cc_wrapper_tpl": attr.label(
+             allow_single_file = True,
+             default = Label("@io_tweag_rules_haskell//haskell:private/osx_cc_wrapper.sh.tpl"),
+diff --git a/tests/BUILD.bazel b/tests/BUILD.bazel
+index 5947010..e483e17 100644
+--- a/tests/BUILD.bazel
++++ b/tests/BUILD.bazel
+@@ -1,5 +1,6 @@
+ load(":inline_tests.bzl", "sh_inline_test")
+ load("@bazel_tools//tools/build_rules:test_rules.bzl", "rule_test")
++load("@bazel_tools//tools/python:toolchain.bzl", "py_runtime_pair")
+ load("//tests:rule_test_exe.bzl", "rule_test_exe")
+ load(
+     "@io_tweag_rules_haskell//haskell:c2hs.bzl",
+@@ -22,6 +23,26 @@ load(
+ 
+ package(default_testonly = 1)
+ 
++py_runtime(
++    name = "python3-runtime",
++    interpreter = "@python3//:bin/python",
++    python_version = "PY3",
++)
++
++py_runtime_pair(
++    name = "python-runtime-pair",
++    py3_runtime = ":python3-runtime",
++)
++
++toolchain(
++    name = "python-toolchain",
++    exec_compatible_with = [
++        "@io_tweag_rules_haskell//haskell/platforms:nixpkgs",
++    ],
++    toolchain = ":python-runtime-pair",
++    toolchain_type = "@bazel_tools//tools/python:toolchain_type",
++)
++
+ haskell_doctest_toolchain(
+     name = "doctest-toolchain",
+     doctest = "@doctest//:bin",
 diff --git a/tests/binary-with-lib/BUILD.bazel b/tests/binary-with-lib/BUILD.bazel
 index 196d551..79285a3 100644
 --- a/tests/binary-with-lib/BUILD.bazel
