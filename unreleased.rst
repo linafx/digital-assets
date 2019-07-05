@@ -19,6 +19,9 @@ HEAD — ongoing
   See `#1979 <https://github.com/digital-asset/daml/issues/1953>`__.
   
 - [DAML-LF] Fixed regression that produced an invalid daml-lf-archive artefact. See `#2058 <https://github.com/digital-asset/daml/issues/2058>`__.
+- [DAML-LF] Fixed regression that produced an invalid daml-lf-archive artefact. See `#2058 <https://github.com/digital-asset/daml/issues/2058>`__.
+- [daml assistant] Kill child processes on ``SIGTERM``. This means that killing
+  ``daml sandbox`` will also kill the sandbox process.
 - [Sandbox] The completion stream method of the command completion service uses the ledger end as a default value for the offset. See `#1913 <https://github.com/digital-asset/daml/issues/1913>`__.
 - [Java bindings] Added overloads to the Java bindings ``CompletionStreamRequest`` constructor and the ``CommandCompletionClient`` to accept a request without an explicit ledger offset. See `#1913 <https://github.com/digital-asset/daml/issues/1913>`__.
 - [Java bindings] **DEPRECATION**: the ``CompletionStreamRequest#getOffset`` method is deprecated in favor of the non-nullable ``CompletionStreamRequest#getLedgerOffset``. See `#1913 <https://github.com/digital-asset/daml/issues/1913>`__.
@@ -131,3 +134,6 @@ HEAD — ongoing
   `restriction about contract key lookup
   <https://github.com/digital-asset/daml/issues/1866>`__ described in the
   DAML-LF section
+- [DAML Integration Kit] Implement multi-endpoint testing capability via
+  ``--mapping`` command line argument. See :doc:`Ledger API Test Tool
+  </tools/ledger-api-test-tool/index>` for more details.
