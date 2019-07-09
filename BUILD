@@ -235,6 +235,7 @@ da_haskell_repl(
     name = "repl",
     visibility = ["//visibility:public"],
     deps = [
+        "//ci/cron",
         ":damlc",
         "//daml-assistant:daml",
         "//daml-assistant/daml-helper",

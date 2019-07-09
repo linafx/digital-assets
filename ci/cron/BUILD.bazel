@@ -1,0 +1,23 @@
+# Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+load("//bazel_tools:haskell.bzl", "da_haskell_binary", "da_haskell_repl")
+
+da_haskell_binary(
+    name = "cron",
+    srcs = glob(["src/**/*.hs"]),
+    hazel_deps = [
+    ],
+    src_strip_prefix = "src",
+    visibility = ["//visibility:public"],
+    deps = [],
+)
+
+da_haskell_repl(
+    name = "repl",
+    collect_data = False,
+    visibility = ["//visibility:public"],
+    deps = [
+        "//ci/cron:cron"
+    ],
+)
