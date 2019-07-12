@@ -13,7 +13,7 @@ import com.digitalasset.daml.lf.data.Ref
 import com.digitalasset.daml.lf.data.Ref.PackageId
 import com.digitalasset.grpc.adapter.ExecutionSequencerFactory
 import com.digitalasset.ledger.api.domain
-import com.digitalasset.ledger.api.testing.utils.MockMessages
+import com.digitalasset.ledger.api.testing.utils.{MockMessages, Resource}
 import com.digitalasset.ledger.api.v1.active_contracts_service.ActiveContractsServiceGrpc
 import com.digitalasset.ledger.api.v1.active_contracts_service.ActiveContractsServiceGrpc.ActiveContractsService
 import com.digitalasset.ledger.api.v1.admin.package_management_service.PackageManagementServiceGrpc
@@ -48,6 +48,7 @@ import com.digitalasset.ledger.client.services.pkg.PackageClient
 import com.digitalasset.ledger.client.services.testing.time.StaticTime
 import com.digitalasset.ledger.client.services.transactions.TransactionClient
 import com.digitalasset.platform.common.LedgerIdMode
+import com.digitalasset.platform.testing.ResourceExtensions
 import io.grpc.reflection.v1alpha.ServerReflectionGrpc
 import io.grpc.{Channel, StatusRuntimeException}
 import org.slf4j.LoggerFactory
@@ -55,6 +56,7 @@ import scalaz.syntax.tag._
 
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
+import scala.language.implicitConversions
 import scala.util.Success
 
 trait LedgerContext {
