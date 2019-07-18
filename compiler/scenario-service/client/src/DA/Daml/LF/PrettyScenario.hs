@@ -1,6 +1,7 @@
 -- Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
 
+{-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 -- | Pretty-printing of scenario results
@@ -13,7 +14,7 @@ module DA.Daml.LF.PrettyScenario
   , ModuleRef
   ) where
 
-import           Control.Lens               (preview, review)
+import           Control.Lens
 import           Control.Monad
 import           Control.Monad.Reader
 import           Control.Monad.Trans.Except
@@ -28,6 +29,7 @@ import Data.List
 import Data.Maybe
 import qualified Data.NameMap               as NM
 import qualified Data.Map.Strict            as MS
+import Data.ProtoLens.Labels ()
 import qualified Data.Ratio                 as Ratio
 import qualified Data.Set                   as S
 import qualified Data.Text                  as T
@@ -37,7 +39,7 @@ import qualified Data.Time.Clock.POSIX      as CP
 import qualified Data.Time.Format           as TF
 import qualified Data.Vector                as V
 import qualified Network.URI.Encode
-import           ScenarioService
+import Proto.Compiler.ScenarioService.Protos.ScenarioService as Proto
 import qualified Text.Blaze.Html5 as H
 import qualified Text.Blaze.Html5.Attributes as A
 import qualified Text.Blaze.Html.Renderer.Text as Blaze
@@ -47,14 +49,14 @@ type M = ExceptT Error (Reader (MS.Map NodeId Node, LF.World))
 
 type ModuleRef = LF.Qualified ()
 
-runM :: V.Vector Node -> LF.World -> M (Doc SyntaxClass) -> Doc SyntaxClass
+runM :: [Proto.Node] -> LF.World -> M (Doc SyntaxClass) -> Doc SyntaxClass
 runM nodes world =
   ppError . flip runReader (nodeMap, world) . runExceptT
   where
     nodeMap = MS.fromList
         [ (nodeId, node)
-        | node <- V.toList nodes
-        , Just nodeId <- [nodeNodeId node]
+        | node <- nodes
+        , let nodeId = node ^. #nodeId
         ]
     ppError :: Either Error (Doc SyntaxClass) -> Doc SyntaxClass
     ppError (Right x) = x
@@ -76,16 +78,15 @@ lookupDefLocation mod0 defName =
     <|>
     LF.tplLocation <$> NM.lookup (LF.TypeConName [defName]) (LF.moduleTemplates mod0)
 
-lookupModule :: LF.World -> Maybe PackageIdentifier -> LF.ModuleName -> Maybe LF.Module
+lookupModule :: LF.World -> Maybe Proto.PackageIdentifier -> LF.ModuleName -> Maybe LF.Module
 lookupModule world mbPkgId modName = do
-  let pkgRef = case mbPkgId of
-       Just (PackageIdentifier (Just (PackageIdentifierSumPackageId pkgId))) ->
-         LF.PRImport $ LF.PackageId $ TL.toStrict pkgId
-       _ -> LF.PRSelf
-  eitherToMaybe (LF.lookupModule (LF.Qualified pkgRef modName ()) world)
+    let pkgRef = case mbPkgId ^? _Just . #maybe'packageId . _Just of
+            Just pkgId -> LF.PRImport $ LF.PackageId $ pkgId
+            Nothing -> LF.PRSelf
+    eitherToMaybe (LF.lookupModule (LF.Qualified pkgRef modName ()) world)
 
 lookupModuleFromQualifiedName ::
-     LF.World -> Maybe PackageIdentifier -> T.Text
+     LF.World -> Maybe Proto.PackageIdentifier -> T.Text
   -> Maybe (LF.ModuleName, T.Text, LF.Module)
 lookupModuleFromQualifiedName world mbPkgId qualName = do
   let (modName, defName) = case T.splitOn ":" qualName of
@@ -94,85 +95,85 @@ lookupModuleFromQualifiedName world mbPkgId qualName = do
   modu <- lookupModule world mbPkgId modName
   return (modName, defName, modu)
 
-parseNodeId :: NodeId -> [Integer]
+parseNodeId :: Proto.NodeId -> [Integer]
 parseNodeId =
-    fmap (fromMaybe 0 . readMaybe . TL.unpack)
-  . TL.splitOn ":"
-  . nodeIdId
+    fmap (fromMaybe 0 . readMaybe . T.unpack)
+  . T.splitOn ":"
+  . view #id
 
-prettyScenarioResult
-  :: LF.World -> ScenarioResult -> Doc SyntaxClass
-prettyScenarioResult world (ScenarioResult steps nodes retValue _finaltime traceLog) =
-  let ppSteps = runM nodes world (vsep <$> mapM prettyScenarioStep (V.toList steps))
-      isActive Node{..} = case nodeNode of
-        Just NodeNodeCreate{} -> isNothing nodeConsumedBy
-        _ -> False
-      sortNodeIds = sortBy (\a b -> compare (parseNodeId a) (parseNodeId b))
-      ppActive =
-          fcommasep
-        $ map prettyNodeIdLink
-        $ sortNodeIds $ mapMaybe nodeNodeId
-        $ filter isActive (V.toList nodes)
+-- prettyScenarioResult
+--   :: LF.World -> Proto.ScenarioResult -> Doc SyntaxClass
+-- prettyScenarioResult world scenarioResult =
+--   let ppSteps = runM (scenarioResult ^. #nodes) world (vsep <$> mapM prettyScenarioStep (V.toList steps))
+--       isActive node = case node ^? #maybe'create of
+--         Just _ -> isNothing $ node ^? #consumedBy
+--         _ -> False
+--       sortNodeIds = sortBy (\a b -> compare (parseNodeId a) (parseNodeId b))
+--       ppActive =
+--           fcommasep
+--         $ map prettyNodeIdLink
+--         $ sortNodeIds $ mapMaybe nodeNodeId
+--         $ filter isActive (V.toList nodes)
 
-      ppTrace = vcat $ map (prettyTraceMessage world) (V.toList traceLog)
-  in vsep
-    [ label_ "Transactions: " ppSteps
-    , label_ "Active contracts: " ppActive
-    , maybe mempty (\v -> label_ "Return value:" (prettyValue' True 0 world v)) retValue
-    , if V.null traceLog
-      then text ""
-      else text "Trace: " $$ nest 2 ppTrace
-    ]
+--       ppTrace = vcat $ map (prettyTraceMessage world) (V.toList traceLog)
+--   in vsep
+--     [ label_ "Transactions: " ppSteps
+--     , label_ "Active contracts: " ppActive
+--     , maybe mempty (\v -> label_ "Return value:" (prettyValue' True 0 world v)) retValue
+--     , if V.null traceLog
+--       then text ""
+--       else text "Trace: " $$ nest 2 ppTrace
+--     ]
 
 prettyBriefScenarioError
   :: LF.World -> ScenarioError -> Doc SyntaxClass
-prettyBriefScenarioError world ScenarioError{..} = runM scenarioErrorNodes world $ do
-  ppError <- prettyScenarioErrorError scenarioErrorError
+prettyBriefScenarioError world scenarioError = runM (scenarioError ^. #nodes) world $ do
+  ppError <- prettyScenarioErrorError (scenarioError ^. #maybe'error)
   pure $
     annotateSC ErrorSC
       (text "Scenario execution" <->
-        (if isNothing scenarioErrorCommitLoc
+        (if isNothing (scenarioError ^. #maybe'commitLoc)
          then "failed:"
          else "failed on commit at"
-           <-> prettyMayLocation world scenarioErrorCommitLoc <> char ':')
+           <-> prettyMayLocation world (scenarioError ^. #maybe'commitLoc) <> char ':')
       )
     $$ nest 2 ppError
 
 prettyScenarioError
   :: LF.World -> ScenarioError -> Doc SyntaxClass
-prettyScenarioError world ScenarioError{..} = runM scenarioErrorNodes world $ do
-  ppError <- prettyScenarioErrorError scenarioErrorError
-  ppSteps <- vsep <$> mapM prettyScenarioStep (V.toList scenarioErrorScenarioSteps)
-  ppPtx <- forM scenarioErrorPartialTransaction $ \ptx -> do
+prettyScenarioError world scenarioError = runM (scenarioError ^. #nodes) world $ do
+  ppError <- prettyScenarioErrorError (scenarioError ^. #maybe'error)
+  ppSteps <- vsep <$> mapM prettyScenarioStep (scenarioError ^. #scenarioSteps)
+  ppPtx <- forM (scenarioError ^. #maybe'partialTransaction) $ \ptx -> do
       p <- prettyPartialTransaction ptx
       pure $ text "Partial transaction:" $$ nest 2 p
   let ppTrace =
         vcat
           (map (prettyTraceMessage world)
-               (V.toList scenarioErrorTraceLog))
+               (scenarioError ^. #traceLog))
   pure $
     vsep $ catMaybes
     [ Just $ error_ (text "Scenario execution" <->
-      (if isNothing scenarioErrorCommitLoc
+      (if isNothing (scenarioError ^. #maybe'commitLoc)
        then "failed:"
        else "failed on commit at"
-         <-> prettyMayLocation world scenarioErrorCommitLoc <> char ':'))
+         <-> prettyMayLocation world (scenarioError ^. #maybe'commitLoc) <> char ':'))
       $$ nest 2 ppError
 
-    , if isNothing scenarioErrorLastLoc
+    , if isNothing (scenarioError ^. #maybe'lastLoc)
       then Nothing
       else Just $ label_ "Last source location:"
-                $ prettyMayLocation world scenarioErrorLastLoc
+                $ prettyMayLocation world (scenarioError ^. #maybe'lastLoc)
 
-    , Just $ "Ledger time:" <-> prettyTimestamp scenarioErrorLedgerTime
+    , Just $ "Ledger time:" <-> prettyTimestamp (scenarioError ^. #ledgerTime)
 
     , ppPtx
 
-    , if V.null scenarioErrorScenarioSteps
+    , if null (scenarioError ^. #scenarioSteps)
       then Nothing
       else Just $ text "Committed transactions: " $$ nest 2 ppSteps
 
-    , if V.null scenarioErrorTraceLog
+    , if null (scenarioError ^. #traceLog)
       then Nothing
       else Just $ text "Trace: " $$ nest 2 ppTrace
     ]
@@ -183,208 +184,192 @@ prettyTraceMessage _world msg =
   -- TODO(JM): Locations are still missing in DAML 1.2, and
   -- that's the only place where we get traces.
   --  prettyMayLocation world (traceMessageLocation msg)
-  ltext (traceMessageMessage msg)
+  text (msg ^. #message)
 
-prettyScenarioErrorError :: Maybe ScenarioErrorError -> M (Doc SyntaxClass)
+prettyScenarioErrorError :: Maybe ScenarioError'Error -> M (Doc SyntaxClass)
 prettyScenarioErrorError Nothing = pure $ text "<missing error details>"
 prettyScenarioErrorError (Just err) =  do
   world <- askWorld
   case err of
-    ScenarioErrorErrorCrash reason -> pure $ text "CRASH:" <-> ltext reason
-    ScenarioErrorErrorUserError reason -> pure $ text "Aborted: " <-> ltext reason
-    ScenarioErrorErrorTemplatePrecondViolated ScenarioError_TemplatePreconditionViolated{..} -> do
+    ScenarioError'Crash reason -> pure $ text "CRASH:" <-> text reason
+    ScenarioError'UserError reason -> pure $ text "Aborted: " <-> text reason
+    ScenarioError'TemplatePrecondViolated err -> do
       pure $
         "Template pre-condition violated in:"
           $$ nest 2
           (   "create"
-          <-> prettyMay "<missing template id>" (prettyDefName world) scenarioError_TemplatePreconditionViolatedTemplateId
+          <-> prettyMay "<missing template id>" (prettyDefName world) (err ^. #maybe'templateId)
           $$ (   keyword_ "with"
-              $$ nest 2 (prettyMay "<missing argument>" (prettyValue' False 0 world) scenarioError_TemplatePreconditionViolatedArg)
+              $$ nest 2 (prettyMay "<missing argument>" (prettyValue' False 0 world) (err ^. #maybe'arg))
              )
           )
-    ScenarioErrorErrorUpdateLocalContractNotActive ScenarioError_ContractNotActive{..} ->
+    ScenarioError'UpdateLocalContractNotActive err ->
       pure $ vcat
         [ "Attempt to exercise a contract that was consumed in same transaction."
         , "Contract:"
             <-> prettyMay "<missing contract>"
                   (prettyContractRef world)
-                  scenarioError_ContractNotActiveContractRef
+                  (err ^. #maybe'contractRef)
         ]
-    ScenarioErrorErrorScenarioContractNotActive ScenarioError_ContractNotActive{..} -> do
+    ScenarioError'ScenarioContractNotActive err ->
       pure $ vcat
         [ "Attempt to exercise a consumed contract"
             <-> prettyMay "<missing contract>"
                   (prettyContractRef world)
-                  scenarioError_ContractNotActiveContractRef
+                  (err ^. #maybe'contractRef)
         , "Consumed by:"
-            <-> prettyMay "<missing node id>" prettyNodeIdLink scenarioError_ContractNotActiveConsumedBy
+            <-> prettyMay "<missing node id>" prettyNodeIdLink (err ^. #maybe'consumedBy)
         ]
-    ScenarioErrorErrorScenarioCommitError (CommitError Nothing) -> do
-      pure "Unknown commit error"
+    ScenarioError'ScenarioCommitError err -> case err ^. #maybe'sum of
+      Nothing -> pure "Unknown commit error"
 
-    ScenarioErrorErrorScenarioCommitError (CommitError (Just (CommitErrorSumFailedAuthorizations fas))) -> do
-      pure $ vcat $ mapV (prettyFailedAuthorization world) (failedAuthorizationsFailedAuthorizations fas)
+      Just (CommitError'FailedAuthorizations failedAuth) -> pure $ vcat $ map (prettyFailedAuthorization world) (failedAuth ^. #failedAuthorizations)
 
-    ScenarioErrorErrorScenarioCommitError (CommitError (Just (CommitErrorSumUniqueKeyViolation gk))) -> do
-      pure $ vcat
+      Just (CommitError'UniqueKeyViolation uniqueKeyViolation) -> pure $ vcat
         [ "Commit error due to unique key violation for key"
-        , nest 2 (prettyMay "<missing key>" (prettyValue' False 0 world) (globalKeyKey gk))
+        , nest 2 (prettyMay "<missing key>" (prettyValue' False 0 world) (uniqueKeyViolation ^.  #maybe'key))
         , "for template"
-        , nest 2 (prettyMay "<missing template id>" (prettyDefName world) (globalKeyTemplateId gk))
+        , nest 2 (prettyMay "<missing template id>" (prettyDefName world) (uniqueKeyViolation ^. #maybe'templateId))
         ]
 
-    ScenarioErrorErrorUnknownContext ctxId ->
+    ScenarioError'UnknownContext ctxId ->
       pure $ "Unknown scenario interpretation context:" <-> string (show ctxId)
-    ScenarioErrorErrorUnknownScenario name ->
+    ScenarioError'UnknownScenario name ->
       pure $ "Unknown scenario:" <-> prettyDefName world name
-    ScenarioErrorErrorScenarioContractNotEffective ScenarioError_ContractNotEffective{..} ->
+    ScenarioError'ScenarioContractNotEffective err ->
       pure $ vcat
         [ "Attempt to fetch or exercise a contract not yet effective."
         , "Contract:"
         <-> prettyMay "<missing contract>" (prettyContractRef world)
-              scenarioError_ContractNotEffectiveContractRef
+              (err ^. #maybe'contractRef)
         , "Effective at:"
-        <-> prettyTimestamp scenarioError_ContractNotEffectiveEffectiveAt
+        <-> prettyTimestamp (err ^. #effectiveAt)
         ]
 
-    ScenarioErrorErrorScenarioMustfailSucceeded _ ->
+    ScenarioError'ScenarioMustfailSucceeded _ ->
       pure "A must-fail commit succeeded."
-    ScenarioErrorErrorScenarioInvalidPartyName name ->
-      pure $ "Invalid party name: " <-> ltext name
-    ScenarioErrorErrorScenarioContractNotVisible ScenarioError_ContractNotVisible{..} ->
+    ScenarioError'ScenarioInvalidPartyName name ->
+      pure $ "Invalid party name: " <-> text name
+    ScenarioError'ScenarioContractNotVisible err ->
       pure $ vcat
         [ "Attempt to fetch or exercise a contract not visible to the committer."
         , label_ "Contract: "
             $ prettyMay "<missing contract>"
                 (prettyContractRef world)
-                scenarioError_ContractNotVisibleContractRef
-        , label_ "Committer:" $ prettyMay "<missing party>" prettyParty scenarioError_ContractNotVisibleCommitter
+                (err ^. #maybe'contractRef)
+        , label_ "Committer:" $ prettyMay "<missing party>" prettyParty (err ^. #maybe'committer)
         , label_ "Disclosed to:"
             $ fcommasep
-            $ mapV prettyParty scenarioError_ContractNotVisibleObservers
+            $ map prettyParty (err ^. #observers) -- scenarioError_ContractNotVisibleObservers
         ]
-    ScenarioErrorErrorSubmitterNotInMaintainers (ScenarioError_SubmitterNotInMaintainers templateId submitter maintainers) ->
+    ScenarioError'SubmitterNotInMaintainers' err ->
       pure $ vcat
         [ "When looking up or fetching a contract of type" <->
-            prettyMay "<missing template id>" (prettyDefName world) templateId <-> "by key, submitter:" <->
-            prettyMay "<missing submitter>" prettyParty submitter
-        , "is not in maintainers:" <-> fcommasep (mapV prettyParty maintainers)
+            prettyMay "<missing template id>" (prettyDefName world) (err ^. #maybe'templateId) <-> "by key, submitter:" <->
+            prettyMay "<missing submitter>" prettyParty (err ^. #maybe'submitter)
+        , "is not in maintainers:" <-> fcommasep (map prettyParty (err ^. #maintainers))
         ]
 
 prettyFailedAuthorization :: LF.World -> FailedAuthorization -> Doc SyntaxClass
-prettyFailedAuthorization world (FailedAuthorization mbNodeId mbFa) =
+prettyFailedAuthorization world failedAuth =
   hcat
-    [ prettyMay "<missing node id>" prettyNodeIdLink mbNodeId
+    [ prettyMay "<missing node id>" prettyNodeIdLink (failedAuth ^. #maybe'nodeId)
     , text ": "
-    , case mbFa of
-        Just (FailedAuthorizationSumCreateMissingAuthorization
-          (FailedAuthorization_CreateMissingAuthorization templateId mbLoc authParties reqParties)) ->
-          "create of" <-> prettyMay "<missing template id>" (prettyDefName world) templateId
-          <-> "at" <-> prettyMayLocation world mbLoc
+    , case failedAuth ^. #maybe'sum of
+        Just (FailedAuthorization'CreateMissingAuthorization' err) ->
+          "create of" <-> prettyMay "<missing template id>" (prettyDefName world) (err ^. #maybe'templateId)
+          <-> "at" <-> prettyMayLocation world (err ^. #maybe'location)
           $$
             ("failed due to a missing authorization from"
              <->
              ( fcommasep
-             $ map (prettyParty . Party)
+             $ map prettyParty
              $ S.toList
-             $ S.fromList (mapV partyParty reqParties)
+             $ S.fromList (err ^. #requiredAuthorizers)
                `S.difference`
-               S.fromList (mapV partyParty authParties)
+               S.fromList (err ^. #authorizingParties)
              )
             )
 
-        Just (FailedAuthorizationSumMaintainersNotSubsetOfSignatories
-          (FailedAuthorization_MaintainersNotSubsetOfSignatories templateId mbLoc signatories maintainers)) ->
-          "create of" <-> prettyMay "<missing template id>" (prettyDefName world) templateId
-          <-> "at" <-> prettyMayLocation world mbLoc
+        Just (FailedAuthorization'MaintainersNotSubsetOfSignatories' err) ->
+          "create of" <-> prettyMay "<missing template id>" (prettyDefName world) (err ^. #maybe'templateId)
+          <-> "at" <-> prettyMayLocation world (err ^. #maybe'location)
           $$
             ("failed due to that some parties are maintainers but not signatories: "
              <->
              ( fcommasep
-             $ map (prettyParty . Party)
+             $ map prettyParty
              $ S.toList
-             $ S.fromList (mapV partyParty maintainers)
+             $ S.fromList (err ^. #maintainers)
                `S.difference`
-               S.fromList (mapV partyParty signatories)
+               S.fromList (err ^. #signatories)
              )
             )
 
-        Just (FailedAuthorizationSumFetchMissingAuthorization
-          (FailedAuthorization_FetchMissingAuthorization templateId mbLoc authParties stakeholders)) ->
-          "fetch of" <-> prettyMay "<missing template id>" (prettyDefName world) templateId
-          <-> "at" <-> prettyMayLocation world mbLoc
+        Just (FailedAuthorization'FetchMissingAuthorization' err) ->
+          "fetch of" <-> prettyMay "<missing template id>" (prettyDefName world) (err ^. #maybe'templateId)
+          <-> "at" <-> prettyMayLocation world (err ^. #maybe'location)
           $$
             ("failed since none of the stakeholders"
              <->
-             ( fcommasep
-             $ map (prettyParty . Party)
-             $ mapV partyParty stakeholders
-            ))
+             (fcommasep $ map prettyParty $ err ^. #stakeholders))
           $$
             ("is in the authorizing set"
              <->
-             ( fcommasep
-             $ map (prettyParty . Party)
-             $ mapV partyParty authParties
-            ))
+             (fcommasep $ map prettyParty $ err ^. #authorizingParties))
 
-        Just (FailedAuthorizationSumExerciseMissingAuthorization
-          (FailedAuthorization_ExerciseMissingAuthorization templateId choiceId mbLoc authParties reqParties)) ->
-          "exercise of" <-> prettyChoiceId world templateId choiceId
-          <-> "in" <-> prettyMay "<missing template id>" (prettyDefName world) templateId
-          <-> "at" <-> prettyMayLocation world mbLoc
+        Just (FailedAuthorization'ExerciseMissingAuthorization' err) ->
+          "exercise of" <-> prettyChoiceId world (err ^. #maybe'templateId) (err ^. #choiceId)
+          <-> "in" <-> prettyMay "<missing template id>" (prettyDefName world) (err ^. #maybe'templateId)
+          <-> "at" <-> prettyMayLocation world (err ^. #maybe'location)
           $$
             ("failed due to a missing authorization from"
              <->
              ( fcommasep
-             $ map (prettyParty . Party)
+             $ map prettyParty
              $ S.toList
-             $ S.fromList (mapV partyParty reqParties)
+             $ S.fromList (err ^. #requiredAuthorizers)
                `S.difference`
-               S.fromList (mapV partyParty authParties)
+               S.fromList (err ^. #authorizingParties)
              )
             )
 
-        Just (FailedAuthorizationSumActorMismatch
-          (FailedAuthorization_ActorMismatch templateId choiceId mbLoc ctrls givenActors)) ->
-          "exercise of" <-> prettyChoiceId world templateId choiceId
-          <-> "in" <-> prettyMay "<missing template id>" (prettyDefName world) templateId
-          <-> "at" <-> prettyMayLocation world mbLoc
+        Just (FailedAuthorization'ActorMismatch' err) ->
+          "exercise of" <-> prettyChoiceId world (err ^. #maybe'templateId) (err ^. #choiceId)
+          <-> "in" <-> prettyMay "<missing template id>" (prettyDefName world) (err ^. #maybe'templateId)
+          <-> "at" <-> prettyMayLocation world (err ^. #maybe'location)
           $$
             ("failed due to authorization error:"
             $$ "the choice's controlling parties"
-            <-> brackets (fcommasep (mapV prettyParty ctrls))
+            <-> brackets (fcommasep (map prettyParty (err ^. #controllers)))
             $$ "is not a subset of the authorizing parties"
-            <-> brackets (fcommasep (mapV prettyParty givenActors))
+            <-> brackets (fcommasep (map prettyParty (err ^. #givenActors)))
             )
 
-        Just (FailedAuthorizationSumNoControllers
-          (FailedAuthorization_NoControllers templateId choiceId mbLoc)) ->
-          "exercise of" <-> prettyChoiceId world templateId choiceId
-          <-> "in" <-> prettyMay "<missing template id>" (prettyDefName world) templateId
-          <-> "at" <-> prettyMayLocation world mbLoc
+        Just (FailedAuthorization'NoControllers' err) ->
+          "exercise of" <-> prettyChoiceId world (err ^. #maybe'templateId) (err ^. #choiceId)
+          <-> "in" <-> prettyMay "<missing template id>" (prettyDefName world) (err ^. #maybe'templateId)
+          <-> "at" <-> prettyMayLocation world (err ^. #maybe'location)
           $$ "failed due missing controllers"
 
-        Just (FailedAuthorizationSumNoSignatories
-          (FailedAuthorization_NoSignatories templateId mbLoc)) ->
+        Just (FailedAuthorization'NoSignatories' err) ->
           "create of"
-          <-> prettyMay "<missing template id>" (prettyDefName world) templateId
-          <-> "at" <-> prettyMayLocation world mbLoc
+          <-> prettyMay "<missing template id>" (prettyDefName world) (err ^. #maybe'templateId)
+          <-> "at" <-> prettyMayLocation world (err ^. #maybe'location)
           $$ "failed due missing signatories"
 
-        Just (FailedAuthorizationSumLookupByKeyMissingAuthorization
-          (FailedAuthorization_LookupByKeyMissingAuthorization templateId mbLoc authParties maintainers)) ->
-         "lookup by key of" <-> prettyMay "<missing template id>" (prettyDefName world) templateId
-         <-> "at" <-> prettyMayLocation world mbLoc
+        Just (FailedAuthorization'LookupByKeyMissingAuthorization' err) ->
+         "lookup by key of" <-> prettyMay "<missing template id>" (prettyDefName world) (err ^. #maybe'templateId)
+         <-> "at" <-> prettyMayLocation world (err ^. #maybe'location)
          $$
             ("failed due to a missing authorization from"
              <->
              ( fcommasep
-             $ map (prettyParty . Party)
+             $ map prettyParty
              $ S.toList
-             $ S.fromList (mapV partyParty maintainers)
+             $ S.fromList (err ^. #maintainers)
                `S.difference`
-               S.fromList (mapV partyParty authParties)
+               S.fromList (err ^. #authorizingParties)
              )
             )
 
@@ -394,48 +379,50 @@ prettyFailedAuthorization world (FailedAuthorization mbNodeId mbFa) =
 
 
 prettyScenarioStep :: ScenarioStep -> M (Doc SyntaxClass)
-prettyScenarioStep (ScenarioStep _stepId Nothing) =
-  pure $ text "<missing scenario step>"
-prettyScenarioStep (ScenarioStep stepId (Just step)) = do
-  world <- askWorld
-  case step of
-    ScenarioStepStepCommit (ScenarioStep_Commit txId (Just tx) mbLoc) ->
-      prettyCommit txId mbLoc tx
+prettyScenarioStep step =
+    case step ^. #maybe'step of
+        Nothing -> pure $ text "<missing scenario step>"
+        Just step' ->  do
+            world <- askWorld
+            case step' of
+              ScenarioStep'Commit' commit
+                | Just tx <- commit ^. #maybe'tx ->
+                prettyCommit (commit ^. #txId) (commit ^. #maybe'location) tx
 
-    ScenarioStepStepAssertMustFail (ScenarioStep_AssertMustFail (Just actor) time txId mbLoc) ->
-      pure
-          $ idSC ("n" <> TE.show txId) (keyword_ "TX")
-        <-> prettyTxId txId
-        <-> prettyTimestamp time
-         $$ (nest 3
-             $   keyword_ "mustFailAt"
-             <-> prettyParty actor
-             <-> parens (prettyMayLocation world mbLoc)
-            )
+              ScenarioStep'AssertMustFail' assertMustFail ->
+                pure
+                    $ idSC ("n" <> TE.show (assertMustFail ^. #txId)) (keyword_ "TX")
+                  <-> prettyTxId (assertMustFail ^. #txId)
+                  <-> prettyTimestamp (assertMustFail ^. #time)
+                   $$ (nest 3
+                       $   keyword_ "mustFailAt"
+                       <-> prettyParty (assertMustFail ^. #actor)
+                       <-> parens (prettyMayLocation world (assertMustFail ^. #maybe'location))
+                      )
 
-    ScenarioStepStepPassTime dtMicros ->
-      pure
-          $ idSC ("n" <> TE.show stepId) (keyword_ "pass")
-          <-> prettyTxId stepId
-          <-> text (relTimeToText dtMicros)
+              ScenarioStep'PassTime dtMicros ->
+                pure
+                    $ idSC ("n" <> TE.show (step ^. #stepId)) (keyword_ "pass")
+                    <-> prettyTxId (step ^. #stepId)
+                    <-> text (relTimeToText dtMicros)
 
-    bad ->
-      pure $ text "INVALID STEP:" <-> string (show bad)
-  where
-    relTimeToText :: Int64 -> T.Text
-    relTimeToText micros
-      | micros == 0 = "0s"
-      | n <= 6 = fixup $ '0' : '.' : trim (replicate (6 - n) '0' ++ dt)
-      | otherwise = fixup $
-          let (prefix, trim -> suffix) = splitAt (n - 6) dt
-          in if null suffix then prefix else prefix ++ '.' : suffix
-      where
-        trim = dropWhileEnd ('0' ==)
-        fixup cs
-          | micros < 0 = T.pack ('-' : cs) <> "s"
-          | otherwise = T.pack cs <> "s"
-        dt = show (abs micros)
-        n  = length dt
+              bad ->
+                pure $ text "INVALID STEP:" <-> string (show bad)
+            where
+              relTimeToText :: Int64 -> T.Text
+              relTimeToText micros
+                | micros == 0 = "0s"
+                | n <= 6 = fixup $ '0' : '.' : trim (replicate (6 - n) '0' ++ dt)
+                | otherwise = fixup $
+                    let (prefix, trim -> suffix) = splitAt (n - 6) dt
+                    in if null suffix then prefix else prefix ++ '.' : suffix
+                where
+                  trim = dropWhileEnd ('0' ==)
+                  fixup cs
+                    | micros < 0 = T.pack ('-' : cs) <> "s"
+                    | otherwise = T.pack cs <> "s"
+                  dt = show (abs micros)
+                  n  = length dt
 
 prettyTimestamp :: Int64 -> Doc SyntaxClass
 prettyTimestamp = prettyUtcTime . toUtcTime . fromIntegral
@@ -447,31 +434,30 @@ prettyTimestamp = prettyUtcTime . toUtcTime . fromIntegral
       $ fromRational $ t Ratio.% (10 ^ (6 :: Integer))
 
 prettyCommit :: Int32 -> Maybe Location -> Transaction -> M (Doc SyntaxClass)
-prettyCommit txid mbLoc Transaction{..} = do
+prettyCommit txid mbLoc trans = do
   world <- askWorld
-  children <- vsep <$> mapM (lookupNode >=> prettyNode) (V.toList transactionRoots)
+  children <- vsep <$> mapM (lookupNode >=> prettyNode) (trans ^. #roots)
   return
       $ idSC ("n" <> TE.show txid) (keyword_ "TX")
     <-> prettyTxId txid
-    <-> prettyTimestamp transactionEffectiveAt
+    <-> prettyTimestamp (trans ^. #effectiveAt)
     <-> parens (prettyMayLocation world mbLoc)
      $$ children
 
 prettyMayLocation :: LF.World -> Maybe Location -> Doc SyntaxClass
 prettyMayLocation _ Nothing = text "unknown source"
-prettyMayLocation world (Just (Location mbPkgId modName sline scol eline _ecol)) =
+prettyMayLocation world (Just loc) =
       maybe id (\path -> linkSC (url path) title)
-        (lookupModule world mbPkgId (LF.ModuleName (T.splitOn "." (TL.toStrict modName))) >>= LF.moduleSource)
+        (lookupModule world (loc ^. #maybe'package) (LF.ModuleName (T.splitOn "." (loc ^. #module'))) >>= LF.moduleSource)
     $ text title
   where
-    modName' = TL.toStrict modName
     encodeURI = Network.URI.Encode.encodeText
-    title = modName' <> lineNum
+    title = (loc ^. #module') <> lineNum
     url fp = "command:daml.revealLocation?"
       <> encodeURI ("[\"file://" <> T.pack fp <> "\", "
-      <> TE.show sline <> ", " <> TE.show eline <> "]")
+      <> TE.show (loc ^. #startLine) <> ", " <> TE.show (loc ^. #endLine) <> "]")
 
-    lineNum = ":" <> pint32 sline <> ":" <> pint32 scol
+    lineNum = ":" <> pint32 (loc ^. #startLine) <> ":" <> pint32 (loc ^. #startCol)
     pint32 :: Int32 -> T.Text
     pint32 = TE.show . (1+) -- locations are 0-indexed.
 
@@ -489,19 +475,20 @@ linkToIdSC targetId =
     annotateSC ConstructorSC
   . annotateSC (OnClickSC $ "window.location.hash='" <> targetId <> "';")
 
-prettyNodeId :: NodeId -> Doc SyntaxClass
-prettyNodeId (NodeId nodeId) =
-    idSC ("n" <> TL.toStrict nodeId)
+prettyNodeId :: Proto.NodeId -> Doc SyntaxClass
+prettyNodeId nodeId =
+    idSC ("n" <> nodeId')
   $ annotateSC ConstructorSC
-  $ char '#' <> text (TL.toStrict nodeId)
+  $ char '#' <> text nodeId'
+  where nodeId' = nodeId ^. #id
 
 prettyNodeIdLink :: NodeId -> Doc SyntaxClass
-prettyNodeIdLink (NodeId nodeId) =
-  linkToIdSC ("n" <> TL.toStrict nodeId) $ char '#' <> text (TL.toStrict nodeId)
+prettyNodeIdLink nodeId =
+  linkToIdSC ("n" <> nodeId ^. #id) $ char '#' <> text (nodeId ^. #id)
 
-prettyContractId :: TL.Text -> Doc SyntaxClass
+prettyContractId :: T.Text -> Doc SyntaxClass
 prettyContractId coid =
-  linkToIdSC ("n" <> TL.toStrict coid) $ char '#' <> ltext coid
+  linkToIdSC ("n" <> coid) $ char '#' <> text coid
 
 linkSC :: T.Text -> T.Text -> Doc SyntaxClass -> Doc SyntaxClass
 linkSC url title = annotateSC (LinkSC url title)
@@ -518,114 +505,109 @@ prettyMayParty Nothing  = text "<missing party>"
 prettyMayParty (Just p) = prettyParty p
 
 prettyParty :: Party -> Doc SyntaxClass
-prettyParty (Party p) = text ("'" <> TL.toStrict p <> "'")
+prettyParty p = text ("'" <> p ^. #party <> "'")
 
-ltext :: TL.Text -> Doc a
-ltext = text . TL.toStrict
-
-mapV :: (a -> b) -> V.Vector a -> [b]
-mapV f = map f . V.toList
-
-prettyNodeNode :: NodeNode -> M (Doc SyntaxClass)
+prettyNodeNode :: Node'Node -> M (Doc SyntaxClass)
 prettyNodeNode nn = do
   world <- askWorld
   case nn of
-    NodeNodeCreate Node_Create{..} ->
+    Node'Create' create ->
       pure $
-        case node_CreateContractInstance of
+        case create ^. #maybe'contractInstance of
           Nothing -> text "<missing contract instance>"
-          Just ContractInstance{..} ->
-             (keyword_ "create" <-> prettyMay "<TEMPLATE?>" (prettyDefName world) contractInstanceTemplateId)
+          Just inst ->
+             (keyword_ "create" <-> prettyMay "<TEMPLATE?>" (prettyDefName world) (inst ^. #maybe'templateId))
            $$ maybe
                 mempty
                 (\v ->
                   keyword_ "with" $$
                     nest 2 (prettyValue' False 0 world v))
-                  contractInstanceValue
+                  (inst ^. #maybe'value)
 
-    NodeNodeFetch Node_Fetch{..} ->
+    Node'Fetch' fetch ->
       pure $
         keyword_ "fetch"
-          <-> prettyContractId node_FetchContractId
+          <-> prettyContractId (fetch ^. #contractId)
           <-> maybe mempty
                   (\tid -> parens (prettyDefName world tid))
-                  node_FetchTemplateId
+                  (fetch ^. #maybe'templateId)
 
-    NodeNodeExercise Node_Exercise{..} -> do
+    Node'Exercise' exercise -> do
       ppChildren <-
-        if V.null node_ExerciseChildren
+        if null (exercise ^. #children)
         then pure mempty
         else
               (keyword_ "children:" $$) . vsep
-          <$> mapM (lookupNode >=> prettyNode) (V.toList node_ExerciseChildren)
+          <$> mapM (lookupNode >=> prettyNode) (exercise ^. #children)
 
       pure
-        $   fcommasep (mapV prettyParty node_ExerciseActingParties)
+        $   fcommasep (map prettyParty $ exercise ^. #actingParties)
         <-> ( -- group to align "exercises" and "with"
               keyword_ "exercises"
           <-> hsep
-              [ prettyChoiceId world node_ExerciseTemplateId node_ExerciseChoiceId
+              [ prettyChoiceId world (exercise ^. #maybe'templateId) (exercise ^. #choiceId)
               , keyword_ "on"
-              , prettyContractId node_ExerciseTargetContractId
-              , parens (prettyMay "<missing TemplateId>" (prettyDefName world) node_ExerciseTemplateId)
+              , prettyContractId (exercise ^. #targetContractId)
+              , parens (prettyMay "<missing TemplateId>" (prettyDefName world) $ exercise ^. #maybe'templateId)
               ]
-           $$ if isUnitValue node_ExerciseChosenValue
+           $$ if isUnitValue (exercise ^. #maybe'chosenValue)
               then mempty
               else keyword_ "with"
                 $$ nest 2
                      (prettyMay "<missing value>"
-                       (prettyValue' False 0 world)
-                       node_ExerciseChosenValue)
+                       (prettyValue' False 0 world) $
+                       exercise ^. #maybe'chosenValue)
         )
         $$ ppChildren
 
-    NodeNodeLookupByKey Node_LookupByKey{..} -> do
+    Node'LookupByKey' lookupByKey -> do
       pure $
         keyword_ "lookupByKey"
-          <-> prettyMay "<TEMPLATE?>" (prettyDefName world) node_LookupByKeyTemplateId
+          <-> prettyMay "<TEMPLATE?>" (prettyDefName world) (lookupByKey ^. #maybe'templateId)
           $$ text "with key"
           $$ nest 2
             (prettyMay "<KEY?>"
-              (prettyMay "<KEY?>" (prettyValue' False 0 world) . keyWithMaintainersKey)
-              node_LookupByKeyKeyWithMaintainers)
-          $$ if TL.null node_LookupByKeyContractId
+              (prettyMay "<KEY?>" (prettyValue' False 0 world) . view #maybe'key) $
+              lookupByKey ^. #maybe'keyWithMaintainers)
+          $$ if T.null (lookupByKey ^. #contractId)
             then text "not found"
-            else text "found:" <-> text (TL.toStrict node_LookupByKeyContractId)
+            else text "found:" <-> text (lookupByKey ^. #contractId)
 
 isUnitValue :: Maybe Value -> Bool
-isUnitValue (Just (Value (Just ValueSumUnit{}))) = True
-isUnitValue _ = False
+isUnitValue v
+    | Just _ <- v ^? _Just . #maybe'unit . _Just = True
+    | otherwise = False
 
 prettyNode :: Node -> M (Doc SyntaxClass)
-prettyNode Node{..}
-  | Nothing <- nodeNode =
+prettyNode n
+  | Nothing <- n ^. #maybe'node =
       pure "<missing node>"
 
-  | Just node <- nodeNode = do
+  | Just node <- n ^. #maybe'node = do
       ppNode <- prettyNodeNode node
       let ppConsumedBy =
               maybe mempty
                 (\nodeId -> meta $ archivedSC $ text "consumed by:" <-> prettyNodeIdLink nodeId)
-                nodeConsumedBy
+                (n ^. #maybe'consumedBy)
 
       let ppReferencedBy =
-            if V.null nodeReferencedBy
+            if null (n ^. #referencedBy)
             then mempty
             else meta $ keyword_ "referenced by"
-                   <-> fcommasep (mapV prettyNodeIdLink nodeReferencedBy)
+                   <-> fcommasep (map prettyNodeIdLink $ n ^. #referencedBy)
 
       let ppDisclosedTo =
-            if V.null nodeObservingSince
+            if null (n ^. #observingSince)
             then mempty
             else
               meta $ keyword_ "known to (since):"
                 <-> fcommasep
-                  (mapV
-                    (\(PartyAndTransactionId p txId) -> prettyMayParty p <-> parens (prettyTxId txId))
-                    nodeObservingSince)
+                  (map
+                    (\patId -> prettyMayParty (patId ^. #maybe'party) <-> parens (prettyTxId $ patId ^. #txId))
+                    $ n ^. #observingSince)
 
       pure
-         $ prettyMay "<missing node id>" prettyNodeId nodeNodeId
+         $ prettyMay "<missing node id>" prettyNodeId (n ^. #maybe'nodeId)
         $$ vcat
              [ ppConsumedBy, ppReferencedBy, ppDisclosedTo
              , arrowright ppNode
@@ -638,89 +620,89 @@ prettyNode Node{..}
 
 
 prettyPartialTransaction :: PartialTransaction -> M (Doc SyntaxClass)
-prettyPartialTransaction PartialTransaction{..} = do
+prettyPartialTransaction partialTransaction = do
   world <- askWorld
   let ppNodes =
-           runM partialTransactionNodes world
+           runM (partialTransaction ^. #nodes) world
          $ fmap vsep
          $ mapM (lookupNode >=> prettyNode)
-                (V.toList partialTransactionRoots)
+                (partialTransaction ^. #roots)
   pure $ vcat
-    [ case partialTransactionExerciseContext of
+    [ case partialTransaction ^. #maybe'exerciseContext of
         Nothing -> mempty
-        Just ExerciseContext{..} ->
+        Just exerciseContext ->
           text "Failed exercise"
-            <-> parens (prettyMayLocation world exerciseContextExerciseLocation) <> ":"
+            <-> parens (prettyMayLocation world (exerciseContext ^. #maybe'exerciseLocation)) <> ":"
             $$ nest 2 (
                 keyword_ "exercise"
             <-> prettyMay "<missing template id>"
                   (\tid ->
-                      prettyChoiceId world tid exerciseContextChoiceId)
-                  (contractRefTemplateId <$> exerciseContextTargetId)
+                      prettyChoiceId world tid (exerciseContext ^. #choiceId))
+                  (view #maybe'templateId <$> view #maybe'targetId exerciseContext)
             <-> keyword_ "on"
             <-> prettyMay "<missing>"
                   (prettyContractRef world)
-                  exerciseContextTargetId
+                  (exerciseContext ^. #maybe'targetId)
              $$ keyword_ "with"
              $$ ( nest 2
                 $ prettyMay "<missing>"
                     (prettyValue' False 0 world)
-                    exerciseContextChosenValue)
+                    (exerciseContext ^. #maybe'chosenValue))
             )
 
-   , if V.null partialTransactionRoots
+   , if null (partialTransaction ^. #roots)
      then mempty
      else text "Sub-transactions:" $$ nest 3 ppNodes
    ]
 
 
 prettyValue' :: Bool -> Int -> LF.World -> Value -> Doc SyntaxClass
-prettyValue' _ _ _ (Value Nothing) = text "<missing value>"
-prettyValue' showRecordType prec world (Value (Just vsum)) = case vsum of
-  ValueSumRecord (Record mbRecordId fields) ->
+prettyValue' _ _ _ v | Nothing <- v ^. #maybe'sum = text "<missing value>"
+prettyValue' showRecordType prec world v | Just sum <- v ^. #maybe'sum = case sum of
+  Value'Record rec ->
     maybeParens (prec > precWith) $
       (if showRecordType
-       then \fs -> prettyMay "" (prettyDefName world) mbRecordId <-> keyword_ "with" $$ nest 2 fs
+       then \fs -> prettyMay "" (prettyDefName world) (rec ^. #maybe'recordId) <-> keyword_ "with" $$ nest 2 fs
        else id)
-      (sep (punctuate ";" (mapV prettyField fields)))
-  ValueSumTuple (Tuple fields) ->
-    braces (sep (punctuate ";" (mapV prettyField fields)))
-  ValueSumVariant (Variant mbVariantId ctor mbValue) ->
-        prettyMay "" (\v -> prettyDefName world v <> ":") mbVariantId <> ltext ctor
-    <-> prettyMay "<missing value>" (prettyValue' True precHighest world) mbValue
-  ValueSumEnum (Enum mbEnumId constructor) ->
-        prettyMay "" (\x -> prettyDefName world x <> ":") mbEnumId <> ltext constructor
-  ValueSumList (List elems) ->
-    brackets (fcommasep (mapV (prettyValue' True prec world) elems))
-  ValueSumContractId coid -> prettyContractId coid
-  ValueSumInt64 i -> string (show i)
-  ValueSumDecimal ds ->
-    case preview stringToDecimal (TL.unpack ds) of
-      Nothing -> ltext ds
+      (sep (punctuate ";" (map prettyField $ rec ^. #fields)))
+  Value'Tuple tuple ->
+    braces (sep (punctuate ";" (map prettyField $ tuple ^. #fields)))
+  Value'Variant variant ->
+        prettyMay "" (\v -> prettyDefName world v <> ":") (variant ^. #maybe'variantId) <> text (variant ^. #constructor)
+    <-> prettyMay "<missing value>" (prettyValue' True precHighest world) (variant ^. #maybe'value)
+  Value'Enum enum ->
+        prettyMay "" (\x -> prettyDefName world x <> ":") (enum ^. #maybe'enumId) <> text (enum ^. #constructor)
+  Value'List list ->
+    brackets (fcommasep (map (prettyValue' True prec world) $ list ^. #elements))
+  Value'ContractId coid -> prettyContractId coid
+  Value'Int64 i -> string (show i)
+  Value'Decimal ds ->
+    case preview stringToDecimal (T.unpack ds) of
+      Nothing -> text ds
       Just d  -> string $ review stringToDecimal d
-  ValueSumText t -> char '"' <> ltext t <> char '"'
-  ValueSumTimestamp ts -> prettyTimestamp ts
-  ValueSumParty p -> char '\'' <> ltext p <> char '\''
-  ValueSumBool True -> text "true"
-  ValueSumBool False -> text "false"
-  ValueSumUnit{} -> text "{}"
-  ValueSumDate d -> prettyDate d
-  ValueSumOptional (Optional Nothing) -> text "none"
-  ValueSumOptional (Optional (Just v)) -> "some " <> prettyValue' True precHighest world v
-  ValueSumMap (Map entries) -> "Map" <> brackets (fcommasep (mapV (prettyEntry prec world) entries))
-  ValueSumUnserializable what -> ltext what
+  Value'Text t -> char '"' <> text t <> char '"'
+  Value'Timestamp ts -> prettyTimestamp ts
+  Value'Party p -> char '\'' <> text p <> char '\''
+  Value'Bool True -> text "true"
+  Value'Bool False -> text "false"
+  Value'Unit{} -> text "{}"
+  Value'Date d -> prettyDate d
+  Value'Optional o -> case o ^. #maybe'value of
+      Nothing -> text "none"
+      Just v -> "some " <> prettyValue' True precHighest world v
+  Value'Map m -> "Map" <> brackets (fcommasep (map (prettyEntry prec world) $ m ^. #entries))
+  Value'Unserializable what -> text what
   where
-    prettyField (Field label mbValue) =
-      hang (ltext label <-> "=") 2
-        (prettyMay "<missing value>" (prettyValue' True precHighest world) mbValue)
+    prettyField f =
+      hang (text (f ^. #label) <-> "=") 2
+        (prettyMay "<missing value>" (prettyValue' True precHighest world) (f ^. #maybe'value))
     precWith = 1
     precHighest = 9
 
-prettyEntry :: Int -> LF.World ->  Map_Entry -> Doc SyntaxClass
-prettyEntry prec world (Map_Entry key (Just value)) =
-   ltext key <> "->" <> prettyValue' True prec world value
-prettyEntry  _ _ (Map_Entry key _) =
-   ltext key <> "-> <missing value>"
+prettyEntry :: Int -> LF.World ->  Map'Entry -> Doc SyntaxClass
+prettyEntry prec world entry = case entry ^. #maybe'value of
+    Just value -> text (entry ^. #key) <> "->" <> prettyValue' True prec world value
+    Nothing -> text (entry ^. #key) <> "-> <missing value>"
 
 prettyDate :: Int32 -> Doc a
 prettyDate =
@@ -732,30 +714,30 @@ prettyDate =
 
 
 prettyPackageIdentifier :: PackageIdentifier -> Doc SyntaxClass
-prettyPackageIdentifier (PackageIdentifier psum) = case psum of
+prettyPackageIdentifier pId = case pId ^. #maybe'sum of
   Nothing                                    -> mempty
-  (Just (PackageIdentifierSumSelf _))        -> mempty
-  (Just (PackageIdentifierSumPackageId pid)) -> char '@' <> ltext pid
+  (Just (PackageIdentifier'Self _))        -> mempty
+  (Just (PackageIdentifier'PackageId pid)) -> char '@' <> text pid
 
 prettyDefName :: LF.World -> Identifier -> Doc SyntaxClass
-prettyDefName world (Identifier mbPkgId (TL.toStrict -> qualName))
-  | Just (_modName, defName, mod0) <- lookupModuleFromQualifiedName world mbPkgId qualName
+prettyDefName world identifier
+  | Just (_modName, defName, mod0) <- lookupModuleFromQualifiedName world (identifier ^. #maybe'package) name
   , Just fp <- LF.moduleSource mod0
   , Just (LF.SourceLoc _mref sline _scol eline _ecol) <- lookupDefLocation mod0 defName =
       linkSC (revealLocationUri fp sline eline) name ppName
   | otherwise =
       ppName
   where
-    name = qualName
+    name = identifier ^. #name
     ppName = text name <> ppPkgId
-    ppPkgId = maybe mempty prettyPackageIdentifier mbPkgId
+    ppPkgId = maybe mempty prettyPackageIdentifier (identifier ^. #maybe'package)
 
 prettyChoiceId
-  :: LF.World -> Maybe Identifier -> TL.Text
+  :: LF.World -> Maybe Identifier -> T.Text
   -> Doc SyntaxClass
-prettyChoiceId _ Nothing choiceId = ltext choiceId
-prettyChoiceId world (Just (Identifier mbPkgId (TL.toStrict -> qualName))) (TL.toStrict -> choiceId)
-  | Just (_modName, defName, mod0) <- lookupModuleFromQualifiedName world mbPkgId qualName
+prettyChoiceId _ Nothing choiceId = text choiceId
+prettyChoiceId world (Just identifier) choiceId
+  | Just (_modName, defName, mod0) <- lookupModuleFromQualifiedName world (identifier ^. #maybe'package) (identifier ^. #name)
   , Just fp <- LF.moduleSource mod0
   , Just tpl <- NM.lookup (LF.TypeConName [defName]) (LF.moduleTemplates mod0)
   , Just chc <- NM.lookup (LF.ChoiceName choiceId) (LF.tplChoices tpl)
@@ -773,10 +755,10 @@ revealLocationUri fp sline eline =
     encodeURI = Network.URI.Encode.encodeText
 
 prettyContractRef :: LF.World -> ContractRef -> Doc SyntaxClass
-prettyContractRef world (ContractRef _relative coid tid) =
+prettyContractRef world contractRef =
   hsep
-  [ prettyContractId coid
-  , parens (prettyMay "<missing template id>" (prettyDefName world) tid)
+  [ prettyContractId (contractRef ^. #contractId)
+  , parens (prettyMay "<missing template id>" (prettyDefName world) (contractRef ^. #maybe'templateId))
   ]
 
 
@@ -796,21 +778,15 @@ data Table = Table
     }
 
 nodeInfo :: Node -> Maybe NodeInfo
-nodeInfo Node{..} = do
-    NodeNodeCreate create <- nodeNode
-    niNodeId <- nodeNodeId
-    inst <- node_CreateContractInstance create
-    niTemplateId <- contractInstanceTemplateId inst
-    niValue <- contractInstanceValue inst
-    let niActive = isNothing nodeConsumedBy
-    let niObservers = S.fromList $ mapMaybe party $ V.toList nodeObservingSince
+nodeInfo node = do
+    create <- node ^. #maybe'create
+    niNodeId <- node ^. #maybe'nodeId
+    inst <- create ^. #maybe'contractInstance
+    niTemplateId <- inst ^. #maybe'templateId
+    niValue <- inst ^. #maybe'value
+    let niActive = isNothing (node ^. #maybe'consumedBy)
+    let niObservers = S.fromList $ node ^.. #observingSince . traverse . #maybe'party . _Just . #party
     pure NodeInfo{..}
-    where
-        party :: PartyAndTransactionId -> Maybe T.Text
-        party PartyAndTransactionId{..} = do
-            Party{..} <- partyAndTransactionIdParty
-            pure (TL.toStrict partyParty)
-
 
 groupTables :: [NodeInfo] -> [Table]
 groupTables =
@@ -821,109 +797,108 @@ groupTables =
     . map (\node -> (niTemplateId node, [node]))
 
 renderValue :: LF.World -> [T.Text] -> Value -> (H.Html, H.Html)
-renderValue world name = \case
-    Value (Just (ValueSumRecord (Record _ fields))) ->
-        let (ths, tds) = unzip $ map renderField (V.toList fields)
+renderValue world name value = case value ^? #maybe'record . _Just . #fields of
+    Just fields ->
+        let (ths, tds) = unzip $ map renderField fields
         in (mconcat ths, mconcat tds)
-    value ->
+    Nothing ->
         let th = H.th $ H.text $ T.intercalate "." name
             td = H.td $ H.text $ renderPlain $ prettyValue' True 0 world value
         in (th, td)
     where
-        renderField (Field label mbValue) =
-            renderValue world (name ++ [TL.toStrict label]) (fromJust mbValue)
+        renderField f = renderValue world (name ++ [f ^. #label]) (f ^. #value)
 
-templateConName :: Identifier -> LF.Qualified LF.TypeConName
-templateConName (Identifier mbPkgId (TL.toStrict -> qualName)) = LF.Qualified pkgRef  mdN tpl
-  where (mdN, tpl) = case T.splitOn ":" qualName of
-          [modName, defN] -> (LF.ModuleName (T.splitOn "." modName) , LF.TypeConName (T.splitOn "." defN) )
-          _ -> error "malformed identifier"
-        pkgRef = case mbPkgId of
-                  Just (PackageIdentifier (Just (PackageIdentifierSumPackageId pkgId))) -> LF.PRImport $ LF.PackageId $ TL.toStrict pkgId
-                  Just (PackageIdentifier (Just (PackageIdentifierSumSelf _))) -> LF.PRSelf
-                  Just (PackageIdentifier Nothing) -> error "unidentified package reference"
-                  Nothing -> error "unidentified package reference"
+-- templateConName :: Identifier -> LF.Qualified LF.TypeConName
+-- templateConName (Identifier mbPkgId (TL.toStrict -> qualName)) = LF.Qualified pkgRef  mdN tpl
+--   where (mdN, tpl) = case T.splitOn ":" qualName of
+--           [modName, defN] -> (LF.ModuleName (T.splitOn "." modName) , LF.TypeConName (T.splitOn "." defN) )
+--           _ -> error "malformed identifier"
+--         pkgRef = case mbPkgId of
+--                   Just (PackageIdentifier (Just (PackageIdentifierSumPackageId pkgId))) -> LF.PRImport $ LF.PackageId $ TL.toStrict pkgId
+--                   Just (PackageIdentifier (Just (PackageIdentifierSumSelf _))) -> LF.PRSelf
+--                   Just (PackageIdentifier Nothing) -> error "unidentified package reference"
+--                   Nothing -> error "unidentified package reference"
 
-labledField :: T.Text -> T.Text -> T.Text
-labledField fname "" = fname
-labledField fname label = fname <> "." <> label
+-- labledField :: T.Text -> T.Text -> T.Text
+-- labledField fname "" = fname
+-- labledField fname label = fname <> "." <> label
 
-typeConFieldsNames :: LF.World -> (LF.FieldName, LF.Type) -> [T.Text]
-typeConFieldsNames world (LF.FieldName fName, LF.TConApp tcn _) = map (labledField fName) (typeConFields tcn world)
-typeConFieldsNames _ (LF.FieldName fName, _) = [fName]
+-- typeConFieldsNames :: LF.World -> (LF.FieldName, LF.Type) -> [T.Text]
+-- typeConFieldsNames world (LF.FieldName fName, LF.TConApp tcn _) = map (labledField fName) (typeConFields tcn world)
+-- typeConFieldsNames _ (LF.FieldName fName, _) = [fName]
 
-typeConFields :: LF.Qualified LF.TypeConName -> LF.World -> [T.Text]
-typeConFields qName world = case LF.lookupDataType qName world of
-  Right dataType -> case LF.dataCons dataType of
-    LF.DataRecord re -> concatMap (typeConFieldsNames world) re
-    LF.DataVariant _ -> [""]
-    LF.DataEnum _ -> [""]
-  Left _ -> error "malformed template constructor"
+-- typeConFields :: LF.Qualified LF.TypeConName -> LF.World -> [T.Text]
+-- typeConFields qName world = case LF.lookupDataType qName world of
+--   Right dataType -> case LF.dataCons dataType of
+--     LF.DataRecord re -> concatMap (typeConFieldsNames world) re
+--     LF.DataVariant _ -> [""]
+--     LF.DataEnum _ -> [""]
+--   Left _ -> error "malformed template constructor"
 
-renderHeader :: LF.World -> Identifier -> S.Set T.Text -> H.Html
-renderHeader world identifier parties = H.tr $ mconcat
-            [ foldMap (H.th . (H.div H.! A.class_ "observer") . H.text) parties
-            , H.th "id"
-            , H.th "status"
-            , foldMap (H.th . H.text) (typeConFields (templateConName identifier) world)
-            ]
+-- renderHeader :: LF.World -> Identifier -> S.Set T.Text -> H.Html
+-- renderHeader world identifier parties = H.tr $ mconcat
+--             [ foldMap (H.th . (H.div H.! A.class_ "observer") . H.text) parties
+--             , H.th "id"
+--             , H.th "status"
+--             , foldMap (H.th . H.text) (typeConFields (templateConName identifier) world)
+--             ]
 
-renderRow :: LF.World -> S.Set T.Text -> NodeInfo -> H.Html
-renderRow world parties NodeInfo{..} =
-    let (_, tds) = renderValue world [] niValue
-        observed party = if party `S.member` niObservers then "X" else "-"
-        active = if niActive then "active" else "archived"
-        row = H.tr H.! A.class_ (H.textValue active) $ mconcat
-            [ foldMap ((H.td H.! A.class_ "disclosure") . H.text . observed) parties
-            , H.td (H.text $ renderPlain $ prettyNodeId niNodeId)
-            , H.td (H.text active)
-            , tds
-            ]
-    in row
+-- renderRow :: LF.World -> S.Set T.Text -> NodeInfo -> H.Html
+-- renderRow world parties NodeInfo{..} =
+--     let (_, tds) = renderValue world [] niValue
+--         observed party = if party `S.member` niObservers then "X" else "-"
+--         active = if niActive then "active" else "archived"
+--         row = H.tr H.! A.class_ (H.textValue active) $ mconcat
+--             [ foldMap ((H.td H.! A.class_ "disclosure") . H.text . observed) parties
+--             , H.td (H.text $ renderPlain $ prettyNodeId niNodeId)
+--             , H.td (H.text active)
+--             , tds
+--             ]
+--     in row
 
-renderTable :: LF.World -> Table -> H.Html
-renderTable world Table{..} = H.div H.! A.class_ active $ do
-    let parties = S.unions $ map niObservers tRows
-    H.h1 $ renderPlain $ prettyDefName world tTemplateId
-    let rows = map (renderRow world parties) tRows
-    let header = renderHeader world tTemplateId parties
-    H.table $ header <> mconcat rows
-    where
-        active = if any niActive tRows then "active" else "archived"
+-- renderTable :: LF.World -> Table -> H.Html
+-- renderTable world Table{..} = H.div H.! A.class_ active $ do
+--     let parties = S.unions $ map niObservers tRows
+--     H.h1 $ renderPlain $ prettyDefName world tTemplateId
+--     let rows = map (renderRow world parties) tRows
+--     let header = renderHeader world tTemplateId parties
+--     H.table $ header <> mconcat rows
+--     where
+--         active = if any niActive tRows then "active" else "archived"
 
-renderTableView :: LF.World -> ScenarioResult -> Maybe H.Html
-renderTableView world ScenarioResult{..} =
-    let nodes = mapMaybe nodeInfo (V.toList scenarioResultNodes)
-        tables = groupTables nodes
-    in if null nodes then Nothing else Just $ H.div H.! A.class_ "table" $ foldMap (renderTable world) tables
+-- renderTableView :: LF.World -> ScenarioResult -> Maybe H.Html
+-- renderTableView world ScenarioResult{..} =
+--     let nodes = mapMaybe nodeInfo (V.toList scenarioResultNodes)
+--         tables = groupTables nodes
+--     in if null nodes then Nothing else Just $ H.div H.! A.class_ "table" $ foldMap (renderTable world) tables
 
-renderTransactionView :: LF.World -> ScenarioResult -> H.Html
-renderTransactionView world res =
-    let doc = prettyScenarioResult world res
-    in H.div H.! A.class_ "da-code transaction" $ Pretty.renderHtml 128 doc
+-- renderTransactionView :: LF.World -> ScenarioResult -> H.Html
+-- renderTransactionView world res =
+--     let doc = prettyScenarioResult world res
+--     in H.div H.! A.class_ "da-code transaction" $ Pretty.renderHtml 128 doc
 
-renderScenarioResult :: LF.World -> ScenarioResult -> T.Text
-renderScenarioResult world res = TL.toStrict $ Blaze.renderHtml $ do
-    H.docTypeHtml $ do
-        H.head $ do
-            H.style $ H.text Pretty.highlightStylesheet
-            H.style $ H.text stylesheet
-            H.script "" H.! A.src "$webviewSrc"
-        let tableView = renderTableView world res
-        let transView = renderTransactionView world res
-        case tableView of
-            Nothing -> H.body transView
-            Just tbl -> H.body H.! A.class_ "hide_archived hide_transaction" $ do
-                H.div $ do
-                    H.button H.! A.onclick "toggle_view();" $ do
-                        H.span H.! A.class_ "table" $ H.text "Show transaction view"
-                        H.span H.! A.class_ "transaction" $ H.text "Show table view"
-                    H.text " "
-                    H.span H.! A.class_ "table" $ do
-                        H.input H.! A.type_ "checkbox" H.! A.id "show_archived" H.! A.onchange "show_archived_changed();"
-                        H.label H.! A.for "show_archived" $ "Show archived"
-                tbl
-                transView
+-- renderScenarioResult :: LF.World -> ScenarioResult -> T.Text
+-- renderScenarioResult world res = TL.toStrict $ Blaze.renderHtml $ do
+--     H.docTypeHtml $ do
+--         H.head $ do
+--             H.style $ H.text Pretty.highlightStylesheet
+--             H.style $ H.text stylesheet
+--             H.script "" H.! A.src "$webviewSrc"
+--         let tableView = renderTableView world res
+--         let transView = renderTransactionView world res
+--         case tableView of
+--             Nothing -> H.body transView
+--             Just tbl -> H.body H.! A.class_ "hide_archived hide_transaction" $ do
+--                 H.div $ do
+--                     H.button H.! A.onclick "toggle_view();" $ do
+--                         H.span H.! A.class_ "table" $ H.text "Show transaction view"
+--                         H.span H.! A.class_ "transaction" $ H.text "Show table view"
+--                     H.text " "
+--                     H.span H.! A.class_ "table" $ do
+--                         H.input H.! A.type_ "checkbox" H.! A.id "show_archived" H.! A.onchange "show_archived_changed();"
+--                         H.label H.! A.for "show_archived" $ "Show archived"
+--                 tbl
+--                 transView
 
 stylesheet :: T.Text
 stylesheet = T.unlines

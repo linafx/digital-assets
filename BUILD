@@ -3,12 +3,14 @@ package(default_visibility = ["//:__subpackages__"])
 load("@bazel_tools//tools/python:toolchain.bzl", "py_runtime_pair")
 load(
     "@io_tweag_rules_haskell//haskell:haskell.bzl",
+    "haskell_proto_toolchain",
     "haskell_toolchain",
 )
 load(
     "@io_tweag_rules_haskell//haskell:c2hs.bzl",
     "c2hs_toolchain",
 )
+load("@ai_formation_hazel//:hazel.bzl", "hazel_library",)
 load("//bazel_tools:haskell.bzl", "da_haskell_library", "da_haskell_repl")
 load("@os_info//:os_info.bzl", "is_windows")
 
@@ -57,6 +59,22 @@ load(
 c2hs_toolchain(
     name = "c2hs-toolchain",
     c2hs = "@haskell_c2hs//:bin",
+)
+
+haskell_proto_toolchain(
+  name = "haskell-protobuf-toolchain",
+  protoc = "@com_google_protobuf//:protoc",
+  plugin = "@haskell_proto__lens__protoc//:bin",
+  deps = [
+    hazel_library("base"),
+    hazel_library("bytestring"),
+    hazel_library("containers"),
+    hazel_library("deepseq"),
+    hazel_library("lens-family"),
+    hazel_library("proto-lens"),
+    hazel_library("text"),
+    hazel_library("vector"),
+  ],
 )
 
 #

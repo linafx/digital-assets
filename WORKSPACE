@@ -29,6 +29,7 @@ haskell_repositories()
 
 register_toolchains(
     "//:c2hs-toolchain",
+    "//:haskell-protobuf-toolchain",
 )
 
 load("//bazel_tools/dev_env_package:dev_env_package.bzl", "dev_env_package")
@@ -540,6 +541,12 @@ hazel_repositories(
             ) +
             hazel_hackage("terminal-progress-bar", "0.4.1", "a61ca10c92cacc712dbbe28881dc23f41cc139760b7b2eef66bd0faa60ea5e24") +
             hazel_hackage("rope-utf16-splay", "0.3.1.0", "cbf878098355441ed7be445466fcb72d45390073a298b37649d762de2a7f8cc6") +
+            hazel_hackage("proto-lens", "0.5.1.0", "c1afae9c8471d71786568498c2b97a4f7684d75d0e60afd33178ecab934468cb") +
+            hazel_hackage("proto-lens-protoc", "0.5.0.0", "161dcee2aed780f62c01522c86afce61721cf89c0143f157efefb1bd1fa1d164") +
+            hazel_hackage("proto-lens-runtime", "0.5.0.0", "ecc1f4f2488e92ccc293f18faf84d1aa6f1e10a88196d0a61549da1c3383a141") +
+            hazel_hackage("http2-client-grpc", "0.7.0.0", "c1fecd28cb0d6f54b7503aad537256b9b0aac44c97e0b92e1651099b7911c8c7") +
+            hazel_hackage("http2-client", "0.9.0.0", "b84f8f562c5b11a79ac620f4d23f17711c37f7015e482da156c2bea8895586fc") +
+            hazel_hackage("http2-grpc-types", "0.4.0.0", "6569e629cb515b5d733890fde4971ccb3a90f9fdbc36601303d6456657d525c0") +
             # This corresponds to our normalize-uri branch that enforces a consistent
             # precent-encoding for URIs used as keys.
             hazel_github_external(
