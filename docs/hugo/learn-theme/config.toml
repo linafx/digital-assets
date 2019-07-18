@@ -1,0 +1,19 @@
+languageCode = "en-us"
+title = "DAML SDK documentation"
+theme = "hugo-theme-learn"
+
+# For search functionality
+[outputs]
+home = [ "HTML", "RSS", "JSON"]
+
+[params]
+  # Prefix URL to edit current page. Will display an "Edit this page" button on top right hand corner of every page. 
+  # Useful to give opportunity to people to create merge request for your doc.
+  # See the config.toml file from this documentation site to have an example.
+  editURL = "https://github.com/digital-asset/daml/tree/master/docs/source/"
+  # Shows a checkmark for visited pages on the menu
+  showVisitedLinks = true
+   # Set this to true to disable copy-to-clipboard button for inline code.
+   # disableInlineCopyToClipBoard = true
+ # Change default color scheme with a variant one. Can be "red", "blue", "green".
+ # themeVariant = "blue"
