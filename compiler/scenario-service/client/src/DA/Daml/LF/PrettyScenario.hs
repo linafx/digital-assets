@@ -37,7 +37,6 @@ import qualified Data.Text.Extended         as TE
 import qualified Data.Text.Lazy             as TL
 import qualified Data.Time.Clock.POSIX      as CP
 import qualified Data.Time.Format           as TF
-import qualified Data.Vector                as V
 import qualified Network.URI.Encode
 import Proto.Compiler.ScenarioService.Protos.ScenarioService as Proto
 import qualified Text.Blaze.Html5 as H
@@ -101,29 +100,29 @@ parseNodeId =
   . T.splitOn ":"
   . view #id
 
--- prettyScenarioResult
---   :: LF.World -> Proto.ScenarioResult -> Doc SyntaxClass
--- prettyScenarioResult world scenarioResult =
---   let ppSteps = runM (scenarioResult ^. #nodes) world (vsep <$> mapM prettyScenarioStep (V.toList steps))
---       isActive node = case node ^? #maybe'create of
---         Just _ -> isNothing $ node ^? #consumedBy
---         _ -> False
---       sortNodeIds = sortBy (\a b -> compare (parseNodeId a) (parseNodeId b))
---       ppActive =
---           fcommasep
---         $ map prettyNodeIdLink
---         $ sortNodeIds $ mapMaybe nodeNodeId
---         $ filter isActive (V.toList nodes)
+prettyScenarioResult
+  :: LF.World -> Proto.ScenarioResult -> Doc SyntaxClass
+prettyScenarioResult world scenarioResult =
+  let ppSteps = runM (scenarioResult ^. #nodes) world (vsep <$> mapM prettyScenarioStep (scenarioResult ^. #scenarioSteps))
+      isActive node = case node ^? #maybe'create of
+        Just _ -> isNothing $ node ^? #consumedBy
+        _ -> False
+      sortNodeIds = sortBy (\a b -> compare (parseNodeId a) (parseNodeId b))
+      ppActive =
+          fcommasep
+        $ map prettyNodeIdLink
+        $ sortNodeIds $ mapMaybe (view #maybe'nodeId)
+        $ filter isActive (scenarioResult ^. #nodes)
 
---       ppTrace = vcat $ map (prettyTraceMessage world) (V.toList traceLog)
---   in vsep
---     [ label_ "Transactions: " ppSteps
---     , label_ "Active contracts: " ppActive
---     , maybe mempty (\v -> label_ "Return value:" (prettyValue' True 0 world v)) retValue
---     , if V.null traceLog
---       then text ""
---       else text "Trace: " $$ nest 2 ppTrace
---     ]
+      ppTrace = vcat $ map (prettyTraceMessage world) (scenarioResult ^. #traceLog)
+  in vsep
+    [ label_ "Transactions: " ppSteps
+    , label_ "Active contracts: " ppActive
+    , maybe mempty (\v -> label_ "Return value:" (prettyValue' True 0 world v)) (scenarioResult ^. #maybe'returnValue)
+    , if null (scenarioResult ^. #traceLog)
+      then text ""
+      else text "Trace: " $$ nest 2 ppTrace
+    ]
 
 prettyBriefScenarioError
   :: LF.World -> ScenarioError -> Doc SyntaxClass
@@ -579,11 +578,10 @@ isUnitValue v
     | otherwise = False
 
 prettyNode :: Node -> M (Doc SyntaxClass)
-prettyNode n
-  | Nothing <- n ^. #maybe'node =
-      pure "<missing node>"
+prettyNode n = case n ^. #maybe'node of
+    Nothing -> pure "<missing node>"
 
-  | Just node <- n ^. #maybe'node = do
+    Just node -> do
       ppNode <- prettyNodeNode node
       let ppConsumedBy =
               maybe mempty
@@ -657,41 +655,43 @@ prettyPartialTransaction partialTransaction = do
 
 
 prettyValue' :: Bool -> Int -> LF.World -> Value -> Doc SyntaxClass
-prettyValue' _ _ _ v | Nothing <- v ^. #maybe'sum = text "<missing value>"
-prettyValue' showRecordType prec world v | Just sum <- v ^. #maybe'sum = case sum of
-  Value'Record rec ->
-    maybeParens (prec > precWith) $
-      (if showRecordType
-       then \fs -> prettyMay "" (prettyDefName world) (rec ^. #maybe'recordId) <-> keyword_ "with" $$ nest 2 fs
-       else id)
-      (sep (punctuate ";" (map prettyField $ rec ^. #fields)))
-  Value'Tuple tuple ->
-    braces (sep (punctuate ";" (map prettyField $ tuple ^. #fields)))
-  Value'Variant variant ->
-        prettyMay "" (\v -> prettyDefName world v <> ":") (variant ^. #maybe'variantId) <> text (variant ^. #constructor)
-    <-> prettyMay "<missing value>" (prettyValue' True precHighest world) (variant ^. #maybe'value)
-  Value'Enum enum ->
-        prettyMay "" (\x -> prettyDefName world x <> ":") (enum ^. #maybe'enumId) <> text (enum ^. #constructor)
-  Value'List list ->
-    brackets (fcommasep (map (prettyValue' True prec world) $ list ^. #elements))
-  Value'ContractId coid -> prettyContractId coid
-  Value'Int64 i -> string (show i)
-  Value'Decimal ds ->
-    case preview stringToDecimal (T.unpack ds) of
-      Nothing -> text ds
-      Just d  -> string $ review stringToDecimal d
-  Value'Text t -> char '"' <> text t <> char '"'
-  Value'Timestamp ts -> prettyTimestamp ts
-  Value'Party p -> char '\'' <> text p <> char '\''
-  Value'Bool True -> text "true"
-  Value'Bool False -> text "false"
-  Value'Unit{} -> text "{}"
-  Value'Date d -> prettyDate d
-  Value'Optional o -> case o ^. #maybe'value of
-      Nothing -> text "none"
-      Just v -> "some " <> prettyValue' True precHighest world v
-  Value'Map m -> "Map" <> brackets (fcommasep (map (prettyEntry prec world) $ m ^. #entries))
-  Value'Unserializable what -> text what
+prettyValue' _ _ _ (view #maybe'sum -> Nothing) = text "<missing value>"
+prettyValue' showRecordType prec world v = case v ^. #maybe'sum of
+    Nothing -> text "<missing value>"
+    Just sum -> case sum of
+        Value'Record rec ->
+          maybeParens (prec > precWith) $
+            (if showRecordType
+             then \fs -> prettyMay "" (prettyDefName world) (rec ^. #maybe'recordId) <-> keyword_ "with" $$ nest 2 fs
+             else id)
+            (sep (punctuate ";" (map prettyField $ rec ^. #fields)))
+        Value'Tuple tuple ->
+          braces (sep (punctuate ";" (map prettyField $ tuple ^. #fields)))
+        Value'Variant variant ->
+              prettyMay "" (\v -> prettyDefName world v <> ":") (variant ^. #maybe'variantId) <> text (variant ^. #constructor)
+          <-> prettyMay "<missing value>" (prettyValue' True precHighest world) (variant ^. #maybe'value)
+        Value'Enum enum ->
+              prettyMay "" (\x -> prettyDefName world x <> ":") (enum ^. #maybe'enumId) <> text (enum ^. #constructor)
+        Value'List list ->
+          brackets (fcommasep (map (prettyValue' True prec world) $ list ^. #elements))
+        Value'ContractId coid -> prettyContractId coid
+        Value'Int64 i -> string (show i)
+        Value'Decimal ds ->
+          case preview stringToDecimal (T.unpack ds) of
+            Nothing -> text ds
+            Just d  -> string $ review stringToDecimal d
+        Value'Text t -> char '"' <> text t <> char '"'
+        Value'Timestamp ts -> prettyTimestamp ts
+        Value'Party p -> char '\'' <> text p <> char '\''
+        Value'Bool True -> text "true"
+        Value'Bool False -> text "false"
+        Value'Unit{} -> text "{}"
+        Value'Date d -> prettyDate d
+        Value'Optional o -> case o ^. #maybe'value of
+            Nothing -> text "none"
+            Just v -> "some " <> prettyValue' True precHighest world v
+        Value'Map m -> "Map" <> brackets (fcommasep (map (prettyEntry prec world) $ m ^. #entries))
+        Value'Unserializable what -> text what
   where
     prettyField f =
       hang (text (f ^. #label) <-> "=") 2
@@ -808,97 +808,96 @@ renderValue world name value = case value ^? #maybe'record . _Just . #fields of
     where
         renderField f = renderValue world (name ++ [f ^. #label]) (f ^. #value)
 
--- templateConName :: Identifier -> LF.Qualified LF.TypeConName
--- templateConName (Identifier mbPkgId (TL.toStrict -> qualName)) = LF.Qualified pkgRef  mdN tpl
---   where (mdN, tpl) = case T.splitOn ":" qualName of
---           [modName, defN] -> (LF.ModuleName (T.splitOn "." modName) , LF.TypeConName (T.splitOn "." defN) )
---           _ -> error "malformed identifier"
---         pkgRef = case mbPkgId of
---                   Just (PackageIdentifier (Just (PackageIdentifierSumPackageId pkgId))) -> LF.PRImport $ LF.PackageId $ TL.toStrict pkgId
---                   Just (PackageIdentifier (Just (PackageIdentifierSumSelf _))) -> LF.PRSelf
---                   Just (PackageIdentifier Nothing) -> error "unidentified package reference"
---                   Nothing -> error "unidentified package reference"
+templateConName :: Identifier -> LF.Qualified LF.TypeConName
+templateConName identifier = LF.Qualified pkgRef mdN tpl
+  where (mdN, tpl) = case T.splitOn ":" (identifier ^. #name) of
+          [modName, defN] -> (LF.ModuleName (T.splitOn "." modName) , LF.TypeConName (T.splitOn "." defN) )
+          _ -> error "malformed identifier"
+        pkgRef = case identifier ^? #maybe'package . _Just . #maybe'sum . _Just of
+                  Just (PackageIdentifier'PackageId pkgId) -> LF.PRImport $ LF.PackageId pkgId
+                  Just (PackageIdentifier'Self _) -> LF.PRSelf
+                  Nothing -> error "unidentified package reference"
 
--- labledField :: T.Text -> T.Text -> T.Text
--- labledField fname "" = fname
--- labledField fname label = fname <> "." <> label
+labledField :: T.Text -> T.Text -> T.Text
+labledField fname "" = fname
+labledField fname label = fname <> "." <> label
 
--- typeConFieldsNames :: LF.World -> (LF.FieldName, LF.Type) -> [T.Text]
--- typeConFieldsNames world (LF.FieldName fName, LF.TConApp tcn _) = map (labledField fName) (typeConFields tcn world)
--- typeConFieldsNames _ (LF.FieldName fName, _) = [fName]
+typeConFieldsNames :: LF.World -> (LF.FieldName, LF.Type) -> [T.Text]
+typeConFieldsNames world (LF.FieldName fName, LF.TConApp tcn _) = map (labledField fName) (typeConFields tcn world)
+typeConFieldsNames _ (LF.FieldName fName, _) = [fName]
 
--- typeConFields :: LF.Qualified LF.TypeConName -> LF.World -> [T.Text]
--- typeConFields qName world = case LF.lookupDataType qName world of
---   Right dataType -> case LF.dataCons dataType of
---     LF.DataRecord re -> concatMap (typeConFieldsNames world) re
---     LF.DataVariant _ -> [""]
---     LF.DataEnum _ -> [""]
---   Left _ -> error "malformed template constructor"
+typeConFields :: LF.Qualified LF.TypeConName -> LF.World -> [T.Text]
+typeConFields qName world = case LF.lookupDataType qName world of
+  Right dataType -> case LF.dataCons dataType of
+    LF.DataRecord re -> concatMap (typeConFieldsNames world) re
+    LF.DataVariant _ -> [""]
+    LF.DataEnum _ -> [""]
+  Left _ -> error "malformed template constructor"
 
--- renderHeader :: LF.World -> Identifier -> S.Set T.Text -> H.Html
--- renderHeader world identifier parties = H.tr $ mconcat
---             [ foldMap (H.th . (H.div H.! A.class_ "observer") . H.text) parties
---             , H.th "id"
---             , H.th "status"
---             , foldMap (H.th . H.text) (typeConFields (templateConName identifier) world)
---             ]
+renderHeader :: LF.World -> Identifier -> S.Set T.Text -> H.Html
+renderHeader world identifier parties = H.tr $ mconcat
+            [ foldMap (H.th . (H.div H.! A.class_ "observer") . H.text) parties
+            , H.th "id"
+            , H.th "status"
+            , foldMap (H.th . H.text) (typeConFields (templateConName identifier) world)
+            ]
 
--- renderRow :: LF.World -> S.Set T.Text -> NodeInfo -> H.Html
--- renderRow world parties NodeInfo{..} =
---     let (_, tds) = renderValue world [] niValue
---         observed party = if party `S.member` niObservers then "X" else "-"
---         active = if niActive then "active" else "archived"
---         row = H.tr H.! A.class_ (H.textValue active) $ mconcat
---             [ foldMap ((H.td H.! A.class_ "disclosure") . H.text . observed) parties
---             , H.td (H.text $ renderPlain $ prettyNodeId niNodeId)
---             , H.td (H.text active)
---             , tds
---             ]
---     in row
+renderRow :: LF.World -> S.Set T.Text -> NodeInfo -> H.Html
+renderRow world parties NodeInfo{..} =
+    let (_, tds) = renderValue world [] niValue
+        observed party = if party `S.member` niObservers then "X" else "-"
+        active = if niActive then "active" else "archived"
+        row = H.tr H.! A.class_ (H.textValue active) $ mconcat
+            [ foldMap ((H.td H.! A.class_ "disclosure") . H.text . observed) parties
+            , H.td (H.text $ renderPlain $ prettyNodeId niNodeId)
+            , H.td (H.text active)
+            , tds
+            ]
+    in row
 
--- renderTable :: LF.World -> Table -> H.Html
--- renderTable world Table{..} = H.div H.! A.class_ active $ do
---     let parties = S.unions $ map niObservers tRows
---     H.h1 $ renderPlain $ prettyDefName world tTemplateId
---     let rows = map (renderRow world parties) tRows
---     let header = renderHeader world tTemplateId parties
---     H.table $ header <> mconcat rows
---     where
---         active = if any niActive tRows then "active" else "archived"
+renderTable :: LF.World -> Table -> H.Html
+renderTable world Table{..} = H.div H.! A.class_ active $ do
+    let parties = S.unions $ map niObservers tRows
+    H.h1 $ renderPlain $ prettyDefName world tTemplateId
+    let rows = map (renderRow world parties) tRows
+    let header = renderHeader world tTemplateId parties
+    H.table $ header <> mconcat rows
+    where
+        active = if any niActive tRows then "active" else "archived"
 
--- renderTableView :: LF.World -> ScenarioResult -> Maybe H.Html
--- renderTableView world ScenarioResult{..} =
---     let nodes = mapMaybe nodeInfo (V.toList scenarioResultNodes)
---         tables = groupTables nodes
---     in if null nodes then Nothing else Just $ H.div H.! A.class_ "table" $ foldMap (renderTable world) tables
+renderTableView :: LF.World -> ScenarioResult -> Maybe H.Html
+renderTableView world scenarioResult =
+    let nodes = mapMaybe nodeInfo (scenarioResult ^. #nodes)
+        tables = groupTables nodes
+    in if null nodes then Nothing else Just $ H.div H.! A.class_ "table" $ foldMap (renderTable world) tables
 
--- renderTransactionView :: LF.World -> ScenarioResult -> H.Html
--- renderTransactionView world res =
---     let doc = prettyScenarioResult world res
---     in H.div H.! A.class_ "da-code transaction" $ Pretty.renderHtml 128 doc
+renderTransactionView :: LF.World -> ScenarioResult -> H.Html
+renderTransactionView world res =
+    let doc = prettyScenarioResult world res
+    in H.div H.! A.class_ "da-code transaction" $ Pretty.renderHtml 128 doc
 
--- renderScenarioResult :: LF.World -> ScenarioResult -> T.Text
--- renderScenarioResult world res = TL.toStrict $ Blaze.renderHtml $ do
---     H.docTypeHtml $ do
---         H.head $ do
---             H.style $ H.text Pretty.highlightStylesheet
---             H.style $ H.text stylesheet
---             H.script "" H.! A.src "$webviewSrc"
---         let tableView = renderTableView world res
---         let transView = renderTransactionView world res
---         case tableView of
---             Nothing -> H.body transView
---             Just tbl -> H.body H.! A.class_ "hide_archived hide_transaction" $ do
---                 H.div $ do
---                     H.button H.! A.onclick "toggle_view();" $ do
---                         H.span H.! A.class_ "table" $ H.text "Show transaction view"
---                         H.span H.! A.class_ "transaction" $ H.text "Show table view"
---                     H.text " "
---                     H.span H.! A.class_ "table" $ do
---                         H.input H.! A.type_ "checkbox" H.! A.id "show_archived" H.! A.onchange "show_archived_changed();"
---                         H.label H.! A.for "show_archived" $ "Show archived"
---                 tbl
---                 transView
+renderScenarioResult :: LF.World -> ScenarioResult -> T.Text
+renderScenarioResult world res = TL.toStrict $ Blaze.renderHtml $ do
+    H.docTypeHtml $ do
+        H.head $ do
+            H.style $ H.text Pretty.highlightStylesheet
+            H.style $ H.text stylesheet
+            H.script "" H.! A.src "$webviewSrc"
+        let tableView = renderTableView world res
+        let transView = renderTransactionView world res
+        case tableView of
+            Nothing -> H.body transView
+            Just tbl -> H.body H.! A.class_ "hide_archived hide_transaction" $ do
+                H.div $ do
+                    H.button H.! A.onclick "toggle_view();" $ do
+                        H.span H.! A.class_ "table" $ H.text "Show transaction view"
+                        H.span H.! A.class_ "transaction" $ H.text "Show table view"
+                    H.text " "
+                    H.span H.! A.class_ "table" $ do
+                        H.input H.! A.type_ "checkbox" H.! A.id "show_archived" H.! A.onchange "show_archived_changed();"
+                        H.label H.! A.for "show_archived" $ "Show archived"
+                tbl
+                transView
 
 stylesheet :: T.Text
 stylesheet = T.unlines
