@@ -545,7 +545,7 @@ hazel_repositories(
             hazel_hackage("proto-lens-protoc", "0.5.0.0", "161dcee2aed780f62c01522c86afce61721cf89c0143f157efefb1bd1fa1d164") +
             hazel_hackage("proto-lens-runtime", "0.5.0.0", "ecc1f4f2488e92ccc293f18faf84d1aa6f1e10a88196d0a61549da1c3383a141") +
             hazel_hackage("http2-client-grpc", "0.7.0.0", "c1fecd28cb0d6f54b7503aad537256b9b0aac44c97e0b92e1651099b7911c8c7") +
-            hazel_hackage("http2-client", "0.9.0.0", "b84f8f562c5b11a79ac620f4d23f17711c37f7015e482da156c2bea8895586fc") +
+            hazel_github_external("lucasdicioccio", "http2-client", "8db77e4d9dd7422c60e62b9089e671db33301307", "3a688112eef910589d840531f74e0b43a600ba322db46ea0260660630afada1e") +
             hazel_hackage("http2-grpc-types", "0.4.0.0", "6569e629cb515b5d733890fde4971ccb3a90f9fdbc36601303d6456657d525c0") +
             # This corresponds to our normalize-uri branch that enforces a consistent
             # precent-encoding for URIs used as keys.

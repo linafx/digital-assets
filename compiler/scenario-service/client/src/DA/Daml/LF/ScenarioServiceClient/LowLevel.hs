@@ -4,6 +4,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE OverloadedStrings #-}
 module DA.Daml.LF.ScenarioServiceClient.LowLevel
   ( Options(..)
@@ -22,12 +23,13 @@ module DA.Daml.LF.ScenarioServiceClient.LowLevel
   , LightValidation(..)
   , updateCtx
   , runScenario
-  , SS.ScenarioResult(..)
+  , ScenarioResult
   , encodeModule
   , ScenarioServiceException(..)
   ) where
 
 import Conduit (runConduit, (.|), MonadUnliftIO(..))
+import Control.Lens
 import Data.Maybe
 import Data.IORef
 import GHC.Generics
@@ -38,6 +40,7 @@ import Control.DeepSeq
 import Control.Exception
 import Control.Monad
 import Control.Monad.IO.Class
+import Control.Monad.Trans.Except
 import qualified DA.Daml.LF.Proto3.EncodeV1 as EncodeV1
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BSL
@@ -46,12 +49,14 @@ import Data.Conduit.Process
 import qualified Data.Conduit.Text as C.T
 import Data.Int (Int64)
 import Data.List.Split (splitOn)
+import Data.ProtoLens.Labels ()
+import Data.ProtoLens.Message (defMessage)
+-- import Data.ProtoLens.Service.Types (Service(..), HasMethod, HasMethodImpl(..))
 import qualified Data.Text as T
-import qualified Data.Text.Lazy as TL
-import qualified Data.Vector as V
-import Network.GRPC.HighLevel.Client (Client, ClientError, ClientRequest(..), ClientResult(..), GRPCMethodType(..))
-import Network.GRPC.HighLevel.Generated (withGRPCClient)
-import Network.GRPC.LowLevel (ClientConfig(..), Host(..), Port(..), StatusCode(..))
+import Network.HTTP2
+import Network.HTTP2.Client
+import Network.GRPC.Client
+import Network.GRPC.Client.Helpers
 import qualified Proto3.Suite as Proto
 import System.Directory
 import System.Environment
@@ -62,7 +67,9 @@ import System.Process (proc, CreateProcess, readCreateProcessWithExitCode)
 
 import DA.Bazel.Runfiles
 import qualified DA.Daml.LF.Ast as LF
-import qualified ScenarioService as SS
+import Proto.Compiler.ScenarioService.Protos.ScenarioService as Proto
+
+-- import qualified Network.HTTP2 as HTTP2
 
 data Options = Options
   { optServerJar :: FilePath
@@ -75,7 +82,7 @@ data Options = Options
 type TimeoutSeconds = Int
 
 data Handle = Handle
-  { hClient :: Client
+  { hClient :: GrpcClient
   , hOptions :: Options
   }
 
@@ -99,12 +106,14 @@ encodeModule version m = case version of
     LF.V1{} -> BSL.toStrict (Proto.toLazyByteString (EncodeV1.encodeModuleWithLargePackageIds version m))
 
 data BackendError
-  = BErrorClient ClientError
-  | BErrorFail StatusCode
+  = BErrorFail ErrorCode
+  | BErrorClient ClientError
+  | BTooMuchConcurrency TooMuchConcurrency
+  | BErrorOther String
   deriving Show
 
 data Error
-  = ScenarioError SS.ScenarioError
+  = ScenarioError ScenarioError
   | BackendError BackendError
   | ExceptionError SomeException
   deriving (Generic, Show)
@@ -223,7 +232,7 @@ withScenarioService opts@Options{..} f = do
               liftIO (putMVar portMVar (Left "Stdout of scenario service terminated before we got the PORT=<port> message"))
             Just (T.unpack -> line) ->
               case splitOn "=" line of
-                ["PORT", ps] | Just p <- readMaybe ps ->
+                ["PORT", ps] | Just (p :: Int) <- readMaybe ps ->
                   liftIO (putMVar portMVar (Right p)) >> C.awaitForever printStdout
                 _ -> do
                   liftIO (optLogError ("Expected PORT=<port> from scenario service, but got '" <> line <> "'. Ignoring it."))
@@ -240,112 +249,136 @@ withScenarioService opts@Options{..} f = do
             liftIO $ optLogInfo $ "Scenario service backend running on port " <> show port
             -- Using 127.0.0.1 instead of localhost helps when our packaging logic falls over
             -- and DNS lookups break, e.g., on Alpine linux.
-            let grpcConfig = ClientConfig (Host "127.0.0.1") (Port port) [] Nothing
-            withGRPCClient grpcConfig $ \client ->
-                f Handle
+            let grpcConfig =
+                    (grpcClientConfigSimple "127.0.0.1" (fromIntegral port) False) { _grpcClientConfigTimeout = Timeout 5 }
+            -- putStrLn "setting up grpc client"
+            -- conn <- asException $ newHttp2FrameConnection "127.0.0.1" (fromIntegral port) Nothing
+            -- let goAwayHandler m = liftIO $ do
+            --         putStrLn "~~~goAway~~~"
+            --         print m
+            -- asException $ runHttp2Client (wrapConn conn) 8192 8192 [] goAwayHandler ignoreFallbackHandler $ \client -> do
+            bracket (asException $ setupGrpcClient grpcConfig) (asException . close) $ \client -> do
+                liftIO $ f Handle
                     { hClient = client
                     , hOptions = opts
                     }
 
+-- wrapConn :: Http2FrameConnection -> Http2FrameConnection
+-- wrapConn conn = conn {
+--       _makeFrameClientStream = \sid ->
+--           let frameClient = (_makeFrameClientStream conn) sid
+--           in frameClient {
+--                  _sendFrames = \mkFrames -> do
+--                      xs <- mkFrames
+--                      liftIO . print $ (">>> "::String, _getStreamId frameClient, map snd xs)
+--                      _sendFrames frameClient (pure xs)
+--              }
+--     , _serverStream =
+--         let
+--           currentServerStrean = _serverStream conn
+--         in
+--           currentServerStrean {
+--             _nextHeaderAndFrame = do
+--                 hdrFrame@(hdr,_) <- _nextHeaderAndFrame currentServerStrean
+--                 liftIO . print $ ("<<< "::String, HTTP2.streamId hdr, hdrFrame)
+--                 return hdrFrame
+--           }
+--     }
+
+asException :: ClientIO a -> IO a
+asException a = do
+    r <- runExceptT a
+    case r of
+        Left e -> throwIO e
+        Right r -> pure r
+
+fromRightA :: Applicative f => (a -> f b) -> Either a b -> f b
+fromRightA f = either f pure
+
+wrapResult :: ClientIO (Either TooMuchConcurrency (RawReply a)) -> ExceptT BackendError IO a
+wrapResult a = do
+    r <- liftIO $ runExceptT a
+    r <- fromRightA (throwError . BErrorClient) r
+    r <- fromRightA (throwError . BTooMuchConcurrency) r
+    (_, _, r) <- fromRightA (throwError . BErrorFail) r
+    fromRightA (throwError . BErrorOther) r
+
 newCtx :: Handle -> IO (Either BackendError ContextId)
-newCtx Handle{..} = do
-  ssClient <- SS.scenarioServiceClient hClient
-  res <-
-    performRequest
-      (SS.scenarioServiceNewContext ssClient)
-      (optRequestTimeout hOptions)
-      SS.NewContextRequest
-  pure (ContextId . SS.newContextResponseContextId <$> res)
+newCtx Handle{..} = runExceptT $ do
+    liftIO $ putStrLn "newContext"
+    r <- wrapResult $ rawUnary (RPC :: RPC ScenarioService "newContext") hClient
+        defMessage
+    liftIO $ putStrLn "oldContext"
+    pure $ ContextId $ r ^. #contextId
 
 cloneCtx :: Handle -> ContextId -> IO (Either BackendError ContextId)
-cloneCtx Handle{..} (ContextId ctxId) = do
-  ssClient <- SS.scenarioServiceClient hClient
-  res <-
-    performRequest
-      (SS.scenarioServiceCloneContext ssClient)
-      (optRequestTimeout hOptions)
-      (SS.CloneContextRequest ctxId)
-  pure (ContextId . SS.cloneContextResponseContextId <$> res)
+cloneCtx Handle{..} (ContextId ctxId) = runExceptT $ do
+    liftIO $ putStrLn "cloneContext"
+    r <- wrapResult $ rawUnary (RPC :: RPC ScenarioService "cloneContext") hClient $
+        defMessage & #contextId .~ ctxId
+    liftIO $ putStrLn "clonedContext"
+    pure $ ContextId $ r ^. #contextId
 
 deleteCtx :: Handle -> ContextId -> IO (Either BackendError ())
-deleteCtx Handle{..} (ContextId ctxId) = do
-  ssClient <- SS.scenarioServiceClient hClient
-  res <-
-    performRequest
-      (SS.scenarioServiceDeleteContext ssClient)
-      (optRequestTimeout hOptions)
-      (SS.DeleteContextRequest ctxId)
-  pure (void res)
+deleteCtx Handle{..} (ContextId ctxId) = runExceptT $ do
+    _ <- wrapResult $ rawUnary (RPC :: RPC ScenarioService "deleteContext") hClient $
+        defMessage & #contextId .~ ctxId
+    pure ()
 
 gcCtxs :: Handle -> [ContextId] -> IO (Either BackendError ())
-gcCtxs Handle{..} ctxIds = do
-    ssClient <- SS.scenarioServiceClient hClient
-    res <-
-        performRequest
-            (SS.scenarioServiceGCContexts ssClient)
-            (optRequestTimeout hOptions)
-            (SS.GCContextsRequest (V.fromList (map getContextId ctxIds)))
-    pure (void res)
+gcCtxs Handle{..} ctxIds = runExceptT $ do
+    _ <- wrapResult $ rawUnary (RPC :: RPC ScenarioService "gccontexts") hClient $
+        defMessage & #contextIds .~ map getContextId ctxIds
+    pure ()
 
 updateCtx :: Handle -> ContextId -> ContextUpdate -> IO (Either BackendError ())
-updateCtx Handle{..} (ContextId ctxId) ContextUpdate{..} = do
-  ssClient <- SS.scenarioServiceClient hClient
-  res <-
-    performRequest
-      (SS.scenarioServiceUpdateContext ssClient)
-      (optRequestTimeout hOptions) $
-      SS.UpdateContextRequest
-          ctxId
-          (Just updModules)
-          (Just updPackages)
-          (getLightValidation updLightValidation)
-  pure (void res)
+updateCtx Handle{..} (ContextId ctxId) ContextUpdate{..} = runExceptT $ do
+    liftIO $ putStrLn "updateCtx"
+    _ <- liftIO $ evaluate $ force updModules
+    liftIO $ putStrLn "evaluated 0"
+    _ <- liftIO $ evaluate $ force updPackages
+    liftIO $ putStrLn "evaluated 1"
+    let msg = defMessage & #contextId .~ ctxId
+                   & #updateModules .~ updModules
+                   & #updatePackages .~ updPackages
+                   & #lightValidation .~ getLightValidation updLightValidation
+    _ <- liftIO $ evaluate $ force msg
+    liftIO $ putStrLn "evaluated 2"
+    _ <- wrapResult $ rawUnary (RPC :: RPC ScenarioService "updateContext") hClient msg
+    liftIO $ putStrLn "updatedCtx"
+    pure ()
   where
-    updModules =
-      SS.UpdateContextRequest_UpdateModules
-        (V.fromList (map convModule updLoadModules))
-        (V.fromList (map encodeName updUnloadModules))
-    updPackages =
-      SS.UpdateContextRequest_UpdatePackages
-        (V.fromList (map snd updLoadPackages))
-        (V.fromList (map (TL.fromStrict . LF.unPackageId) updUnloadPackages))
-    encodeName = TL.fromStrict . T.intercalate "." . LF.unModuleName
-    convModule :: (LF.ModuleName, BS.ByteString) -> SS.Module
-    convModule (_, bytes) =
-        case updDamlLfVersion of
-            LF.V1 minor -> SS.Module (Just (SS.ModuleModuleDamlLf1 bytes)) (TL.pack $ LF.renderMinorVersion minor)
+      updModules = defMessage
+          & #loadModules .~ map convModule updLoadModules
+          & #unloadModules .~ map encodeName updUnloadModules
+      updPackages = defMessage
+          & #loadPackages .~ map snd updLoadPackages
+          & #unloadPackages .~ map LF.unPackageId updUnloadPackages
+      encodeName = T.intercalate "." . LF.unModuleName
+      convModule :: (LF.ModuleName, BS.ByteString) -> Module
+      convModule (_, bytes) =
+          case updDamlLfVersion of
+              LF.V1 minor -> defMessage
+                  & #minor .~ T.pack (LF.renderMinorVersion minor)
+                  & #damlLf1 .~ bytes
 
-runScenario :: Handle -> ContextId -> LF.ValueRef -> IO (Either Error SS.ScenarioResult)
+runScenario :: Handle -> ContextId -> LF.ValueRef -> IO (Either Error ScenarioResult)
 runScenario Handle{..} (ContextId ctxId) name = do
-  ssClient <- SS.scenarioServiceClient hClient
-  res <-
-    performRequest
-      (SS.scenarioServiceRunScenario ssClient)
-      (optRequestTimeout hOptions)
-      (SS.RunScenarioRequest ctxId (Just (toIdentifier name)))
+  putStrLn "runScenario"
+  res <- runExceptT $ wrapResult $ rawUnary (RPC :: RPC ScenarioService "runScenario") hClient $
+      defMessage & #contextId .~ ctxId
+                 & #scenarioId .~ toIdentifier name
+  putStrLn "ranScenario"
   pure $ case res of
     Left err -> Left (BackendError err)
-    Right (SS.RunScenarioResponse (Just (SS.RunScenarioResponseResponseError err))) -> Left (ScenarioError err)
-    Right (SS.RunScenarioResponse (Just (SS.RunScenarioResponseResponseResult r))) -> Right r
-    Right _ -> error "IMPOSSIBLE: missing payload in RunScenarioResponse"
+    Right r -> case r ^. #maybe'response of
+        Nothing -> fail "IMPOSSIBLE: missing payload in RunScenarioResponse"
+        Just (RunScenarioResponse'Error err) -> Left (ScenarioError err)
+        Just (RunScenarioResponse'Result r) -> Right r
   where
-    toIdentifier :: LF.ValueRef -> SS.Identifier
+    toIdentifier :: LF.ValueRef -> Identifier
     toIdentifier (LF.Qualified pkgId modName defn) =
-      let ssPkgId = SS.PackageIdentifier $ Just $ case pkgId of
-            LF.PRSelf     -> SS.PackageIdentifierSumSelf SS.Empty
-            LF.PRImport x -> SS.PackageIdentifierSumPackageId (TL.fromStrict $ LF.unPackageId x)
-      in
-        SS.Identifier
-          (Just ssPkgId)
-          (TL.fromStrict $ T.intercalate "." (LF.unModuleName modName) <> ":" <> LF.unExprValName defn)
-
-performRequest
-  :: (ClientRequest 'Normal payload response -> IO (ClientResult 'Normal response))
-  -> TimeoutSeconds
-  -> payload
-  -> IO (Either BackendError response)
-performRequest method timeoutSeconds payload = do
-  method (ClientNormalRequest payload timeoutSeconds mempty) >>= \case
-    ClientNormalResponse resp _ _ StatusOk _ -> return (Right resp)
-    ClientNormalResponse _ _ _ status _ -> return (Left $ BErrorFail status)
-    ClientErrorResponse err -> return (Left $ BErrorClient err)
+      let ssPkgId = case pkgId of
+            LF.PRSelf     -> defMessage & #self .~ defMessage
+            LF.PRImport x -> defMessage & #packageId .~ LF.unPackageId x
+      in defMessage & #package .~ ssPkgId & #name .~ (T.intercalate "." (LF.unModuleName modName) <> ":" <> LF.unExprValName defn)

@@ -1,6 +1,7 @@
 -- Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
 
+{-# LANGUAGE OverloadedLabels   #-}
 {-# LANGUAGE OverloadedStrings   #-}
 
 -- | Main entry-point of the DAML compiler
@@ -9,6 +10,7 @@ module DA.Cli.Damlc.Test (
     , UseColor(..)
     ) where
 
+import Control.Lens
 import Control.Monad.Except
 import qualified DA.Pretty
 import qualified DA.Pretty as Pretty
@@ -24,14 +26,13 @@ import DA.Daml.Options.Types
 import qualified DA.Daml.LF.Ast as LF
 import qualified DA.Daml.LF.PrettyScenario as SS
 import qualified DA.Daml.LF.ScenarioServiceClient as SSC
+import qualified Proto.Compiler.ScenarioService.Protos.ScenarioService as SS
 import qualified Data.Text as T
-import qualified Data.Vector as V
 import qualified Development.Shake as Shake
 import qualified Development.IDE.Core.API as CompilerService
 import qualified Development.IDE.Core.Rules.Daml as CompilerService
 import Development.IDE.Types.Diagnostics
 import Development.IDE.Types.Location
-import qualified ScenarioService as SS
 import System.Directory (createDirectoryIfMissing)
 import System.Exit (exitFailure)
 import System.FilePath
@@ -114,12 +115,12 @@ prettyErr lfVersion err = case err of
 
 prettyResult :: SS.ScenarioResult -> DA.Pretty.Doc Pretty.SyntaxClass
 prettyResult result =
-    let nTx = length (SS.scenarioResultScenarioSteps result)
+    let nTx = length (result ^. #scenarioSteps)
         isActive node =
-            case SS.nodeNode node of
-                Just SS.NodeNodeCreate{} -> isNothing (SS.nodeConsumedBy node)
+            case node ^. #maybe'node of
+                Just SS.Node'Create'{} -> isNothing (node ^. #maybe'consumedBy)
                 _ -> False
-        nActive = length $ filter isActive (V.toList (SS.scenarioResultNodes result))
+        nActive = length $ filter isActive (result ^. #nodes)
     in DA.Pretty.typeDoc_ "ok, "
     <> DA.Pretty.int nActive <> DA.Pretty.typeDoc_ " active contracts, "
     <> DA.Pretty.int nTx <> DA.Pretty.typeDoc_ " transactions."

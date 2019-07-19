@@ -20,7 +20,7 @@ module DA.Daml.LF.ScenarioServiceClient
   , runScenario
   , LowLevel.BackendError(..)
   , LowLevel.Error(..)
-  , LowLevel.ScenarioResult(..)
+  , LowLevel.ScenarioResult
   , Hash
   , encodeModule
   ) where
