@@ -547,6 +547,9 @@ hazel_repositories(
             hazel_hackage("http2-client-grpc", "0.7.0.0", "c1fecd28cb0d6f54b7503aad537256b9b0aac44c97e0b92e1651099b7911c8c7") +
             hazel_github_external("lucasdicioccio", "http2-client", "8db77e4d9dd7422c60e62b9089e671db33301307", "3a688112eef910589d840531f74e0b43a600ba322db46ea0260660630afada1e") +
             hazel_hackage("http2-grpc-types", "0.4.0.0", "6569e629cb515b5d733890fde4971ccb3a90f9fdbc36601303d6456657d525c0") +
+            hazel_hackage("http2", "2.0.3", "ba5105f31d0e83d5bd7f6f6c5deef6b277cd6a82f9701e19920f54e0c00b1093") +
+            hazel_hackage("time-manager", "0.0.0", "90a616ed20b2119bb64f78f84230b6798cde22a35e87bc8d9ee08cdf1d90fcdb") +
+            hazel_hackage("network-byte-order", "0.1.1.0", "73977ed96667922883971794476f545e1255303384e4c49f2930d88ed5c3f99a") +
             # This corresponds to our normalize-uri branch that enforces a consistent
             # precent-encoding for URIs used as keys.
             hazel_github_external(

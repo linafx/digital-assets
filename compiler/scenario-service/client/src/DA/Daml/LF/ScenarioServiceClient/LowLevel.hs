@@ -43,6 +43,7 @@ import Control.Monad.IO.Class
 import Control.Monad.Trans.Except
 import qualified DA.Daml.LF.Proto3.EncodeV1 as EncodeV1
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Char8 as BS8
 import qualified Data.ByteString.Lazy as BSL
 import qualified Data.Conduit as C
 import Data.Conduit.Process
@@ -51,12 +52,13 @@ import Data.Int (Int64)
 import Data.List.Split (splitOn)
 import Data.ProtoLens.Labels ()
 import Data.ProtoLens.Message (defMessage)
--- import Data.ProtoLens.Service.Types (Service(..), HasMethod, HasMethodImpl(..))
+import Data.ProtoLens.Service.Types (Service(..), HasMethod, HasMethodImpl(..))
 import qualified Data.Text as T
 import Network.HTTP2
 import Network.HTTP2.Client
 import Network.GRPC.Client
-import Network.GRPC.Client.Helpers
+-- import Network.GRPC.Client.Helpers
+import Network.GRPC.HTTP2.Encoding
 import qualified Proto3.Suite as Proto
 import System.Directory
 import System.Environment
@@ -69,7 +71,7 @@ import DA.Bazel.Runfiles
 import qualified DA.Daml.LF.Ast as LF
 import Proto.Compiler.ScenarioService.Protos.ScenarioService as Proto
 
--- import qualified Network.HTTP2 as HTTP2
+import qualified Network.HTTP2 as HTTP2
 
 data Options = Options
   { optServerJar :: FilePath
@@ -82,7 +84,8 @@ data Options = Options
 type TimeoutSeconds = Int
 
 data Handle = Handle
-  { hClient :: GrpcClient
+  { hClient :: Http2Client
+  , hPort :: Int
   , hOptions :: Options
   }
 
@@ -249,41 +252,42 @@ withScenarioService opts@Options{..} f = do
             liftIO $ optLogInfo $ "Scenario service backend running on port " <> show port
             -- Using 127.0.0.1 instead of localhost helps when our packaging logic falls over
             -- and DNS lookups break, e.g., on Alpine linux.
-            let grpcConfig =
-                    (grpcClientConfigSimple "127.0.0.1" (fromIntegral port) False) { _grpcClientConfigTimeout = Timeout 5 }
-            -- putStrLn "setting up grpc client"
-            -- conn <- asException $ newHttp2FrameConnection "127.0.0.1" (fromIntegral port) Nothing
-            -- let goAwayHandler m = liftIO $ do
-            --         putStrLn "~~~goAway~~~"
-            --         print m
-            -- asException $ runHttp2Client (wrapConn conn) 8192 8192 [] goAwayHandler ignoreFallbackHandler $ \client -> do
-            bracket (asException $ setupGrpcClient grpcConfig) (asException . close) $ \client -> do
+            -- let grpcConfig =
+            --         (grpcClientConfigSimple "127.0.0.1" (fromIntegral port) False) { _grpcClientConfigTimeout = Timeout 5 }
+            putStrLn "setting up grpc client"
+            conn <- asException $ newHttp2FrameConnection "127.0.0.1" (fromIntegral port) Nothing
+            let goAwayHandler m = liftIO $ do
+                    putStrLn "~~~goAway~~~"
+                    print m
+            asException $ runHttp2Client (wrapConn conn) 8192 8192 [] goAwayHandler ignoreFallbackHandler $ \client -> do
+            -- bracket (asException $ setupGrpcClient grpcConfig) (asException . close) $ \client -> do
                 liftIO $ f Handle
                     { hClient = client
                     , hOptions = opts
+                    , hPort = port
                     }
 
--- wrapConn :: Http2FrameConnection -> Http2FrameConnection
--- wrapConn conn = conn {
---       _makeFrameClientStream = \sid ->
---           let frameClient = (_makeFrameClientStream conn) sid
---           in frameClient {
---                  _sendFrames = \mkFrames -> do
---                      xs <- mkFrames
---                      liftIO . print $ (">>> "::String, _getStreamId frameClient, map snd xs)
---                      _sendFrames frameClient (pure xs)
---              }
---     , _serverStream =
---         let
---           currentServerStrean = _serverStream conn
---         in
---           currentServerStrean {
---             _nextHeaderAndFrame = do
---                 hdrFrame@(hdr,_) <- _nextHeaderAndFrame currentServerStrean
---                 liftIO . print $ ("<<< "::String, HTTP2.streamId hdr, hdrFrame)
---                 return hdrFrame
---           }
---     }
+wrapConn :: Http2FrameConnection -> Http2FrameConnection
+wrapConn conn = conn {
+      _makeFrameClientStream = \sid ->
+          let frameClient = (_makeFrameClientStream conn) sid
+          in frameClient {
+                 _sendFrames = \mkFrames -> do
+                     xs <- mkFrames
+                     liftIO . print $ (">>> "::String, _getStreamId frameClient, map snd xs)
+                     _sendFrames frameClient (pure xs)
+             }
+    , _serverStream =
+        let
+          currentServerStrean = _serverStream conn
+        in
+          currentServerStrean {
+            _nextHeaderAndFrame = do
+                hdrFrame@(hdr,_) <- _nextHeaderAndFrame currentServerStrean
+                liftIO . print $ ("<<< "::String, HTTP2.streamId hdr, hdrFrame)
+                return hdrFrame
+          }
+    }
 
 asException :: ClientIO a -> IO a
 asException a = do
@@ -303,36 +307,49 @@ wrapResult a = do
     (_, _, r) <- fromRightA (throwError . BErrorFail) r
     fromRightA (throwError . BErrorOther) r
 
+unaryRPC
+    :: (Service s, HasMethod s m)
+    => Handle
+    -> RPC s m
+    -> MethodInput s m
+    -> ClientIO (Either TooMuchConcurrency (RawReply (MethodOutput s m)))
+unaryRPC Handle{..} x y =
+    open
+        hClient
+        ("127.0.0.1:" <> BS8.pack (show hPort))
+        [] (Timeout 100) (Encoding uncompressed) (Decoding uncompressed) (singleRequest x y)
+
+
 newCtx :: Handle -> IO (Either BackendError ContextId)
-newCtx Handle{..} = runExceptT $ do
+newCtx handle = runExceptT $ do
     liftIO $ putStrLn "newContext"
-    r <- wrapResult $ rawUnary (RPC :: RPC ScenarioService "newContext") hClient
+    r <- wrapResult $ unaryRPC handle (RPC :: RPC ScenarioService "newContext")
         defMessage
     liftIO $ putStrLn "oldContext"
     pure $ ContextId $ r ^. #contextId
 
 cloneCtx :: Handle -> ContextId -> IO (Either BackendError ContextId)
-cloneCtx Handle{..} (ContextId ctxId) = runExceptT $ do
+cloneCtx handle (ContextId ctxId) = runExceptT $ do
     liftIO $ putStrLn "cloneContext"
-    r <- wrapResult $ rawUnary (RPC :: RPC ScenarioService "cloneContext") hClient $
+    r <- wrapResult $ unaryRPC handle (RPC :: RPC ScenarioService "cloneContext") $
         defMessage & #contextId .~ ctxId
     liftIO $ putStrLn "clonedContext"
     pure $ ContextId $ r ^. #contextId
 
 deleteCtx :: Handle -> ContextId -> IO (Either BackendError ())
-deleteCtx Handle{..} (ContextId ctxId) = runExceptT $ do
-    _ <- wrapResult $ rawUnary (RPC :: RPC ScenarioService "deleteContext") hClient $
+deleteCtx handle (ContextId ctxId) = runExceptT $ do
+    _ <- wrapResult $ unaryRPC handle (RPC :: RPC ScenarioService "deleteContext") $
         defMessage & #contextId .~ ctxId
     pure ()
 
 gcCtxs :: Handle -> [ContextId] -> IO (Either BackendError ())
-gcCtxs Handle{..} ctxIds = runExceptT $ do
-    _ <- wrapResult $ rawUnary (RPC :: RPC ScenarioService "gccontexts") hClient $
+gcCtxs handle ctxIds = runExceptT $ do
+    _ <- wrapResult $ unaryRPC handle (RPC :: RPC ScenarioService "gccontexts") $
         defMessage & #contextIds .~ map getContextId ctxIds
     pure ()
 
 updateCtx :: Handle -> ContextId -> ContextUpdate -> IO (Either BackendError ())
-updateCtx Handle{..} (ContextId ctxId) ContextUpdate{..} = runExceptT $ do
+updateCtx handle (ContextId ctxId) ContextUpdate{..} = runExceptT $ do
     liftIO $ putStrLn "updateCtx"
     _ <- liftIO $ evaluate $ force updModules
     liftIO $ putStrLn "evaluated 0"
@@ -344,7 +361,7 @@ updateCtx Handle{..} (ContextId ctxId) ContextUpdate{..} = runExceptT $ do
                    & #lightValidation .~ getLightValidation updLightValidation
     _ <- liftIO $ evaluate $ force msg
     liftIO $ putStrLn "evaluated 2"
-    _ <- wrapResult $ rawUnary (RPC :: RPC ScenarioService "updateContext") hClient msg
+    _ <- wrapResult $ unaryRPC handle (RPC :: RPC ScenarioService "updateContext") msg
     liftIO $ putStrLn "updatedCtx"
     pure ()
   where
@@ -363,9 +380,9 @@ updateCtx Handle{..} (ContextId ctxId) ContextUpdate{..} = runExceptT $ do
                   & #damlLf1 .~ bytes
 
 runScenario :: Handle -> ContextId -> LF.ValueRef -> IO (Either Error ScenarioResult)
-runScenario Handle{..} (ContextId ctxId) name = do
+runScenario handle (ContextId ctxId) name = do
   putStrLn "runScenario"
-  res <- runExceptT $ wrapResult $ rawUnary (RPC :: RPC ScenarioService "runScenario") hClient $
+  res <- runExceptT $ wrapResult $ unaryRPC handle (RPC :: RPC ScenarioService "runScenario") $
       defMessage & #contextId .~ ctxId
                  & #scenarioId .~ toIdentifier name
   putStrLn "ranScenario"
