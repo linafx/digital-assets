@@ -11,6 +11,7 @@ module DA.Daml.Options
     ( toCompileOpts
     , generatePackageState
     , PackageDynFlags(..)
+    , runGhcFast
     ) where
 
 import Control.Monad

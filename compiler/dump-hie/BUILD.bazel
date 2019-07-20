@@ -1,0 +1,14 @@
+load("//bazel_tools:haskell.bzl", "da_haskell_binary", "da_haskell_library", "da_haskell_test")
+
+da_haskell_binary(
+    name = "dump-hie",
+    srcs = ["Main.hs"],
+    hazel_deps = [
+    "base",
+      "ghc-lib",
+      "ghc-lib-parser",
+    ],
+    deps = [
+     "//compiler/damlc/daml-opts"
+     ]
+)
