@@ -122,6 +122,7 @@ class SandboxServer(actorSystemName: String, config: => SandboxConfig) extends A
       packageStore: InMemoryPackageStore)
       extends AutoCloseable {
     override def close(): Unit = {
+      // FIXME: extra close !
       apiServerState.close()
       infra.close()
     }
@@ -130,14 +131,18 @@ class SandboxServer(actorSystemName: String, config: => SandboxConfig) extends A
       implicit val ec: ExecutionContext = sandboxState.infra.executionContext
       val apiServicesClosed = apiServerState.apiServer.servicesClosed()
       //need to run this async otherwise the callback kills the server under the in-flight reset service request!
+
       Future {
+        Thread.sleep(5000)
         apiServerState.close // fully tear down the old server
+        Thread.sleep(5000)
         //TODO: eliminate the state mutation somehow
         //yes, it's horrible that we mutate the state here, but believe me, it's still an improvement to what we had before!
         sandboxState = copy(
           apiServerState =
             buildAndStartApiServer(infra, sandboxState.packageStore, SqlStartMode.AlwaysReset))
-      }(infra.executionContext)
+//      }(infra.executionContext)
+      }(scala.concurrent.ExecutionContext.Implicits.global)
 
       // waits for the services to be closed, so we can guarantee that future API calls after finishing the reset will never be handled by the old one
       apiServicesClosed
@@ -239,7 +244,8 @@ class SandboxServer(actorSystemName: String, config: => SandboxConfig) extends A
         // NOTE(JM): Re-use the same port after reset.
         Option(sandboxState).fold(config.port)(_.apiServerState.port),
         config.address,
-        config.tlsConfig.flatMap(_.server)
+        config.tlsConfig.flatMap(_.server),
+        List(resetService(ledgerId))
       ),
       asyncTolerance
     )
@@ -289,6 +295,7 @@ class SandboxServer(actorSystemName: String, config: => SandboxConfig) extends A
   override def close(): Unit = sandboxState.close()
 
   private def writePortFile(port: Int): Unit = {
+//    Thread.sleep(200)
     config.portFile.foreach { f =>
       val w = new FileWriter(f)
       w.write(s"$port\n")

@@ -9,8 +9,15 @@ import com.digitalasset.platform.common.util.{DirectExecutionContext => DE}
 import com.digitalasset.platform.server.api.validation.ErrorFactories
 import com.google.protobuf.empty.Empty
 import io.grpc.{BindableService, ServerServiceDefinition}
+import io.grpc.Metadata
+import io.grpc.ServerCall
+import io.grpc.ServerCall.Listener
+import io.grpc.Status
+import io.grpc.StatusRuntimeException
+import io.grpc.ServerCallHandler
+import io.grpc.ServerInterceptor
+import java.util.concurrent.atomic.AtomicBoolean
 import org.slf4j.LoggerFactory
-
 import scala.concurrent.{ExecutionContext, Future, Promise}
 
 class SandboxResetService(
@@ -18,9 +25,12 @@ class SandboxResetService(
     getEc: () => ExecutionContext,
     resetAndRestartServer: () => Future[Unit])
     extends ResetServiceGrpc.ResetService
-    with BindableService {
+    with BindableService
+    with ServerInterceptor {
 
   private val logger = LoggerFactory.getLogger(this.getClass)
+
+  private val resetInitialized = new AtomicBoolean(false)
 
   override def bindService(): ServerServiceDefinition =
     ResetServiceGrpc.bindService(this, DE)
@@ -43,8 +53,27 @@ class SandboxResetService(
       })
   }
 
+  override def interceptCall[ReqT, RespT](serverCall: ServerCall[ReqT, RespT],
+                                 metadata: Metadata,
+                                 serverCallHandler: ServerCallHandler[ReqT, RespT]): Listener[ReqT] = {
+    logger.info(s"XXXX - Intercepted a call - ${serverCall.getMethodDescriptor}, ${serverCall.getAttributes}, $metadata")
+    println(s"XXXX - Intercepted a call - ${serverCall.getMethodDescriptor}, ${serverCall.getAttributes}, $metadata")
+
+    if (resetInitialized.get) {
+      logger.info("XXXX - Rejecting request")
+      throw new StatusRuntimeException(Status.UNAVAILABLE.withDescription("Sandbox server is currently being resetted"))
+    }
+
+    logger.info("XXXX - Passing request through")
+    serverCallHandler.startCall(serverCall, metadata)
+  }
+
   private def actuallyReset() = {
     logger.info("Initiating server reset.")
+
+    if (!resetInitialized.compareAndSet(false, true))
+      throw new StatusRuntimeException(Status.FAILED_PRECONDITION.withDescription("Sandbox server is currently being resetted"))
+
     val servicesAreDown = Promise[Unit]()
     // We need to run this asynchronously since otherwise we have a deadlock: `buildAndStartServer` will block
     // until all the in flight requests have been served, so we need to schedule this in another thread so that

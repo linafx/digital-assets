@@ -90,7 +90,8 @@ da_scala_test_suite(
     # WARNING: srcs list has to be explicit here! It can not be added via deps, due to
     # test discovery mechanism in the test_suite macro working only on sources.
     srcs = glob(
-        include = ["src/test/itsuite/**/*.scala"],
+#        include = ["src/test/itsuite/**/*.scala"],
+        include = ["src/test/itsuite/**/ResetServiceIT.scala"],
         ### GS: enabling all tests again for the regular test suite until we figure out how to
         ###     run sandbox on postgres with ledger-api-test-tool
         # the excluded tests are run by the conformance test via the ledger-api-test-tool

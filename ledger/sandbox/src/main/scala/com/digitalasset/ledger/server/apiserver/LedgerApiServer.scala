@@ -11,6 +11,7 @@ import java.util.concurrent.TimeUnit
 import akka.stream.ActorMaterializer
 import com.digitalasset.grpc.adapter.{AkkaExecutionSequencerPool, ExecutionSequencerFactory}
 import io.grpc.netty.NettyServerBuilder
+import io.grpc.ServerInterceptor
 import io.netty.channel.nio.NioEventLoopGroup
 import io.netty.handler.ssl.SslContext
 import io.netty.util.concurrent.DefaultThreadFactory
@@ -35,7 +36,8 @@ object LedgerApiServer {
       createApiServices: (ActorMaterializer, ExecutionSequencerFactory) => Future[ApiServices],
       desiredPort: Int,
       address: Option[String],
-      sslContext: Option[SslContext] = None)(implicit mat: ActorMaterializer): Future[ApiServer] = {
+      sslContext: Option[SslContext] = None,
+      interceptors: List[ServerInterceptor] = List.empty)(implicit mat: ActorMaterializer): Future[ApiServer] = {
 
     val serverEsf = new AkkaExecutionSequencerPool(
       // NOTE(JM): Pick a unique pool name as we want to allow multiple ledger api server
@@ -53,7 +55,8 @@ object LedgerApiServer {
           apiServices,
           desiredPort,
           address,
-          sslContext
+          sslContext,
+          interceptors
         )
 
         /** returns the api port the server is listening on */
@@ -76,7 +79,8 @@ private class LedgerApiServer(
     apiServices: ApiServices,
     desiredPort: Int,
     address: Option[String],
-    sslContext: Option[SslContext] = None)(implicit mat: ActorMaterializer)
+    sslContext: Option[SslContext] = None,
+    interceptors: List[ServerInterceptor] = List.empty)(implicit mat: ActorMaterializer)
     extends ApiServer {
 
   private val logger = LoggerFactory.getLogger(this.getClass)
@@ -114,6 +118,7 @@ private class LedgerApiServer(
     builder.workerEventLoopGroup(workerEventLoopGroup)
     builder.permitKeepAliveTime(10, TimeUnit.SECONDS)
     builder.permitKeepAliveWithoutCalls(true)
+    interceptors.foreach(builder.intercept)
     val grpcServer = apiServices.services.foldLeft(builder)(_ addService _).build
     try {
       grpcServer.start()

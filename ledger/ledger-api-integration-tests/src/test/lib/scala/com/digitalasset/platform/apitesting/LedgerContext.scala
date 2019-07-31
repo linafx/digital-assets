@@ -183,7 +183,9 @@ object LedgerContext {
               Future.successful(domain.LedgerId(resp.ledgerId))
             }
             .recoverWith {
-              case _: StatusRuntimeException =>
+              case x: StatusRuntimeException =>
+                println(s"XXXX - error waiting on new ledger: $x")
+                logger.warn(s"XXXX - error waiting on new ledger: $x")
                 logger.debug(
                   "waitForNewLedger: retrying identity request in 1 second. {} retries remain",
                   retries - 1)
