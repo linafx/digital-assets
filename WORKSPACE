@@ -572,7 +572,16 @@ hazel_repositories(
                 patch_args = ["-p1"],
                 patches = ["@com_github_digital_asset_daml//bazel_tools:haskell-hie-bios.patch"],
             ) +
-            hazel_hackage("typed-process", "0.2.6.0", "31a2a81f33463fedc33cc519ad5b9679787e648fe2ec7efcdebd7d54bdbbc2b1"),
+            hazel_hackage("typed-process", "0.2.6.0", "31a2a81f33463fedc33cc519ad5b9679787e648fe2ec7efcdebd7d54bdbbc2b1") +
+            hazel_hackage("ghc-datasize", "0.2.0", "d0077d0b7f8672e0a54c3b265c25075ef447c2053466cb0b9ab012aeb1cfb472") +
+            hazel_github_external(
+                "cocreature",
+                "ghc-datasize",
+                "f5c66577cc6e5bac1b3573ca76ea51629e7d8985",
+                "eefa252a8baddd2154a504f73edc0952eaf8c516d5ce59b16b4d5c4bdd547498",
+            ) +
+            hazel_hackage("ghc-heap-view", "0.6.0", "99ed6034d02a7a942e1b6ed970e9f7028dcdfd5b5d29fd8a0fb89f1a5e7c5ec8")
+        ,
         pkgs = packages,
     ),
 )

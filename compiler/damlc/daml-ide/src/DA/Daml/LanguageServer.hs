@@ -25,6 +25,7 @@ import Development.IDE.Core.FileStore
 import Development.IDE.Core.Rules
 import Development.IDE.Core.Rules.Daml
 import Development.IDE.Core.Service.Daml
+import Development.IDE.Core.Shake
 
 import qualified Network.URI                               as URI
 
@@ -46,6 +47,12 @@ setHandlersKeepAlive = PartialHandlers $ \WithMessage{..} x -> return x
             CustomClientMethod "daml/keepAlive" ->
                 maybe (return ()) ($ msg) $
                 withResponse RspCustomServer (\_ _ _ -> return Aeson.Null)
+            CustomClientMethod "daml/dumpValueSizes" ->
+                maybe (return ()) ($ msg) $
+                withResponse RspCustomServer $ \_lspFuncs ideState _ -> do
+                    logDebug (ideLogger ideState) $ T.pack "Dumping value sizes"
+                    r <- runAction ideState getValueSizes
+                    pure $ Aeson.toJSON r
             _ -> whenJust (LSP.customRequestHandler x) ($ msg)
     }
 

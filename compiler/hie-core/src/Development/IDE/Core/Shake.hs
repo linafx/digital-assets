@@ -1,6 +1,7 @@
 -- Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
 
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE ExistentialQuantification  #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE ConstraintKinds            #-}
@@ -36,13 +37,17 @@ module Development.IDE.Core.Shake(
     actionLogger,
     FileVersion(..),
     Priority(..),
-    updatePositionMapping
+    updatePositionMapping,
+    ClosureSize(..),
+    KeyName(..),
+    getValueSizes
     ) where
 
 import           Development.Shake hiding (ShakeValue)
 import           Development.Shake.Database
 import           Development.Shake.Classes
 import           Development.Shake.Rule
+import Data.Aeson (FromJSON, ToJSON, ToJSONKey)
 import qualified Data.HashMap.Strict as HMap
 import qualified Data.Map.Strict as Map
 import qualified Data.Map.Merge.Strict as Map
@@ -58,6 +63,7 @@ import Data.Unique
 import Development.IDE.Core.Debouncer
 import Development.IDE.Core.PositionMapping
 import Development.IDE.Types.Logger hiding (Priority)
+import GHC.DataSize (recursiveSize)
 import Language.Haskell.LSP.Diagnostics
 import qualified Data.SortedList as SL
 import           Development.IDE.Types.Diagnostics
@@ -652,3 +658,22 @@ updatePositionMapping IdeState{shakeExtras = ShakeExtras{positionMapping}} Versi
                 Map.insert _version idMapping $
                 Map.map (\oldMapping -> foldl' applyChange oldMapping changes) mappingForUri
         pure $ Map.insert uri updatedMapping allMappings
+
+newtype ClosureSize = ClosureSize Word
+    deriving (FromJSON, ToJSON)
+-- | The name of the rule
+newtype KeyName = KeyName T.Text
+   deriving (Eq, Hashable, ToJSONKey)
+
+-- | This can be used to debug memory usage. It returns the recursive closure
+-- size of all values stored in `state`, grouped by the rule that produced them.
+getValueSizes :: Action (HMap.HashMap KeyName (HMap.HashMap NormalizedFilePath ClosureSize))
+getValueSizes = do
+    ShakeExtras{logger,state} <- getShakeExtras
+    values <- liftIO $ fmap HMap.toList $ readVar state
+    let f ((file, key), val) = do
+            logDebug logger $ "Getting size of " <> T.pack (show (file, key))
+            size <- recursiveSize $! val
+            pure (KeyName $ T.pack $ show key, HMap.singleton file $ ClosureSize size)
+    values <- liftIO $ mapM f values
+    pure $! HMap.fromListWith HMap.union values

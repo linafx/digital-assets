@@ -92,7 +92,7 @@ def _wrap_rule(rule, name = "", deps = [], hazel_deps = [], compiler_flags = [],
     da_haskell_repl(
         name = name + "@ghci",
         deps = [name],
-        repl_ghci_commands = repl_ghci_commands,
+        # repl_ghci_commands = repl_ghci_commands,
         testonly = kwargs.get("testonly", False),
         visibility = ["//visibility:public"],
     )

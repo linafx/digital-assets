@@ -1,6 +1,6 @@
 -- Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
-
+{-# LANGUAGE DerivingStrategies #-}
 
 -- | Types and functions for working with source code locations.
 module Development.IDE.Types.Location
@@ -25,6 +25,7 @@ module Development.IDE.Types.Location
 
 import Language.Haskell.LSP.Types (Location(..), Range(..), Position(..))
 import Control.DeepSeq
+import Data.Aeson
 import Data.Maybe as Maybe
 import Data.Hashable
 import Data.String
@@ -42,7 +43,7 @@ import Language.Haskell.LSP.Types as LSP (
 
 -- | Newtype wrapper around FilePath that always has normalized slashes.
 newtype NormalizedFilePath = NormalizedFilePath FilePath
-    deriving (Eq, Ord, Show, Hashable, NFData)
+    deriving (Eq, Ord, Show, NFData, Hashable, ToJSONKey)
 
 instance IsString NormalizedFilePath where
     fromString = toNormalizedFilePath

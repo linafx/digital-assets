@@ -83,7 +83,14 @@ export async function activate(context: vscode.ExtensionContext) {
 
     let d4 = vscode.commands.registerCommand("daml.resetTelemetryConsent", resetTelemetryConsent(context));
 
-    context.subscriptions.push(d1, d2, d3, d4);
+    let d5 = vscode.commands.registerCommand("daml.dumpValueSizes", () => {
+        console.log("sending value dump request");
+        damlLanguageClient.sendRequest(DamlDumpValueSizesRequest.type, null).then(r => {
+            console.log(r);
+        });
+    });
+
+    context.subscriptions.push(d1, d2, d3, d4, d5);
 }
 
 
@@ -223,6 +230,11 @@ function keepAlive() {
 namespace DamlKeepAliveRequest {
     export let type =
       new RequestType<void, void, void, void>('daml/keepAlive');
+}
+
+namespace DamlDumpValueSizesRequest {
+    export let type =
+      new RequestType<void, Object, void, void>('daml/dumpValueSizes');
 }
 
 // Custom notifications

@@ -64,6 +64,10 @@
             {
                 "command": "daml.resetTelemetryConsent",
                 "title": "Ask me about DAML telemetry again on startup"
+            },
+            {
+                "command": "daml.dumpValueSizes",
+                "title": "Dump the sizes of the values grouped by rule type. This is only meant for debugging."
             }
         ],
         "keybindings": [

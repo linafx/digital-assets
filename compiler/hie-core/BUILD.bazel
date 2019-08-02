@@ -21,6 +21,7 @@ depends = [
     "directory",
     "extra",
     "filepath",
+    "ghc-datasize",
     "hashable",
     "haskell-lsp",
     "haskell-lsp-types",
