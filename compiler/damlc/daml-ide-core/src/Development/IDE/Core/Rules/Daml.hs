@@ -162,7 +162,7 @@ runScenarios file = use RunScenarios file
 -- | Get a list of the scenarios in a given file
 getScenarioNames :: NormalizedFilePath -> Action (Maybe [VirtualResource])
 getScenarioNames file = fmap f <$> use GenerateRawDalf file
-    where f = map (VRScenario file . LF.unExprValName . LF.qualObject . fst) . scenariosInModule
+    where f = map (VRScenario file . LF.fsToText . LF.unExprValName . LF.qualObject . fst) . scenariosInModule
 
 priorityGenerateDalf :: Priority
 priorityGenerateDalf = priorityGenerateCore
@@ -555,7 +555,7 @@ runScenario :: SS.Handle -> NormalizedFilePath -> SS.ContextId -> LF.ValueRef ->
 runScenario scenarioService file ctxId scenario = do
     res <- SS.runScenario scenarioService ctxId scenario
     let scenarioName = LF.qualObject scenario
-    let vr = VRScenario file (LF.unExprValName scenarioName)
+    let vr = VRScenario file (LF.fsToText $ LF.unExprValName scenarioName)
     pure (vr, res)
 
 encodeModuleRule :: Rules ()

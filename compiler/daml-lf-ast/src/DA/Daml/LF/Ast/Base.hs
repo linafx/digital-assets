@@ -1,6 +1,6 @@
 -- Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
-
+{-# OPTIONS_GHC -Wno-orphans #-}
 {-# LANGUAGE DataKinds          #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DerivingStrategies #-}
@@ -19,13 +19,37 @@ import           Control.DeepSeq
 import           Control.Lens
 import qualified Data.NameMap as NM
 import qualified Data.Text          as T
+import qualified Data.Text.Encoding as T
 import Data.Fixed
 import qualified "template-haskell" Language.Haskell.TH as TH
 import qualified Control.Lens.TH as Lens.TH
+import "ghc-lib-parser" FastString
+import "ghc-lib-parser" UniqDFM
 
 import           DA.Daml.LF.Ast.Version
 
 infixr 1 `KArrow`
+
+fsToText :: FastString -> T.Text
+fsToText = T.decodeUtf8 . fastStringToByteString
+
+textToFS :: T.Text -> FastString
+textToFS = mkFastStringByteString . T.encodeUtf8
+
+instance NFData FastString where
+    rnf = rwhnf
+
+instance Hashable FastString where
+    hashWithSalt salt = hashWithSalt salt . uniqueOfFS
+
+instance Eq a => Eq (UniqDFM a) where
+    x == y = udfmToList x == udfmToList y
+
+instance Show a => Show (UniqDFM a) where
+    show = show . udfmToList
+
+instance NFData (UniqDFM a) where
+    rnf = rwhnf
 
 -- | Identifier for a package. Will be obtained by hashing the contents of the
 -- package. Must match the regex
@@ -38,42 +62,42 @@ newtype PackageId = PackageId{unPackageId :: T.Text}
 -- | Name for a module. Must match the regex
 --
 -- > ([A-Z][a-zA-Z0-9_]*)(\.[A-Z][a-zA-Z0-9_]*)*
-newtype ModuleName = ModuleName{unModuleName :: [T.Text]}
+newtype ModuleName = ModuleName{unModuleName :: FastString}
     deriving stock (Eq, Data, Generic, Ord, Show)
     deriving newtype (Hashable, NFData)
 
 -- | Name for a type constructor. Must match the regex
 --
 -- > ([A-Z][a-zA-Z0-9_]*)(\.[A-Z][a-zA-Z0-9_]*)*
-newtype TypeConName = TypeConName{unTypeConName :: [T.Text]}
+newtype TypeConName = TypeConName{unTypeConName :: [FastString]}
     deriving stock (Eq, Data, Generic, Ord, Show)
     deriving newtype (Hashable, NFData)
 
 -- | Name for a record field. Must match the regex
 --
 -- > [a-z][a-zA-Z0-9_]*
-newtype FieldName = FieldName{unFieldName :: T.Text}
+newtype FieldName = FieldName{unFieldName :: FastString}
     deriving stock (Eq, Data, Generic, Ord, Show)
     deriving newtype (Hashable, NFData)
 
 -- | Name for a variant constructor. Must match the regex
 --
 -- > [A-Z][a-zA-Z0-9_]*
-newtype VariantConName = VariantConName{unVariantConName :: T.Text}
+newtype VariantConName = VariantConName{unVariantConName :: FastString}
     deriving stock (Eq, Data, Generic, Ord, Show)
     deriving newtype (Hashable, NFData)
 
 -- | Name for the choice of a contract. Must match the regex
 --
 -- > [A-Z][a-zA-Z0-9_]*
-newtype ChoiceName = ChoiceName{unChoiceName :: T.Text}
+newtype ChoiceName = ChoiceName{unChoiceName :: FastString}
     deriving stock (Eq, Data, Generic, Ord, Show)
     deriving newtype (Hashable, NFData)
 
 -- | Name for a type variable. Must match the regex
 --
 -- > [a-z_][a-zA-Z0-9_]*
-newtype TypeVarName = TypeVarName{unTypeVarName :: T.Text}
+newtype TypeVarName = TypeVarName{unTypeVarName :: FastString}
     deriving stock (Eq, Data, Generic, Ord, Show)
     deriving newtype (Hashable, NFData)
 
@@ -81,7 +105,7 @@ newtype TypeVarName = TypeVarName{unTypeVarName :: T.Text}
 --   and used locally. Must match the regex
 --
 -- > [a-z_][a-zA-Z0-9_]*
-newtype ExprVarName = ExprVarName{unExprVarName :: T.Text}
+newtype ExprVarName = ExprVarName{unExprVarName :: FastString}
     deriving stock (Eq, Data, Generic, Ord, Show)
     deriving newtype (Hashable, NFData)
 
@@ -89,12 +113,12 @@ newtype ExprVarName = ExprVarName{unExprVarName :: T.Text}
 --   and used in this and other modules. Must match the regex
 --
 -- > [a-z_][a-zA-Z0-9_]*
-newtype ExprValName = ExprValName{unExprValName :: T.Text}
+newtype ExprValName = ExprValName{unExprValName :: FastString}
     deriving stock (Eq, Data, Generic, Ord, Show)
     deriving newtype (Hashable, NFData)
 
 -- | Literal representing a party.
-newtype PartyLiteral = PartyLiteral{unPartyLiteral :: T.Text}
+newtype PartyLiteral = PartyLiteral{unPartyLiteral :: FastString}
     deriving stock (Eq, Data, Generic, Ord, Show)
     deriving newtype (Hashable, NFData)
 

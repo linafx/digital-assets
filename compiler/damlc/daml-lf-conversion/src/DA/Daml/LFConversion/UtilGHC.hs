@@ -16,6 +16,8 @@ module DA.Daml.LFConversion.UtilGHC(
     module DA.Daml.LFConversion.UtilGHC
     ) where
 
+import DA.Daml.LF.Ast.Base (fsToText)
+
 import           "ghc-lib-parser" Class
 import           "ghc-lib" GHC                         hiding (convertLit)
 import           "ghc-lib" GhcPlugins                  as GHC hiding (fst3, (<>))
@@ -26,7 +28,6 @@ import qualified Data.Set as Set
 import           Data.Tuple.Extra
 import qualified Data.ByteString as BS
 import qualified Data.Text as T
-import qualified Data.Text.Encoding as T
 import Control.Exception
 import GHC.Ptr(Ptr(..))
 import System.IO.Unsafe
@@ -38,9 +39,6 @@ import System.IO.Unsafe
 getOccText :: NamedThing a => a -> T.Text
 getOccText = fsToText . getOccFS
 
-fsToText :: FastString -> T.Text
-fsToText = T.decodeUtf8 . fastStringToByteString
-
 pattern Is :: NamedThing a => FastString -> a
 pattern Is x <- (occNameFS . getOccName -> x)
 
@@ -51,8 +49,8 @@ pattern TypeCon :: TyCon -> [GHC.Type] -> GHC.Type
 pattern TypeCon c ts <- (splitTyConApp_maybe -> Just (c, ts))
   where TypeCon = mkTyConApp
 
-pattern StrLitTy :: T.Text -> Type
-pattern StrLitTy x <- (fmap fsToText . isStrLitTy -> Just x)
+pattern StrLitTy :: FastString -> Type
+pattern StrLitTy x <- (isStrLitTy -> Just x)
 
 subst :: [(TyVar, GHC.Type)] -> GHC.Type -> GHC.Type
 subst env = transform $ \t ->
@@ -81,8 +79,8 @@ isSingleConType t = case algTyConRhs t of
     _ -> False
 
 -- Pretty printing is very expensive, so clone the logic for when to add unique suffix
-varPrettyPrint :: Var -> T.Text
-varPrettyPrint (varName -> x) = getOccText x <> (if isSystemName x then "_" <> T.pack (show $ nameUnique x) else "")
+varPrettyPrint :: Var -> FastString
+varPrettyPrint (varName -> x) = getOccFS x <> (if isSystemName x then "_" <> fsLit (show $ nameUnique x) else "")
 
 defaultLast :: [Alt Var] -> [Alt Var]
 defaultLast = uncurry (++) . partition ((/=) DEFAULT . fst3)

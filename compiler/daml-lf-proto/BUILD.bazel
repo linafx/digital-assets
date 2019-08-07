@@ -12,6 +12,7 @@ da_haskell_library(
         "containers",
         "cryptonite",
         "either",
+        "ghc-lib-parser",
         "lens",
         "memory",
         "mtl",

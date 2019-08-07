@@ -20,6 +20,7 @@ da_haskell_library(
         "directory",
         "extra",
         "filepath",
+        "ghc-lib-parser",
         "hashable",
         "lens",
         "mtl",

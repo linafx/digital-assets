@@ -308,7 +308,7 @@ updateCtx Handle{..} (ContextId ctxId) ContextUpdate{..} = do
       SS.UpdateContextRequest_UpdatePackages
         (V.fromList (map snd updLoadPackages))
         (V.fromList (map (TL.fromStrict . LF.unPackageId) updUnloadPackages))
-    encodeName = TL.fromStrict . T.intercalate "." . LF.unModuleName
+    encodeName = TL.fromStrict . LF.fsToText . LF.unModuleName
     convModule :: (LF.ModuleName, BS.ByteString) -> SS.Module
     convModule (_, bytes) =
         case updDamlLfVersion of
@@ -336,7 +336,7 @@ runScenario Handle{..} (ContextId ctxId) name = do
       in
         SS.Identifier
           (Just ssPkgId)
-          (TL.fromStrict $ T.intercalate "." (LF.unModuleName modName) <> ":" <> LF.unExprValName defn)
+          (TL.fromStrict $ LF.fsToText (LF.unModuleName modName) <> ":" <> LF.fsToText (LF.unExprValName defn))
 
 performRequest
   :: (ClientRequest 'Normal payload response -> IO (ClientResult 'Normal response))

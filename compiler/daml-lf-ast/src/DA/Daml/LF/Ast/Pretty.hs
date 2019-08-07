@@ -43,28 +43,28 @@ instance Pretty PackageId where
     pPrint = pretty . unPackageId
 
 instance Pretty ModuleName where
-    pPrint = prettyDottedName . unModuleName
+    pPrint = pretty . fsToText . unModuleName
 
 instance Pretty TypeConName where
-    pPrint = prettyDottedName . unTypeConName
+    pPrint = prettyDottedName . map fsToText . unTypeConName
 
 instance Pretty ChoiceName where
-    pPrint = pretty . unChoiceName
+    pPrint = pretty . fsToText . unChoiceName
 
 instance Pretty FieldName where
-    pPrint = pretty . unFieldName
+    pPrint = pretty . fsToText . unFieldName
 
 instance Pretty VariantConName where
-    pPrint = pretty . unVariantConName
+    pPrint = pretty . fsToText . unVariantConName
 
 instance Pretty TypeVarName where
-    pPrint = pretty . unTypeVarName
+    pPrint = pretty . fsToText . unTypeVarName
 
 instance Pretty ExprVarName where
-    pPrint = pretty . unExprVarName
+    pPrint = pretty . fsToText . unExprVarName
 
 instance Pretty ExprValName where
-    pPrint = pretty . unExprValName
+    pPrint = pretty . fsToText . unExprValName
 
 prettyModuleRef :: (PackageRef, ModuleName) -> Doc ann
 prettyModuleRef (pkgRef, modName) = docPkgRef <> pretty modName
@@ -176,7 +176,7 @@ prettyTyLambdaDot = "."
 prettyAltArrow    = "->"
 
 instance Pretty PartyLiteral where
-  pPrint = quotes . pretty . unPartyLiteral
+  pPrint = quotes . pretty . fsToText . unPartyLiteral
 
 instance Pretty BuiltinExpr where
   pPrintPrec _lvl prec = \case
@@ -316,11 +316,11 @@ instance Pretty Update where
     UExercise tpl choice cid Nothing arg ->
       -- NOTE(MH): Converting the choice name into a variable is a bit of a hack.
       prettyAppKeyword prec "exercise"
-      [tplArg tpl, TmArg (EVar (ExprVarName (unChoiceName choice))), TmArg cid, TmArg arg]
+      [tplArg tpl, TmArg (EVar (ExprVarName $ unChoiceName choice)), TmArg cid, TmArg arg]
     UExercise tpl choice cid (Just actor) arg ->
       -- NOTE(MH): Converting the choice name into a variable is a bit of a hack.
       prettyAppKeyword prec "exercise_with_actors"
-      [tplArg tpl, TmArg (EVar (ExprVarName (unChoiceName choice))), TmArg cid, TmArg actor, TmArg arg]
+      [tplArg tpl, TmArg (EVar (ExprVarName $ unChoiceName choice)), TmArg cid, TmArg actor, TmArg arg]
     UFetch tpl cid ->
       prettyAppKeyword prec "fetch" [tplArg tpl, TmArg cid]
     UGetTime ->

@@ -11,12 +11,13 @@ module DA.Daml.LF.Ast.Type
 import           Data.Bifunctor
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
-import qualified Data.Text as T
 import Data.List
 import           Safe (findJust)
 import           Safe.Exact (zipWithExactMay)
 
 import DA.Daml.LF.Ast.Base
+
+import "ghc-lib-parser" FastString (fsLit)
 
 -- | Get the free type variables of a type.
 freeVars :: Type -> Set.Set TypeVarName
@@ -112,5 +113,5 @@ substitute subst = go (Map.foldl' (\acc t -> acc `Set.union` freeVars t) Set.emp
 -- name.
 freshTypeVar :: Set.Set TypeVarName -> TypeVarName -> TypeVarName
 freshTypeVar s (TypeVarName v) =
-  let candidates = map (\n -> TypeVarName (v <> T.pack (show n))) [1 :: Int ..]
+  let candidates = map (\n -> TypeVarName (v <> fsLit (show n))) [1 :: Int ..]
   in  findJust (`Set.notMember` s) candidates

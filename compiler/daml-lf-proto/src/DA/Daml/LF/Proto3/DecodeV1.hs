@@ -24,6 +24,8 @@ import qualified Data.Text.Lazy as TL
 import qualified Data.Vector as V
 import qualified Proto3.Suite as Proto
 
+import "ghc-lib-parser" FastString
+
 -- internal functions that *implement* decoding
 type DecodeImpl = ReaderT PackageRefCtx Decode
 type MonadDecode = MonadError Error
@@ -51,10 +53,13 @@ decodePackage minorText (LF1.Package mods internedList) = do
   interned <- decodeInternedPackageIds internedList
   Package version <$> runReaderT (decodeNM DuplicateModule decodeModule mods) interned
 
+decodeModuleName :: Applicative m => LF1.DottedName -> m ModuleName
+decodeModuleName (LF1.DottedName parts) = pure $ ModuleName $ fsLit $ intercalate "." $ map TL.unpack $ V.toList parts
+
 decodeModule :: LF1.Module -> DecodeImpl Module
 decodeModule (LF1.Module name flags dataTypes values templates) =
   Module
-    <$> mayDecode "moduleName" name (decodeDottedName ModuleName)
+    <$> mayDecode "moduleName" name decodeModuleName
     <*> pure Nothing
     <*> mayDecode' "flags" flags decodeFeatureFlags
     <*> decodeNM DuplicateDataType decodeDefDataType dataTypes
@@ -74,7 +79,7 @@ decodeDefDataType :: LF1.DefDataType -> DecodeImpl DefDataType
 decodeDefDataType LF1.DefDataType{..} =
   DefDataType
     <$> traverse decodeLocation defDataTypeLocation
-    <*> mayDecode "dataTypeName" defDataTypeName (decodeDottedName TypeConName)
+    <*> mayDecode "dataTypeName" defDataTypeName (decodeDottedName (TypeConName . map textToFS))
     <*> pure (IsSerializable defDataTypeSerializable)
     <*> (decodeImpl $ traverse decodeTypeVarWithKind (V.toList defDataTypeParams))
     <*> mayDecode "dataTypeDataCons" defDataTypeDataCons decodeDataCons
@@ -82,11 +87,11 @@ decodeDefDataType LF1.DefDataType{..} =
 decodeDataCons :: LF1.DefDataTypeDataCons -> DecodeImpl DataCons
 decodeDataCons = \case
   LF1.DefDataTypeDataConsRecord (LF1.DefDataType_Fields fs) ->
-    DataRecord <$> mapM (decodeFieldWithType FieldName) (V.toList fs)
+    DataRecord <$> mapM (decodeFieldWithType (FieldName . textToFS)) (V.toList fs)
   LF1.DefDataTypeDataConsVariant (LF1.DefDataType_Fields fs) ->
-    DataVariant <$> mapM (decodeFieldWithType VariantConName) (V.toList fs)
+    DataVariant <$> mapM (decodeFieldWithType (VariantConName . textToFS)) (V.toList fs)
   LF1.DefDataTypeDataConsEnum (LF1.DefDataType_EnumConstructors cs) ->
-    DataEnum <$> mapM (decodeName VariantConName) (V.toList cs)
+    DataEnum <$> mapM (decodeName (VariantConName . textToFS)) (V.toList cs)
 
 decodeDefValueNameWithType :: LF1.DefValue_NameWithType -> DecodeImpl (ExprValName, Type)
 decodeDefValueNameWithType LF1.DefValue_NameWithType{..} = (,)
@@ -104,10 +109,10 @@ decodeDefValue (LF1.DefValue mbBinder mbBody noParties isTest mbLoc) =
 
 decodeDefTemplate :: LF1.DefTemplate -> DecodeImpl Template
 decodeDefTemplate LF1.DefTemplate{..} = do
-  tplParam <- decodeName ExprVarName defTemplateParam
+  tplParam <- decodeName (ExprVarName . textToFS) defTemplateParam
   Template
     <$> traverse decodeLocation defTemplateLocation
-    <*> mayDecode "defTemplateTycon" defTemplateTycon (decodeDottedName TypeConName)
+    <*> mayDecode "defTemplateTycon" defTemplateTycon (decodeDottedName (TypeConName . map textToFS))
     <*> pure tplParam
     <*> mayDecode "defTemplatePrecond" defTemplatePrecond decodeExpr
     <*> mayDecode "defTemplateSignatories" defTemplateSignatories decodeExpr
@@ -138,7 +143,7 @@ decodeSimpleKeyExpr templateParam LF1.KeyExpr{..} = mayDecode "keyExprSum" keyEx
       (\rec_ LF1.KeyExpr_Projection{..} ->
         ERecProj
           <$> mayDecode "KeyExpr_ProjectionTyCon" keyExpr_ProjectionTycon decodeTypeConApp
-          <*> decodeName FieldName keyExpr_ProjectionField
+          <*> decodeName (FieldName . textToFS) keyExpr_ProjectionField
           <*> pure rec_)
       (EVar templateParam) keyExpr_ProjectionsProjections
   LF1.KeyExprSumRecord LF1.KeyExpr_Record{..} ->
@@ -149,17 +154,17 @@ decodeSimpleKeyExpr templateParam LF1.KeyExpr{..} = mayDecode "keyExprSum" keyEx
 decodeFieldWithSimpleKeyExpr :: ExprVarName -> LF1.KeyExpr_RecordField -> DecodeImpl (FieldName, Expr)
 decodeFieldWithSimpleKeyExpr templateParam LF1.KeyExpr_RecordField{..} =
   (,)
-  <$> decodeName FieldName keyExpr_RecordFieldField
+  <$> decodeName (FieldName . textToFS) keyExpr_RecordFieldField
   <*> mayDecode "keyExpr_RecordFieldExpr" keyExpr_RecordFieldExpr (decodeSimpleKeyExpr templateParam)
 
 decodeChoice :: LF1.TemplateChoice -> DecodeImpl TemplateChoice
 decodeChoice LF1.TemplateChoice{..} =
   TemplateChoice
     <$> traverse decodeLocation templateChoiceLocation
-    <*> decodeName ChoiceName templateChoiceName
+    <*> decodeName (ChoiceName . textToFS) templateChoiceName
     <*> pure templateChoiceConsuming
     <*> mayDecode "templateChoiceControllers" templateChoiceControllers decodeExpr
-    <*> decodeName ExprVarName templateChoiceSelfBinder
+    <*> decodeName (ExprVarName . textToFS) templateChoiceSelfBinder
     <*> mayDecode "templateChoiceArgBinder" templateChoiceArgBinder decodeVarWithType
     <*> mayDecode "templateChoiceRetType" templateChoiceRetType decodeType
     <*> mayDecode "templateChoiceUpdate" templateChoiceUpdate decodeExpr
@@ -273,7 +278,7 @@ decodeExpr (LF1.Expr mbLoc exprSum) = case mbLoc of
 
 decodeExprSum :: Maybe LF1.ExprSum -> DecodeImpl Expr
 decodeExprSum exprSum = mayDecode "exprSum" exprSum $ \case
-  LF1.ExprSumVar var -> EVar <$> decodeName ExprVarName var
+  LF1.ExprSumVar var -> EVar <$> decodeName (ExprVarName . textToFS) var
   LF1.ExprSumVal val -> EVal <$> decodeValName val
   LF1.ExprSumBuiltin (Proto.Enumerated (Right bi)) -> EBuiltin <$> decodeBuiltinFunction bi
   LF1.ExprSumBuiltin (Proto.Enumerated (Left num)) -> throwError (UnknownEnum "ExprSumBuiltin" num)
@@ -292,33 +297,33 @@ decodeExprSum exprSum = mayDecode "exprSum" exprSum $ \case
   LF1.ExprSumRecProj (LF1.Expr_RecProj mbTycon field mbRecord) ->
     ERecProj
       <$> mayDecode "Expr_RecProjTycon" mbTycon decodeTypeConApp
-      <*> decodeName FieldName field
+      <*> decodeName (FieldName . textToFS) field
       <*> mayDecode "Expr_RecProjRecord" mbRecord decodeExpr
   LF1.ExprSumRecUpd (LF1.Expr_RecUpd mbTycon field mbRecord mbUpdate) ->
     ERecUpd
       <$> mayDecode "Expr_RecUpdTycon" mbTycon decodeTypeConApp
-      <*> decodeName FieldName field
+      <*> decodeName (FieldName . textToFS) field
       <*> mayDecode "Expr_RecUpdRecord" mbRecord decodeExpr
       <*> mayDecode "Expr_RecUpdUpdate" mbUpdate decodeExpr
   LF1.ExprSumVariantCon (LF1.Expr_VariantCon mbTycon variant mbArg) ->
     EVariantCon
       <$> mayDecode "Expr_VariantConTycon" mbTycon decodeTypeConApp
-      <*> decodeName VariantConName variant
+      <*> decodeName (VariantConName . textToFS) variant
       <*> mayDecode "Expr_VariantConVariantArg" mbArg decodeExpr
   LF1.ExprSumEnumCon (LF1.Expr_EnumCon mbTypeCon dataCon) ->
     EEnumCon
       <$> mayDecode "Expr_EnumConTycon" mbTypeCon decodeTypeConName
-      <*> decodeName VariantConName dataCon
+      <*> decodeName (VariantConName . textToFS) dataCon
   LF1.ExprSumTupleCon (LF1.Expr_TupleCon fields) ->
     ETupleCon
       <$> mapM decodeFieldWithExpr (V.toList fields)
   LF1.ExprSumTupleProj (LF1.Expr_TupleProj field mbTuple) ->
     ETupleProj
-      <$> decodeName FieldName field
+      <$> decodeName (FieldName . textToFS) field
       <*> mayDecode "Expr_TupleProjTuple" mbTuple decodeExpr
   LF1.ExprSumTupleUpd (LF1.Expr_TupleUpd field mbTuple mbUpdate) ->
     ETupleUpd
-      <$> decodeName FieldName field
+      <$> decodeName (FieldName . textToFS) field
       <*> mayDecode "Expr_TupleUpdTuple" mbTuple decodeExpr
       <*> mayDecode "Expr_TupleUpdUpdate" mbUpdate decodeExpr
   LF1.ExprSumApp (LF1.Expr_App mbFun args) -> do
@@ -374,7 +379,7 @@ decodeUpdate LF1.Update{..} = mayDecode "updateSum" updateSum $ \case
   LF1.UpdateSumExercise LF1.Update_Exercise{..} ->
     fmap EUpdate $ UExercise
       <$> mayDecode "update_ExerciseTemplate" update_ExerciseTemplate decodeTypeConName
-      <*> decodeName ChoiceName update_ExerciseChoice
+      <*> decodeName (ChoiceName . textToFS) update_ExerciseChoice
       <*> mayDecode "update_ExerciseCid" update_ExerciseCid decodeExpr
       <*> traverse decodeExpr update_ExerciseActor
       <*> mayDecode "update_ExerciseArg" update_ExerciseArg decodeExpr
@@ -435,12 +440,12 @@ decodeCaseAlt LF1.CaseAlt{..} = do
     LF1.CaseAltSumVariant LF1.CaseAlt_Variant{..} ->
       CPVariant
         <$> mayDecode "caseAlt_VariantCon" caseAlt_VariantCon decodeTypeConName
-        <*> decodeName VariantConName caseAlt_VariantVariant
-        <*> decodeName ExprVarName caseAlt_VariantBinder
+        <*> decodeName (VariantConName . textToFS) caseAlt_VariantVariant
+        <*> decodeName (ExprVarName . textToFS) caseAlt_VariantBinder
     LF1.CaseAltSumEnum LF1.CaseAlt_Enum{..} ->
       CPEnum
         <$> mayDecode "caseAlt_DataCon" caseAlt_EnumCon decodeTypeConName
-        <*> decodeName VariantConName caseAlt_EnumConstructor
+        <*> decodeName (VariantConName . textToFS) caseAlt_EnumConstructor
     LF1.CaseAltSumPrimCon (Proto.Enumerated (Right pcon)) -> pure $ case pcon of
       LF1.PrimConCON_UNIT -> CPUnit
       LF1.PrimConCON_TRUE -> CPBool True
@@ -449,10 +454,10 @@ decodeCaseAlt LF1.CaseAlt{..} = do
       throwError (UnknownEnum "CaseAltSumPrimCon" idx)
     LF1.CaseAltSumNil LF1.Unit -> pure CPNil
     LF1.CaseAltSumCons LF1.CaseAlt_Cons{..} ->
-      CPCons <$> decodeName ExprVarName caseAlt_ConsVarHead <*> decodeName ExprVarName caseAlt_ConsVarTail
+      CPCons <$> decodeName (ExprVarName . textToFS) caseAlt_ConsVarHead <*> decodeName (ExprVarName . textToFS) caseAlt_ConsVarTail
     LF1.CaseAltSumOptionalNone LF1.Unit -> pure CPNone
     LF1.CaseAltSumOptionalSome LF1.CaseAlt_OptionalSome{..} ->
-      CPSome <$> decodeName ExprVarName caseAlt_OptionalSomeVarBody
+      CPSome <$> decodeName (ExprVarName . textToFS) caseAlt_OptionalSomeVarBody
   body <- mayDecode "caseAltBody" caseAltBody decodeExpr
   pure $ CaseAlternative pat body
 
@@ -465,13 +470,13 @@ decodeBinding (LF1.Binding mbBinder mbBound) =
 decodeTypeVarWithKind :: LF1.TypeVarWithKind -> Decode (TypeVarName, Kind)
 decodeTypeVarWithKind LF1.TypeVarWithKind{..} =
   (,)
-    <$> decodeName TypeVarName typeVarWithKindVar
+    <$> decodeName (TypeVarName . textToFS) typeVarWithKindVar
     <*> mayDecode "typeVarWithKindKind" typeVarWithKindKind decodeKind
 
 decodeVarWithType :: LF1.VarWithType -> DecodeImpl (ExprVarName, Type)
 decodeVarWithType LF1.VarWithType{..} =
   (,)
-    <$> decodeName ExprVarName varWithTypeVar
+    <$> decodeName (ExprVarName . textToFS) varWithTypeVar
     <*> mayDecode "varWithTypeType" varWithTypeType decodeType
 
 decodePrimLit :: MonadDecode m => LF1.PrimLit -> m BuiltinExpr
@@ -482,7 +487,7 @@ decodePrimLit (LF1.PrimLit mbSum) = mayDecode "primLitSum" mbSum $ \case
     Just dec -> return (BEDecimal dec)
   LF1.PrimLitSumTimestamp sTime -> pure $ BETimestamp sTime
   LF1.PrimLitSumText x           -> pure $ BEText $ TL.toStrict x
-  LF1.PrimLitSumParty p          -> pure $ BEParty $ PartyLiteral $ TL.toStrict p
+  LF1.PrimLitSumParty p          -> pure $ BEParty $ PartyLiteral $ textToFS $ TL.toStrict p
   LF1.PrimLitSumDate days -> pure $ BEDate days
 
 decodeKind :: LF1.Kind -> Decode Kind
@@ -516,7 +521,7 @@ decodePrim = pure . \case
 decodeType :: LF1.Type -> DecodeImpl Type
 decodeType LF1.Type{..} = mayDecode "typeSum" typeSum $ \case
   LF1.TypeSumVar (LF1.Type_Var var args) ->
-    decodeWithArgs args $ TVar <$> decodeName TypeVarName var
+    decodeWithArgs args $ TVar <$> decodeName (TypeVarName . textToFS) var
   LF1.TypeSumCon (LF1.Type_Con mbCon args) ->
     decodeWithArgs args $ TCon <$> mayDecode "type_ConTycon" mbCon decodeTypeConName
   LF1.TypeSumPrim (LF1.Type_Prim (Proto.Enumerated (Right prim)) args) -> do
@@ -531,7 +536,7 @@ decodeType LF1.Type{..} = mayDecode "typeSum" typeSum $ \case
     body <- mayDecode "type_ForAllBody" mbBody decodeType
     decodeImpl $ foldr TForall body <$> traverse decodeTypeVarWithKind (V.toList binders)
   LF1.TypeSumTuple (LF1.Type_Tuple flds) ->
-    TTuple <$> mapM (decodeFieldWithType FieldName) (V.toList flds)
+    TTuple <$> mapM (decodeFieldWithType (FieldName . textToFS)) (V.toList flds)
   LF1.TypeSumNat _ ->
     -- FixMe https://github.com/digital-asset/daml/issues/2289
     throwError $ ParseError "nat type not supported"
@@ -549,7 +554,7 @@ decodeFieldWithType wrapName (LF1.FieldWithType name mbType) =
 decodeFieldWithExpr :: LF1.FieldWithExpr -> DecodeImpl (FieldName, Expr)
 decodeFieldWithExpr (LF1.FieldWithExpr name mbExpr) =
   (,)
-    <$> decodeName FieldName name
+    <$> decodeName (FieldName . textToFS) name
     <*> mayDecode "fieldWithExprExpr" mbExpr decodeExpr
 
 decodeTypeConApp :: LF1.Type_Con -> DecodeImpl TypeConApp
@@ -561,7 +566,7 @@ decodeTypeConApp LF1.Type_Con{..} =
 decodeTypeConName :: LF1.TypeConName -> DecodeImpl (Qualified TypeConName)
 decodeTypeConName LF1.TypeConName{..} = do
   (pref, mname) <- mayDecode "typeConNameModule" typeConNameModule decodeModuleRef
-  con <- mayDecode "typeConNameName" typeConNameName (decodeDottedName TypeConName)
+  con <- mayDecode "typeConNameName" typeConNameName (decodeDottedName (TypeConName . map textToFS))
   pure $ Qualified pref mname con
 
 decodePackageId :: TL.Text -> PackageId
@@ -589,7 +594,7 @@ decodeModuleRef :: LF1.ModuleRef -> DecodeImpl (PackageRef, ModuleName)
 decodeModuleRef LF1.ModuleRef{..} =
   (,)
     <$> mayDecode "moduleRefPackageRef" moduleRefPackageRef decodePackageRef
-    <*> mayDecode "moduleRefModuleName" moduleRefModuleName (decodeDottedName ModuleName)
+    <*> mayDecode "moduleRefModuleName" moduleRefModuleName decodeModuleName
 
 
 decodeValName :: LF1.ValName -> DecodeImpl (Qualified ExprValName)
@@ -635,9 +640,9 @@ decodeNM mkDuplicateError decode1 xs = do
 decodeValueName :: MonadDecode m => String -> V.Vector TL.Text -> m ExprValName
 decodeValueName ident xs = fmap ExprValName $ if
   | V.length xs == 1 -> case unmangleIdentifier (TL.toStrict (xs V.! 0)) of
-      Right name -> pure name
+      Right name -> pure $ textToFS name
       Left _err -> do
         -- as a ugly hack to keep backwards compat, let these through for DAML-LF 1 only
-        pure (TL.toStrict (xs V.! 0))
+        pure (textToFS $ TL.toStrict (xs V.! 0))
   | V.length xs == 0 -> throwError (MissingField ident)
   | otherwise -> throwError (ParseError ("Unexpected multi-segment def name: " ++ show xs))

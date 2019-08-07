@@ -245,7 +245,7 @@ partitionDefinitions = foldr f ([], [], [])
 -- | This is the analogue of GHC’s moduleNameString for the LF
 -- `ModuleName` type.
 moduleNameString :: ModuleName -> T.Text
-moduleNameString = T.intercalate "." . unModuleName
+moduleNameString (ModuleName s) = fsToText s
 
 packageModuleNames :: Package -> [T.Text]
 packageModuleNames = map (moduleNameString . moduleName) . NM.elems . packageModules

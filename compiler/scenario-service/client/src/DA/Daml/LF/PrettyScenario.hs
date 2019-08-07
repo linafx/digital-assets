@@ -41,6 +41,8 @@ import qualified Text.Blaze.Html5 as H
 import qualified Text.Blaze.Html5.Attributes as A
 import qualified Text.Blaze.Html.Renderer.Text as Blaze
 
+import "ghc-lib-parser" FastString
+
 data Error = ErrorMissingNode NodeId
 type M = ExceptT Error (Reader (MS.Map NodeId Node, LF.World))
 
@@ -68,7 +70,7 @@ lookupNode nodeId = asks (MS.lookup nodeId . fst) >>= \case
 askWorld :: M LF.World
 askWorld = asks snd
 
-lookupDefLocation :: LF.Module -> T.Text -> Maybe LF.SourceLoc
+lookupDefLocation :: LF.Module -> FastString -> Maybe LF.SourceLoc
 lookupDefLocation mod0 defName =
   join $
     LF.dvalLocation <$> NM.lookup (LF.ExprValName defName) (LF.moduleValues mod0)
@@ -85,13 +87,13 @@ lookupModule world mbPkgId modName = do
 
 lookupModuleFromQualifiedName ::
      LF.World -> Maybe PackageIdentifier -> T.Text
-  -> Maybe (LF.ModuleName, T.Text, LF.Module)
+  -> Maybe (LF.ModuleName, FastString, LF.Module)
 lookupModuleFromQualifiedName world mbPkgId qualName = do
   let (modName, defName) = case T.splitOn ":" qualName of
-        [modNm, defNm] -> (LF.ModuleName (T.splitOn "." modNm), defNm)
+        [modNm, defNm] -> (LF.ModuleName $ fsLit $ T.unpack modNm, defNm)
         _ -> error "Bad definition"
   modu <- lookupModule world mbPkgId modName
-  return (modName, defName, modu)
+  return (modName, LF.textToFS defName, modu)
 
 parseNodeId :: NodeId -> [Integer]
 parseNodeId =
@@ -427,7 +429,7 @@ prettyMayLocation :: LF.World -> Maybe Location -> Doc SyntaxClass
 prettyMayLocation _ Nothing = text "unknown source"
 prettyMayLocation world (Just (Location mbPkgId modName sline scol eline _ecol)) =
       maybe id (\path -> linkSC (url path) title)
-        (lookupModule world mbPkgId (LF.ModuleName (T.splitOn "." (TL.toStrict modName))) >>= LF.moduleSource)
+        (lookupModule world mbPkgId (LF.ModuleName (fsLit $ TL.unpack modName)) >>= LF.moduleSource)
     $ text title
   where
     modName' = TL.toStrict modName
@@ -721,7 +723,7 @@ prettyChoiceId world (Just (Identifier mbPkgId (TL.toStrict -> qualName))) (TL.t
   | Just (_modName, defName, mod0) <- lookupModuleFromQualifiedName world mbPkgId qualName
   , Just fp <- LF.moduleSource mod0
   , Just tpl <- NM.lookup (LF.TypeConName [defName]) (LF.moduleTemplates mod0)
-  , Just chc <- NM.lookup (LF.ChoiceName choiceId) (LF.tplChoices tpl)
+  , Just chc <- NM.lookup (LF.ChoiceName $ LF.textToFS choiceId) (LF.tplChoices tpl)
   , Just (LF.SourceLoc _mref sline _scol eline _ecol) <- LF.chcLocation chc =
       linkSC (revealLocationUri fp sline eline) choiceId $ text choiceId
   | otherwise =
@@ -799,7 +801,7 @@ renderValue world name = \case
 templateConName :: Identifier -> LF.Qualified LF.TypeConName
 templateConName (Identifier mbPkgId (TL.toStrict -> qualName)) = LF.Qualified pkgRef  mdN tpl
   where (mdN, tpl) = case T.splitOn ":" qualName of
-          [modName, defN] -> (LF.ModuleName (T.splitOn "." modName) , LF.TypeConName (T.splitOn "." defN) )
+          [modName, defN] -> (LF.ModuleName (fsLit $ T.unpack modName) , LF.TypeConName (map LF.textToFS $ T.splitOn "." defN) )
           _ -> error "malformed identifier"
         pkgRef = case mbPkgId of
                   Just (PackageIdentifier (Just (PackageIdentifierSumPackageId pkgId))) -> LF.PRImport $ LF.PackageId $ TL.toStrict pkgId
@@ -812,8 +814,8 @@ labledField fname "" = fname
 labledField fname label = fname <> "." <> label
 
 typeConFieldsNames :: LF.World -> (LF.FieldName, LF.Type) -> [T.Text]
-typeConFieldsNames world (LF.FieldName fName, LF.TConApp tcn _) = map (labledField fName) (typeConFields tcn world)
-typeConFieldsNames _ (LF.FieldName fName, _) = [fName]
+typeConFieldsNames world (LF.FieldName fName, LF.TConApp tcn _) = map (labledField $ LF.fsToText fName) (typeConFields tcn world)
+typeConFieldsNames _ (LF.FieldName fName, _) = [LF.fsToText fName]
 
 typeConFields :: LF.Qualified LF.TypeConName -> LF.World -> [T.Text]
 typeConFields qName world = case LF.lookupDataType qName world of

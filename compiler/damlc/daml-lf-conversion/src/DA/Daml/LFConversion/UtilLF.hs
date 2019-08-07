@@ -14,33 +14,36 @@ import           DA.Pretty (renderPretty)
 
 import qualified Data.ByteString.Char8      as BS
 import qualified Data.NameMap               as NM
-import qualified Data.Text                  as T
 import           GHC.Stack                  (HasCallStack)
 import Language.Haskell.LSP.Types
 import           Outputable (Outputable(..), text)
 
-mkVar :: T.Text -> ExprVarName
+import "ghc-lib-parser" FastString
+
+
+
+mkVar :: FastString -> ExprVarName
 mkVar = ExprVarName
 
-mkVal :: T.Text -> ExprValName
+mkVal :: FastString -> ExprValName
 mkVal = ExprValName
 
-mkTypeVar :: T.Text -> TypeVarName
+mkTypeVar :: FastString -> TypeVarName
 mkTypeVar = TypeVarName
 
-mkModName :: [T.Text] -> ModuleName
+mkModName :: FastString -> ModuleName
 mkModName = ModuleName
 
-mkField :: T.Text -> FieldName
+mkField :: FastString -> FieldName
 mkField = FieldName
 
-mkVariantCon :: T.Text -> VariantConName
+mkVariantCon :: FastString -> VariantConName
 mkVariantCon = VariantConName
 
-mkChoiceName :: T.Text -> ChoiceName
+mkChoiceName :: FastString -> ChoiceName
 mkChoiceName = ChoiceName
 
-mkTypeCon :: [T.Text] -> TypeConName
+mkTypeCon :: [FastString] -> TypeConName
 mkTypeCon = TypeConName
 
 mkIdentity :: Type -> Expr
@@ -94,7 +97,7 @@ ghcPrim = Module
   , moduleTemplates = NM.empty
   }
   where
-    modName = mkModName ["GHC", "Prim"]
+    modName = mkModName "GHC.Prim"
     qual = Qualified PRSelf modName
     conName = mkVariantCon "Void#"
     dataVoid = DefDataType
@@ -122,7 +125,7 @@ ghcTypes = Module
   , moduleTemplates = NM.empty
   }
   where
-    modName = mkModName ["GHC", "Types"]
+    modName = mkModName "GHC.Types"
     qual = Qualified PRSelf modName
     cons = ["LT", "EQ", "GT"]
     dataOrdering = DefDataType

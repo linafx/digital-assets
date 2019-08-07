@@ -738,7 +738,7 @@ execMigrate projectOpts opts0 inFile1_ inFile2_ mbDir = do
                 forM [(pkgId1, lfPkg1), (pkgId2, lfPkg2)] $ \(pkgId, pkg) -> do
                     generateSrcFromLf (Qualify False) pkgId pkgMap0 <$> getModule m pkg
             let upgradeModPath =
-                    (joinPath $ fromMaybe "" mbDir : map T.unpack modName) <>
+                    (fromMaybe "" mbDir </> moduleNameSlashes (mkModuleNameFS modName)) <>
                     ".daml"
             let instancesModPath1 =
                     replaceBaseName upgradeModPath $
@@ -747,7 +747,7 @@ execMigrate projectOpts opts0 inFile1_ inFile2_ mbDir = do
                     replaceBaseName upgradeModPath $
                     takeBaseName upgradeModPath <> "InstancesB"
             templateNames <-
-                map (T.unpack . T.intercalate "." . LF.unTypeConName) .
+                map (T.unpack . T.intercalate "." . map LF.fsToText . LF.unTypeConName) .
                 NM.names . LF.moduleTemplates <$>
                 getModule m lfPkg1
             let generatedUpgradeMod =

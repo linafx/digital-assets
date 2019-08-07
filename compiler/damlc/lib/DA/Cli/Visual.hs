@@ -27,6 +27,8 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Text as T
 import Safe
 
+import "ghc-lib-parser" FastString
+
 type IsConsuming = Bool
 type InternalChcName = LF.ChoiceName
 
@@ -79,7 +81,7 @@ startFromExpr seen world e = case e of
     -- in the graph. We instead detect calls to the `create`, `archive` and
     -- `exercise` methods from `Template` and `Choice` instances.
     LF.EVal (LF.Qualified _ _ (LF.ExprValName ref))
-        | "$f" `T.isPrefixOf` ref && "Instance" `T.isSuffixOf` ref -> Set.empty
+        | "$f" `T.isPrefixOf` LF.fsToText ref && "Instance" `T.isSuffixOf` LF.fsToText ref -> Set.empty
     LF.EVal ref -> case LF.lookupValue ref world of
         Right LF.DefValue{..}
             | ref `Set.member` seen -> Set.empty
@@ -98,9 +100,9 @@ startFromExpr seen world e = case e of
         Set.singleton (AExercise tpl (LF.ChoiceName chc))
     expr -> Set.unions $ map (startFromExpr seen world) $ children expr
 
-pattern EInternalTemplateVal :: T.Text -> LF.Expr
+pattern EInternalTemplateVal :: FastString -> LF.Expr
 pattern EInternalTemplateVal val <-
-    LF.EVal (LF.Qualified _pkg (LF.ModuleName ["DA", "Internal", "Template"]) (LF.ExprValName val))
+    LF.EVal (LF.Qualified _pkg (LF.ModuleName "DA.Internal.Template") (LF.ExprValName val))
 
 startFromChoice :: LF.World -> LF.TemplateChoice -> Set.Set Action
 startFromChoice world chc = startFromExpr Set.empty world (LF.chcUpdate chc)
@@ -127,7 +129,7 @@ darToWorld manifest pkg = AST.initWorldSelf pkgs pkg
     where
         pkgs = map dalfBytesToPakage (dalfsContent manifest)
 
-tplNameUnqual :: LF.Template -> T.Text
+tplNameUnqual :: LF.Template -> FastString
 tplNameUnqual LF.Template {..} = headNote "tplNameUnqual" (LF.unTypeConName tplTypeCon)
 
 choiceNameWithId :: [TemplateChoices] -> Map.Map InternalChcName ChoiceDetails
@@ -148,7 +150,7 @@ nodeIdForChoice nodeLookUp chc = case Map.lookup chc nodeLookUp of
 
 addCreateChoice :: TemplateChoices -> Map.Map LF.ChoiceName ChoiceDetails -> ChoiceDetails
 addCreateChoice TemplateChoices {..} lookupData = nodeIdForChoice lookupData tplNameCreateChoice
-    where tplNameCreateChoice = LF.ChoiceName $ T.pack $ DAP.renderPretty (headNote "addCreateChoice" (LF.unTypeConName (LF.tplTypeCon template))) ++ "_Create"
+    where tplNameCreateChoice = LF.ChoiceName $ fsLit $ DAP.renderPretty (LF.fsToText $ headNote "addCreateChoice" (LF.unTypeConName (LF.tplTypeCon template))) ++ "_Create"
 
 constructSubgraphsWithLables :: Map.Map LF.ChoiceName ChoiceDetails -> TemplateChoices -> SubGraph
 constructSubgraphsWithLables lookupData tpla@TemplateChoices {..} = SubGraph nodesWithCreate template
@@ -156,7 +158,7 @@ constructSubgraphsWithLables lookupData tpla@TemplateChoices {..} = SubGraph nod
         nodes = map (nodeIdForChoice lookupData) choicesInTemplate
         nodesWithCreate = addCreateChoice tpla lookupData : nodes
 
-tplNamet :: LF.TypeConName -> T.Text
+tplNamet :: LF.TypeConName -> FastString
 tplNamet tplConName = headNote "tplNamet" (LF.unTypeConName tplConName)
 
 actionToChoice :: Action -> LF.ChoiceName
@@ -173,7 +175,7 @@ graphEdges lookupData tplChcActions = map (\(chn1, chn2) -> (nodeIdForChoice loo
         choicePairsForTemplates = concatMap choiceActionToChoicePairs chcActionsFromAllTemplates
 
 subGraphHeader :: LF.Template -> String
-subGraphHeader tpl = "subgraph cluster_" ++ (DAP.renderPretty $ head (LF.unTypeConName $ LF.tplTypeCon tpl)) ++ "{\n"
+subGraphHeader tpl = "subgraph cluster_" ++ (DAP.renderPretty $ LF.fsToText $ head (LF.unTypeConName $ LF.tplTypeCon tpl)) ++ "{\n"
 
 choiceDetailsColorCode :: IsConsuming -> String
 choiceDetailsColorCode True = "red"

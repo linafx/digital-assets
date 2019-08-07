@@ -11,6 +11,7 @@ da_haskell_library(
         "containers",
         "deepseq",
         "extra",
+        "ghc-lib-parser",
         "hashable",
         "lens",
         "mtl",

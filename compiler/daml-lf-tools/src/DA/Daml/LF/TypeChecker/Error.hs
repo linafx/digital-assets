@@ -129,7 +129,7 @@ instance Show TemplatePart where
     TPObservers -> "observers"
     TPAgreement -> "agreement"
     TPKey -> "key"
-    TPChoice choice -> "choice " <> T.unpack (unChoiceName $ chcName choice)
+    TPChoice choice -> "choice " <> T.unpack (fsToText $ unChoiceName $ chcName choice)
 
 instance Pretty SerializabilityRequirement where
   pPrint = \case
