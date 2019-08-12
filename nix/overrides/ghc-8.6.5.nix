@@ -1,8 +1,9 @@
 { stdenv, targetPackages
 
 # build-tools
-, bootPkgs
+, bootPkgs, makeWrapper
 , autoconf, automake, coreutils, fetchurl, fetchpatch, perl, python3, m4, sphinx
+, elfutils
 
 , libiconv ? null, ncurses
 
@@ -66,12 +67,16 @@ let
     GhcRtsHcOpts += -fPIC -fexternal-dynamic-refs
   '' + stdenv.lib.optionalString targetPlatform.useAndroidPrebuilt ''
     EXTRA_CC_OPTS += -std=gnu99
+  '' + ''
+     GhcLibHcOpts += -g3
+     GhcRtsHcOpts += -g3
   '';
 
   # Splicer will pull out correct variations
   libDeps = platform: stdenv.lib.optional enableTerminfo [ ncurses ]
     ++ [libffi]
     ++ stdenv.lib.optional (!enableIntegerSimple) gmp
+    ++ [elfutils]
     ++ stdenv.lib.optional (platform.libc != "glibc" && !targetPlatform.isWindows) libiconv;
 
   toolsForTarget =
@@ -160,6 +165,8 @@ stdenv.mkDerivation (rec {
     "--with-gmp-includes=${targetPackages.gmp.dev}/include" "--with-gmp-libraries=${targetPackages.gmp.out}/lib"
   ] ++ stdenv.lib.optional (targetPlatform == hostPlatform && hostPlatform.libc != "glibc" && !targetPlatform.isWindows) [
     "--with-iconv-includes=${libiconv}/include" "--with-iconv-libraries=${libiconv}/lib"
+  ] ++ [
+    "--enable-dwarf-unwind"
   ] ++ stdenv.lib.optionals (targetPlatform != hostPlatform) [
     "--enable-bootstrap-with-devel-snapshot"
   ] ++ stdenv.lib.optionals (targetPlatform.isAarch32) [
@@ -179,7 +186,7 @@ stdenv.mkDerivation (rec {
 
   nativeBuildInputs = [
     perl autoconf automake m4 python3 sphinx
-    ghc bootPkgs.alex bootPkgs.happy bootPkgs.hscolour
+    ghc bootPkgs.alex bootPkgs.happy bootPkgs.hscolour makeWrapper
   ];
 
   # For building runtime libs
@@ -211,6 +218,8 @@ stdenv.mkDerivation (rec {
       egrep --quiet '^#!' <(head -n 1 $i) || continue
       sed -i -e '2i export PATH="$PATH:${stdenv.lib.makeBinPath [ targetPackages.stdenv.cc.bintools coreutils ]}"' $i
     done
+    wrapProgram $out/bin/ghc-8.6.5 --add-flags "-L${elfutils}/lib"
+    wrapProgram $out/bin/ghc --add-flags "-L${elfutils}/lib"
   '';
 
   passthru = {

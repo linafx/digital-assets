@@ -6,6 +6,7 @@
 , makeWrapper
 , overrideCC
 , runCommand
+, elfutils
 }:
 
 
@@ -60,7 +61,8 @@ let cc-darwin =
     # We disable the fortify hardening as it causes issues with some
     # packages built with bazel that set these flags themselves.
     makeWrapper ${stdenv.cc}/bin/gcc $out/bin/gcc \
-      --set hardeningDisable fortify
+      --set hardeningDisable fortify \
+      --add-flags "-L${elfutils}/lib"
   '';
 
   customStdenv =

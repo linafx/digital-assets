@@ -263,6 +263,7 @@ haskell_register_ghc_nixpkgs(
     compiler_flags = [
         "-O1",
         "-fexternal-dynamic-refs",
+        "-g3",
         "-hide-package=ghc-boot-th",
         "-hide-package=ghc-boot",
     ],
