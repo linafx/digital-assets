@@ -1,6 +1,8 @@
 -- Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
 
+{-# LANGUAGE UnboxedTuples #-}
+{-# LANGUAGE MagicHash #-}
 {-# LANGUAGE ExistentialQuantification  #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE ConstraintKinds            #-}
@@ -39,6 +41,9 @@ module Development.IDE.Core.Shake(
     updatePositionMapping
     ) where
 
+import Text.Printf
+import GHC.Types
+import Unsafe.Coerce
 import           Development.Shake hiding (ShakeValue)
 import           Development.Shake.Database
 import           Development.Shake.Classes
@@ -58,6 +63,7 @@ import Data.Unique
 import Development.IDE.Core.Debouncer
 import Development.IDE.Core.PositionMapping
 import Development.IDE.Types.Logger hiding (Priority)
+import GHC.Exts
 import Language.Haskell.LSP.Diagnostics
 import qualified Data.SortedList as SL
 import           Development.IDE.Types.Diagnostics
@@ -65,6 +71,9 @@ import Development.IDE.Types.Location
 import           Control.Concurrent.Extra
 import           Control.Exception
 import           Control.DeepSeq
+import System.Mem.Weak
+import System.IO
+import System.Mem
 import           System.Time.Extra
 import           Data.Typeable
 import qualified Language.Haskell.LSP.Messages as LSP
@@ -86,6 +95,7 @@ data ShakeExtras = ShakeExtras
     ,logger :: Logger
     ,globals :: Var (HMap.HashMap TypeRep Dynamic)
     ,state :: Var Values
+    ,weakPtrs :: Var (HMap.HashMap (NormalizedFilePath, Key) (Weak Any))
     ,diagnostics :: Var DiagnosticStore
     ,publishedDiagnostics :: Var (Map NormalizedUri [Diagnostic])
     -- ^ This represents the set of diagnostics that we have published.
@@ -270,6 +280,7 @@ shakeOpen eventer logger shakeProfileDir opts rules = do
     shakeExtras <- do
         globals <- newVar HMap.empty
         state <- newVar HMap.empty
+        weakPtrs <- newVar HMap.empty
         diagnostics <- newVar mempty
         publishedDiagnostics <- newVar mempty
         debouncer <- newDebouncer
@@ -452,7 +463,7 @@ defineEarlyCutoff
     => (k -> NormalizedFilePath -> Action (Maybe BS.ByteString, IdeResult v))
     -> Rules ()
 defineEarlyCutoff op = addBuiltinRule noLint noIdentity $ \(Q (key, file)) (old :: Maybe BS.ByteString) mode -> do
-    extras@ShakeExtras{state} <- getShakeExtras
+    extras@ShakeExtras{state,weakPtrs} <- getShakeExtras
     val <- case old of
         Just old | mode == RunDependenciesSame -> do
             v <- liftIO $ getValues state key file
@@ -481,6 +492,21 @@ defineEarlyCutoff op = addBuiltinRule noLint noIdentity $ \(Q (key, file)) (old 
                 Just v -> pure $ (maybe ShakeNoCutoff ShakeResult bs, Succeeded (vfsVersion =<< modTime) v)
             liftIO $ setValues state key file res
             updateFileDiagnostics file (Key key) extras $ map snd diags
+            liftIO $ case res of
+                Succeeded _ v -> modifyVar_ weakPtrs $ \ptrs -> do
+                    let relevant = ["GenerateCore"]
+                    when (show key `elem` relevant) $
+                        whenJust (HMap.lookup (file, Key key) ptrs) $ \ptr -> do
+                            performGC
+                            r <- deRefWeak ptr
+                            whenJust r $ \x -> do
+                                addr <- IO (\rw -> case anyToAddr# x rw of
+                                                   (# rw', a #) -> (# rw',  I# (addr2Int# a) #))
+                                hPutStrLn stderr ("LEAK DETECTED: " <> show (file, key) <> ", " <> printf "0x%x" addr)
+                                threadDelay (5 * 10 ^ (6 :: Int))
+                    vPtr <- mkWeakPtr (unsafeCoerce v :: Any) Nothing
+                    pure $! HMap.insert (file, Key key) vPtr ptrs
+                _ -> pure ()
             let eq = case (bs, fmap decodeShakeValue old) of
                     (ShakeResult a, Just (ShakeResult b)) -> a == b
                     (ShakeStale a, Just (ShakeStale b)) -> a == b

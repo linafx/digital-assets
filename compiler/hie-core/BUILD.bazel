@@ -10,6 +10,7 @@ load(
 load("@os_info//:os_info.bzl", "is_windows")
 
 depends = [
+    "ghc-prim",
     "aeson",
     "async",
     "base",

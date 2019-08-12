@@ -22,6 +22,7 @@ data Command
     = OpenFile FilePath
     | CloseFile FilePath
     | WaitForCompletion
+    | Delay Int -- delay in seconds
     | Repeat Int [Command]
     deriving Show
 
@@ -33,6 +34,7 @@ instance FromJSON Command where
             "close" -> CloseFile <$> o.: "file"
             "wait" -> pure WaitForCompletion
             "repeat" -> Repeat <$> o .: "count" <*> o .: "cmds"
+            "delay" -> Delay <$> o .: "seconds"
             _ -> fail $ "Unknown command " <> show cmd
 
 data SessionConfig = SessionConfig
@@ -75,7 +77,7 @@ damlLanguageId = "daml"
 runSession :: Verbose -> SessionConfig -> IO ()
 runSession (Verbose verbose) SessionConfig{..} =
     LSP.runSessionWithConfig cnf ideShellCommand LSP.fullCaps ideRoot $ traverse_ interpretCommand ideCommands
-    where cnf = LSP.defaultConfig { LSP.logStdErr = verbose, LSP.logMessages = verbose }
+    where cnf = LSP.defaultConfig { LSP.logStdErr = verbose }
 
 progressStart :: LSP.Session ProgressStartNotification
 progressStart = do
@@ -103,4 +105,4 @@ interpretCommand = \case
             done <- progressDone
             guard $ done ^. params . LSP.id == start ^. params . LSP.id
     Repeat count cmds -> replicateM_ count $ traverse_ interpretCommand cmds
-
+    Delay seconds -> liftIO $ threadDelay (10 ^ (6 :: Int) * seconds)
