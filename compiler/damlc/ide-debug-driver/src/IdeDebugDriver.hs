@@ -77,7 +77,7 @@ damlLanguageId = "daml"
 runSession :: Verbose -> SessionConfig -> IO ()
 runSession (Verbose verbose) SessionConfig{..} =
     LSP.runSessionWithConfig cnf ideShellCommand LSP.fullCaps ideRoot $ traverse_ interpretCommand ideCommands
-    where cnf = LSP.defaultConfig { LSP.logStdErr = verbose }
+    where cnf = LSP.defaultConfig { LSP.logStdErr = verbose, LSP.messageTimeout = 600 }
 
 progressStart :: LSP.Session ProgressStartNotification
 progressStart = do
