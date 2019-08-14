@@ -142,6 +142,25 @@ index 0a75eea..8814486 100644
      toolchains = [
          "@rules_haskell//haskell:toolchain",
          "@rules_haskell//haskell:doctest-toolchain",
+diff --git a/haskell/ghc_bindist.bzl b/haskell/ghc_bindist.bzl
+index 535f0e3..884b2c3 100644
+--- a/haskell/ghc_bindist.bzl
++++ b/haskell/ghc_bindist.bzl
+@@ -266,6 +266,14 @@ haskell_toolchain(
+         haddock_flags = ctx.attr.haddock_flags,
+         repl_ghci_args = ctx.attr.repl_ghci_args,
+     )
++
++    if os == "windows":
++        # These libraries cause linking errors on Windows when linking
++        # pthreads, due to libwinpthread-1.dll not being loaded.
++        _execute_fail_loudly(ctx, ["rm", "mingw/lib/gcc/x86_64-w64-mingw32/7.2.0/libstdc++.dll.a"])
++        _execute_fail_loudly(ctx, ["rm", "mingw/x86_64-w64-mingw32/lib/libpthread.dll.a"])
++        _execute_fail_loudly(ctx, ["rm", "mingw/x86_64-w64-mingw32/lib/libwinpthread.dll.a"])
++
+     ctx.template(
+         "BUILD",
+         ghc_build,
 diff --git a/haskell/private/actions/compile.bzl b/haskell/private/actions/compile.bzl
 index ac8725f..ea0b594 100644
 --- a/haskell/private/actions/compile.bzl
@@ -1175,10 +1194,10 @@ index 0000000..0f854a9
 +# vim: ft=python
 diff --git a/haskell/private/cc_wrapper.sh.tpl b/haskell/private/cc_wrapper.sh.tpl
 new file mode 100644
-index 0000000..96fa0d5
+index 0000000..8624508
 --- /dev/null
 +++ b/haskell/private/cc_wrapper.sh.tpl
-@@ -0,0 +1,162 @@
+@@ -0,0 +1,160 @@
 +# CC toolchain wrapper
 +#
 +# Usage: cc_wrapper [ARG]...
@@ -1200,18 +1219,16 @@ index 0000000..96fa0d5
 +# Find compiler
 +
 +find_exe() {
-+    local exe="$1"
-+    local location
++    local -n location="$1"
++    local exe="$2"
 +
 +    location="$exe"
 +    if [[ -f "$location" ]]; then
-+        echo "$location"
 +        return
 +    fi
 +
 +    location="${exe}.exe"
 +    if [[ -f "$location" ]]; then
-+        echo "$location"
 +        return
 +    fi
 +
@@ -1228,18 +1245,17 @@ index 0000000..96fa0d5
 +
 +    location="$(rlocation "{:workspace:}/$exe")"
 +    if [[ -f "$location" ]]; then
-+        echo "$location"
 +        return
 +    fi
 +
 +    location="$(rlocation "{:workspace:}/${exe}.exe")"
 +    if [[ -f "$location" ]]; then
-+        echo "$location"
 +        return
 +    fi
 +}
 +
-+CC="$(find_exe "{:cc:}")"
++declare CC
++find_exe CC "{:cc:}"
 +
 +# ----------------------------------------------------------
 +# Handle response file
@@ -1261,13 +1277,14 @@ index 0000000..96fa0d5
 +}
 +
 +unquote_arg() {
-+    local arg="$1"
-+    if [[ "$arg" =~ ^\"(.*)\"[[:space:]]*$ ]]; then
-+        arg="${BASH_REMATCH[1]}"
-+        arg="${arg//\\\"/\"}"
-+        arg="${arg//\\\\/\\}"
++    local -n output="$1"
++    local input="$2"
++    if [[ "$input" =~ ^\"(.*)\"[[:space:]]*$ ]]; then
++        input="${BASH_REMATCH[1]}"
++        input="${input//\\\"/\"}"
++        input="${input//\\\\/\\}"
 +    fi
-+    echo "$arg"
++    output="$input"
 +}
 +
 +add_arg() {
@@ -1281,12 +1298,12 @@ index 0000000..96fa0d5
 +LIB_DIR_COMING=
 +
 +shorten_path() {
-+    local input="$1"
-+    local shortest="$input"
++    local -n shortest="$1"
++    local input="$2"
 +
++    shortest="$input"
 +    if [[ ! -e "$shortest" ]]; then
 +        # realpath fails if the file does not exist.
-+        echo "$shortest"
 +        return
 +    fi
 +
@@ -1299,19 +1316,19 @@ index 0000000..96fa0d5
 +    if [[ ${#relative} -lt ${#shortest} ]]; then
 +        shortest="$relative"
 +    fi
-+
-+    echo "$shortest"
 +}
 +
 +handle_lib_dir() {
 +    local lib_dir="$1"
-+    add_arg "-L$(shorten_path "$lib_dir")"
++    local shortened
++    shorten_path shortened "$lib_dir"
++    add_arg "-L$shortened"
 +}
 +
 +handle_arg() {
 +    local arg="$1"
 +    if [[ $IN_RESPONSE_FILE = 1 ]]; then
-+        arg="$(unquote_arg "$arg")"
++        unquote_arg arg "$arg"
 +    fi
 +    if [[ $LIB_DIR_COMING = 1 ]]; then
 +        LIB_DIR_COMING=
