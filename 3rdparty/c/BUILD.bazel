@@ -4,3 +4,75 @@
 exports_files([
     "zlib.BUILD",
 ])
+
+load("//bazel_tools:cc.bzl", "cc_unified_library")
+
+cc_unified_library(
+    name = "z",
+    libs = ["@zlib//:zlib"],
+    exclude = ["@bazel_tools//tools/cpp:malloc"],
+    deps = ["@bazel_tools//tools/cpp:malloc"],
+    mangle_name = False,
+    visibility = ["//visibility:public"],
+)
+
+# XXX: Requires .c files in headers.
+#   external/boringssl/src/crypto/fipsmodule/bcm.c:29:10: fatal error: aes/aes.c: No such file or directory
+#    #include "aes/aes.c"
+# cc_unified_library(
+#     name = "crypto",
+#     libs = ["@boringssl//:crypto"],
+#     exclude = ["@bazel_tools//tools/cpp:malloc"],
+#     deps = ["@bazel_tools//tools/cpp:malloc"],
+#     mangle_name = False,
+#     visibility = ["//visibility:public"],
+# )
+
+cc_unified_library(
+    name = "ssl",
+    libs = ["@boringssl//:ssl"],
+    exclude = [
+        "@bazel_tools//tools/cpp:malloc",
+        "@boringssl//:crypto",
+    ],
+    deps = [
+        "@bazel_tools//tools/cpp:malloc",
+        "@boringssl//:crypto",  # XXX ":crypto",
+    ],
+    mangle_name = False,
+    visibility = ["//visibility:public"],
+)
+
+cc_unified_library(
+    name = "gpr",
+    libs = ["@com_github_grpc_grpc//:gpr"],
+    exclude = [
+        "@bazel_tools//tools/cpp:malloc",
+    ],
+    deps = [
+        "@bazel_tools//tools/cpp:malloc",
+    ],
+    mangle_name = False,
+    visibility = ["//visibility:public"],
+)
+
+cc_unified_library(
+    name = "grpc",
+    libs = ["@com_github_grpc_grpc//:grpc"],
+    exclude = [
+        "@bazel_tools//tools/cpp:malloc",
+        "@boringssl//:crypto",
+        "@boringssl//:ssl",
+        "@com_github_grpc_grpc//:gpr",
+        "@zlib//:zlib",
+    ],
+    deps = [
+        "@bazel_tools//tools/cpp:malloc",
+        "@boringssl//:crypto",  # XXX ":crypto",
+        ":ssl",
+        ":gpr",
+        ":z",
+    ],
+    mangle_name = False,
+    visibility = ["//visibility:public"],
+)
