@@ -42,7 +42,7 @@ c2hs_suite(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":fat_cbits",
+        ":cbits",
     ],
 )
 
@@ -53,11 +53,6 @@ cc_library(
     includes = ["include/"],
     visibility = ["//visibility:public"],
     deps = [
-        "@com_github_grpc_grpc//:grpc",
+        "@com_github_digital_asset_daml//3rdparty/c:grpc",
     ],
-)
-
-fat_cc_library(
-    name = "fat_cbits",
-    input_lib = ":cbits",
 )

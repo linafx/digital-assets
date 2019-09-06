@@ -540,7 +540,7 @@ hazel_repositories(
     extra_libs = dicts.add(
         hazel_default_extra_libs,
         {
-            "z": "@com_github_madler_zlib//:z",
+            "z": "@com_github_digital_asset_daml//3rdparty/c:z",
             "bz2": "@bzip2//:bz2",
         },
     ),
