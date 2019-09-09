@@ -1,0 +1,52 @@
+Use the cc_wrapper for Cabal builds to work around libray not found issues on
+macOS. Ideally, we would use the cc_wrapper on all operating systems. However,
+due to https://github.com/bazelbuild/bazel/issues/9390 this fails on Windows.
+diff --git a/haskell/cabal.bzl b/haskell/cabal.bzl
+index 747705e6..4e3b133e 100644
+--- a/haskell/cabal.bzl
++++ b/haskell/cabal.bzl
+@@ -109,10 +109,12 @@ def _prepare_cabal_inputs(hs, cc, dep_info, cc_info, component, package_id, tool
+             "%{ghc_pkg}": hs.tools.ghc_pkg.path,
+             "%{runghc}": hs.tools.runghc.path,
+             "%{ar}": cc.tools.ar,
++            "%{cc}": cc.tools.cc,
+             "%{strip}": cc.tools.strip,
+             # XXX Workaround
+             # https://github.com/bazelbuild/bazel/issues/5980.
+             "%{env}": render_env(env),
++            "%{is_darwin}": str(hs.toolchain.is_darwin),
+             "%{is_windows}": str(hs.toolchain.is_windows),
+         },
+     )
+diff --git a/haskell/private/cabal_wrapper.sh.tpl b/haskell/private/cabal_wrapper.sh.tpl
+index 1250b25b..bf9e52d6 100644
+--- a/haskell/private/cabal_wrapper.sh.tpl
++++ b/haskell/private/cabal_wrapper.sh.tpl
+@@ -84,6 +84,7 @@ done
+ shift 1
+ 
+ ar=$(realpath %{ar})
++cc=$(realpath %{cc})
+ strip=$(realpath %{strip})
+ distdir=$(mktemp -d)
+ libdir=$pkgroot/iface
+@@ -99,6 +100,11 @@ trap cleanup EXIT
+ 
+ %{ghc_pkg} recache --package-db=$package_database
+ 
++WITH_GCC=
++if [[ %{is_darwin} == True ]]; then
++    WITH_GCC="--with-gcc=$cc"
++fi
++
+ ENABLE_RELOCATABLE=
+ if [[ %{is_windows} != True ]]; then
+     ENABLE_RELOCATABLE=--enable-relocatable
+@@ -119,6 +125,7 @@ $execroot/%{runghc} $setup configure \
+     --with-compiler=$execroot/%{ghc} \
+     --with-hc-pkg=$execroot/%{ghc_pkg} \
+     --with-ar=$ar \
++    $WITH_GCC \
+     --with-strip=$strip \
+     --enable-deterministic \
+     $ENABLE_RELOCATABLE \

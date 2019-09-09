@@ -41,6 +41,16 @@ def daml_deps():
             strip_prefix = "rules_haskell-%s" % rules_haskell_version,
             urls = ["https://github.com/tweag/rules_haskell/archive/%s.tar.gz" % rules_haskell_version],
             patches = [
+                # Upstream to rules_haskell and remove this patach.
+                "@com_github_digital_asset_daml//bazel_tools:haskell-cc-wrapper-darwin-rpath-library-dirs.patch",
+                # Remove once https://github.com/tweag/rules_haskell/pull/1068 is merged.
+                "@com_github_digital_asset_daml//bazel_tools:haskell-stack-snapshot-deps.patch",
+                # Remove once https://github.com/tweag/rules_haskell/pull/1070 is merged.
+                "@com_github_digital_asset_daml//bazel_tools:haskell-cabal-collisions.patch",
+                # Remove once https://github.com/tweag/rules_haskell/pull/1095 is merged.
+                "@com_github_digital_asset_daml//bazel_tools:haskell-cabal-components.patch",
+                # Upstream to rules_haskell and remove this patch.
+                "@com_github_digital_asset_daml//bazel_tools:haskell-cabal-cc-wrapper.patch",
                 "@com_github_digital_asset_daml//bazel_tools:haskell-windows-remove-fake-libs.patch",
                 "@com_github_digital_asset_daml//bazel_tools:haskell-windows-extra-libraries.patch",
                 "@com_github_digital_asset_daml//bazel_tools:haskell-ghci-grpc.patch",
