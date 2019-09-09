@@ -32,6 +32,467 @@ load("@rules_haskell//tools:repositories.bzl", "rules_haskell_worker_dependencie
 # We don't use the worker mode, but this is required for bazel query to function.
 rules_haskell_worker_dependencies()
 
+load("//bazel_tools:os_info.bzl", "os_info")
+
+os_info(name = "os_info")
+
+load("@os_info//:os_info.bzl", "is_linux", "is_windows")
+
+http_archive(
+    name = "alex",
+    build_file_content = """
+load("@rules_haskell//haskell:cabal.bzl", "haskell_cabal_binary")
+haskell_cabal_binary(
+    name = "alex",
+    srcs = glob(["**"]),
+    visibility = ["//visibility:public"],
+)
+    """,
+    sha256 = "d58e4d708b14ff332a8a8edad4fa8989cb6a9f518a7c6834e96281ac5f8ff232",
+    strip_prefix = "alex-3.2.4",
+    urls = ["http://hackage.haskell.org/package/alex-3.2.4/alex-3.2.4.tar.gz"],
+)
+
+http_archive(
+    name = "happy",
+    build_file_content = """
+load("@rules_haskell//haskell:cabal.bzl", "haskell_cabal_binary")
+haskell_cabal_binary(
+    name = "happy",
+    srcs = glob(["**"]),
+    visibility = ["//visibility:public"],
+)
+    """,
+    sha256 = "9094d19ed0db980a34f1ffd58e64c7df9b4ecb3beed22fd9b9739044a8d45f77",
+    strip_prefix = "happy-1.19.11",
+    urls = ["http://hackage.haskell.org/package/happy-1.19.11/happy-1.19.11.tar.gz"],
+)
+
+http_archive(
+    name = "hpp",
+    build_file_content = """
+load("@rules_haskell//haskell:cabal.bzl", "haskell_cabal_binary")
+haskell_cabal_binary(
+    name = "hpp",
+    srcs = glob(["**"]),
+    deps = [
+        "@stackage//:base",
+        "@stackage//:directory",
+        "@stackage//:filepath",
+        "@stackage//:hpp",
+        "@stackage//:time",
+    ],
+    visibility = ["//visibility:public"],
+)
+    """,
+    sha256 = "d1a843f4383223f85de4d91759545966f33a139d0019ab30a2f766bf9a7d62bf",
+    strip_prefix = "hpp-0.6.1",
+    urls = ["http://hackage.haskell.org/package/hpp-0.6.1/hpp-0.6.1.tar.gz"],
+)
+
+http_archive(
+    name = "c2hs",
+    build_file_content = """
+load("@rules_haskell//haskell:cabal.bzl", "haskell_cabal_binary")
+haskell_cabal_binary(
+    name = "c2hs",
+    srcs = glob(["**"]),
+    deps = [
+        "@c2hs_deps//:base",
+        "@c2hs_deps//:bytestring",
+        "@c2hs_deps//:language-c",
+        "@c2hs_deps//:filepath",
+        "@c2hs_deps//:dlist",
+    ],
+    visibility = ["//visibility:public"],
+)
+    """,
+    sha256 = "91dd121ac565009f2fc215c50f3365ed66705071a698a545e869041b5d7ff4da",
+    strip_prefix = "c2hs-0.28.6",
+    urls = ["http://hackage.haskell.org/package/c2hs-0.28.6/c2hs-0.28.6.tar.gz"],
+)
+
+http_archive(
+    name = "proto3_suite",
+    build_file_content = """
+load("@rules_haskell//haskell:cabal.bzl", "haskell_cabal_binary", "haskell_cabal_library")
+haskell_cabal_binary(
+    name = "compile-proto-file",
+    srcs = glob(["**"]),
+    deps = [
+        "@stackage//:base",
+        "@stackage//:optparse-applicative",
+        "@stackage//:proto3-suite",
+        "@stackage//:system-filepath",
+        "@stackage//:text",
+        "@stackage//:turtle",
+    ],
+    visibility = ["//visibility:public"],
+)
+    """,
+    sha256 = "9437bd383e58a777a6cd857202007985317299bfc16ccf81bc0015b964092f40",
+    strip_prefix = "proto3-suite-3f6dd6f612cf2eba3c05798926ff924b0d5ab4fa",
+    urls = ["https://github.com/awakesecurity/proto3-suite/archive/3f6dd6f612cf2eba3c05798926ff924b0d5ab4fa.tar.gz"],
+)
+
+http_archive(
+    name = "grpc_haskell_core",
+    build_file_content = """
+load("@com_github_digital_asset_daml//bazel_tools:fat_cc_library.bzl", "fat_cc_library")
+load("@rules_haskell//haskell:cabal.bzl", "haskell_cabal_library")
+load("@stackage//:packages.bzl", "packages")
+haskell_cabal_library(
+    name = "grpc-haskell-core",
+    version = "0.0.0.0",
+    srcs = glob(["**"]),
+    deps = packages["grpc-haskell-core"].deps + [
+        ":grpc",
+        ":libgpr",
+    ],
+    tools = ["@c2hs//:c2hs"],
+    visibility = ["//visibility:public"],
+)
+fat_cc_library(
+    name = "grpc",
+    input_lib = "@com_github_grpc_grpc//:grpc",
+)
+# Cabal requires libgpr next to libgrpc. However, fat_cc_library of grpc
+# already contains gpr and providing a second copy would cause duplicate symbol
+# errors. Instead, we define an empty dummy libgpr.
+genrule(name = "gpr-source", outs = ["gpr.c"], cmd = "touch $(OUTS)")
+cc_library(name = "gpr", srcs = [":gpr-source"])
+cc_library(name = "libgpr", srcs = [":gpr"])
+    """,
+    patch_args = ["-p2"],
+    patches = [
+        "@com_github_digital_asset_daml//bazel_tools:grpc-haskell-core-mask-runops.patch",
+        "@com_github_digital_asset_daml//bazel_tools:grpc-haskell-core-cpp-options.patch",
+    ],
+    sha256 = "c6201f4e2fd39f25ca1d47b1dac4efdf151de88a2eb58254d61abc2760e58fda",
+    strip_prefix = "gRPC-haskell-11681ec6b99add18a8d1315f202634aea343d146/core",
+    urls = ["https://github.com/awakesecurity/gRPC-haskell/archive/11681ec6b99add18a8d1315f202634aea343d146.tar.gz"],
+)
+
+http_archive(
+    name = "ghcide",
+    build_file_content = """
+load("@rules_haskell//haskell:cabal.bzl", "haskell_cabal_binary", "haskell_cabal_library")
+deps = [
+    "@stackage//:aeson",
+    "@stackage//:async",
+    "@stackage//:base",
+    "@stackage//:binary",
+    "@stackage//:bytestring",
+    "@stackage//:containers",
+    "@stackage//:data-default",
+    "@stackage//:deepseq",
+    "@stackage//:directory",
+    "@stackage//:extra",
+    "@stackage//:filepath",
+    "@stackage//:ghc",
+    "@stackage//:ghc-boot",
+    "@stackage//:ghc-boot-th",
+    "@stackage//:ghc-paths",
+    "@stackage//:hashable",
+    "@stackage//:haskell-lsp",
+    "@stackage//:haskell-lsp-types",
+    "@stackage//:hie-bios",
+    "@stackage//:mtl",
+    "@stackage//:network-uri",
+    "@stackage//:optparse-applicative",
+    "@stackage//:prettyprinter",
+    "@stackage//:prettyprinter-ansi-terminal",
+    "@stackage//:rope-utf16-splay",
+    "@stackage//:safe-exceptions",
+    "@stackage//:shake",
+    "@stackage//:sorted-list",
+    "@stackage//:stm",
+    "@stackage//:syb",
+    "@stackage//:text",
+    "@stackage//:time",
+    "@stackage//:transformers",
+    "@stackage//:unordered-containers",
+    "@stackage//:utf8-string",
+]
+haskell_cabal_library(
+    name = "ghcide-lib",
+    package_name = "ghcide",
+    version = "0.0.3",
+    srcs = glob(["**"]),
+    deps = deps,
+    visibility = ["//visibility:public"],
+)
+haskell_cabal_binary(
+    name = "ghcide",
+    srcs = glob(["**"]),
+    deps = deps + [":ghcide-lib"],
+    visibility = ["//visibility:public"],
+)
+    """,
+    sha256 = "82fc58fb03f10dd7795bf1aabd5d9f3175f60240968b9fa8755fd08a49ce8f07",
+    strip_prefix = "ghcide-dcd7cb499e33273e1d5835ea1e69907e8224e483",
+    urls = ["https://github.com/digital-asset/ghcide/archive/dcd7cb499e33273e1d5835ea1e69907e8224e483.tar.gz"],
+)
+
+http_archive(
+    name = "ghcide_ghc_lib",
+    build_file_content = """
+load("@rules_haskell//haskell:cabal.bzl", "haskell_cabal_library")
+load("@rules_haskell//haskell:defs.bzl", "haskell_library")
+load("@stackage//:packages.bzl", "packages")
+haskell_cabal_library(
+    name = "ghcide",
+    version = "0.0.3",
+    srcs = glob(["**"]),
+    flags = packages["ghcide"].flags,
+    deps = packages["ghcide"].deps,
+    visibility = ["//visibility:public"],
+)
+haskell_library(
+    name = "testing",
+    srcs = glob(["test/src/**/*.hs"]),
+    src_strip_prefix = "test/src",
+    deps = [
+        "@stackage//:base",
+        "@stackage//:extra",
+        "@stackage//:containers",
+        "@stackage//:haskell-lsp-types",
+        "@stackage//:lens",
+        "@stackage//:lsp-test",
+        "@stackage//:parser-combinators",
+        "@stackage//:tasty-hunit",
+        "@stackage//:text",
+    ],
+    compiler_flags = [
+       "-XBangPatterns",
+       "-XDeriveFunctor",
+       "-XDeriveGeneric",
+       "-XGeneralizedNewtypeDeriving",
+       "-XLambdaCase",
+       "-XNamedFieldPuns",
+       "-XOverloadedStrings",
+       "-XRecordWildCards",
+       "-XScopedTypeVariables",
+       "-XStandaloneDeriving",
+       "-XTupleSections",
+       "-XTypeApplications",
+       "-XViewPatterns",
+    ],
+    visibility = ["//visibility:public"],
+)
+    """,
+    patch_args = ["-p1"],
+    patches = ["@com_github_digital_asset_daml//bazel_tools:haskell-ghcide-expose-compat.patch"],
+    sha256 = "82fc58fb03f10dd7795bf1aabd5d9f3175f60240968b9fa8755fd08a49ce8f07",
+    strip_prefix = "ghcide-dcd7cb499e33273e1d5835ea1e69907e8224e483",
+    urls = ["https://github.com/digital-asset/ghcide/archive/dcd7cb499e33273e1d5835ea1e69907e8224e483.tar.gz"],
+)
+
+load("@bazel_skylib//lib:dicts.bzl", "dicts")
+load("@rules_haskell//haskell:cabal.bzl", "stack_snapshot")
+
+stack_snapshot(
+    name = "stackage",
+    flags = dicts.add(
+        {
+            "ghcide": ["ghc-lib"],
+            "hlint": ["ghc-lib"],
+        },
+        {
+            "blaze-textual": ["integer-simple"],
+            "cryptonite": ["-integer-gmp"],
+            "hashable": ["-integer-gmp"],
+            "integer-logarithms": ["-integer-gmp"],
+            "text": ["integer-simple"],
+            "scientific": ["integer-simple"],
+        } if not is_windows else {},
+    ),
+    local_snapshot = "//:stack-snapshot.yaml",
+    packages = [
+        "aeson",
+        "aeson-pretty",
+        "ansi-terminal",
+        "ansi-wl-pprint",
+        "array",
+        "async",
+        "attoparsec",
+        "base",
+        "base16-bytestring",
+        "base64-bytestring",
+        "binary",
+        "blaze-html",
+        "bytestring",
+        "Cabal",
+        "cereal",
+        "clock",
+        "cmark-gfm",
+        "conduit",
+        "conduit-extra",
+        "connection",
+        "containers",
+        "contravariant",
+        "cryptohash",
+        "cryptonite",
+        "data-default",
+        "Decimal",
+        "deepseq",
+        "directory",
+        "dlist",
+        "either",
+        "exceptions",
+        "extra",
+        "fast-logger",
+        "file-embed",
+        "filepath",
+        "filepattern",
+        "foldl",
+        "ghc",
+        "ghc-boot",
+        "ghc-boot-th",
+        "ghc-lib",
+        "ghc-lib-parser",
+        "ghc-paths",
+        "ghc-prim",
+        "gitrev",
+        "grpc-haskell",
+        "hashable",
+        "haskeline",
+        "haskell-lsp",
+        "haskell-lsp-types",
+        "haskell-src",
+        "haskell-src-exts",
+        "hie-bios",
+        "hlint",
+        "hpc",
+        "hpp",
+        "http-client",
+        "http-client-tls",
+        "http-conduit",
+        "http-types",
+        "insert-ordered-containers",
+        "lens",
+        "lens-aeson",
+        "lifted-async",
+        "lifted-base",
+        "lsp-test",
+        "main-tester",
+        "managed",
+        "megaparsec",
+        "memory",
+        "monad-control",
+        "monad-logger",
+        "monad-loops",
+        "mtl",
+        "neat-interpolation",
+        "network",
+        "network-uri",
+        "nsis",
+        "open-browser",
+        "optparse-applicative",
+        "optparse-generic",
+        "parsec",
+        "parser-combinators",
+        "parsers",
+        "path",
+        "path-io",
+        "pipes",
+        "pretty",
+        "prettyprinter",
+        "prettyprinter-ansi-terminal",
+        "pretty-show",
+        "process",
+        "proto3-suite",
+        "proto3-wire",
+        "QuickCheck",
+        "quickcheck-instances",
+        "random",
+        "range-set-list",
+        "recursion-schemes",
+        "regex-tdfa",
+        "regex-tdfa-text",
+        "retry",
+        "rope-utf16-splay",
+        "safe",
+        "safe-exceptions",
+        "scientific",
+        "semigroups",
+        "semver",
+        "shake",
+        "sorted-list",
+        "split",
+        "stache",
+        "stm",
+        "swagger2",
+        "syb",
+        "system-filepath",
+        "tagged",
+        "tar",
+        "tar-conduit",
+        "tasty",
+        "tasty-ant-xml",
+        "tasty-golden",
+        "tasty-hunit",
+        "tasty-quickcheck",
+        "template-haskell",
+        "temporary",
+        "terminal-progress-bar",
+        "text",
+        "time",
+        "tls",
+        "transformers",
+        "transformers-base",
+        "turtle",
+        "typed-process",
+        "uniplate",
+        "unix-compat",
+        "unliftio",
+        "unliftio-core",
+        "unordered-containers",
+        "uri-encode",
+        "utf8-string",
+        "uuid",
+        "vector",
+        "xml",
+        "xml-conduit",
+        "yaml",
+        "zip",
+        "zip-archive",
+        "zlib",
+        "zlib-bindings",
+    ] + (["unix"] if not is_windows else ["Win32"]),
+    tools = [
+        "@alex",
+        "@c2hs",
+        "@happy",
+    ],
+    vendored_packages = {
+        "ghcide": "@ghcide_ghc_lib//:ghcide",
+        "grpc-haskell-core": "@grpc_haskell_core//:grpc-haskell-core",
+    },
+    deps = {
+        "bzlib-conduit": ["@bzip2//:libbz2"],
+        "digest": ["@com_github_madler_zlib//:libz"],
+        "zlib": ["@com_github_madler_zlib//:libz"],
+    },
+)
+
+# Used to bootstrap `@c2hs` for `@stackage`.
+stack_snapshot(
+    name = "c2hs_deps",
+    local_snapshot = "//:stack-snapshot.yaml",
+    packages = [
+        "base",
+        "bytestring",
+        "dlist",
+        "filepath",
+        "language-c",
+    ],
+    tools = [
+        "@alex",
+        "@happy",
+    ],
+)
+
 register_toolchains(
     "//:c2hs-toolchain",
 )
@@ -44,11 +505,6 @@ load(
     "nixpkgs_local_repository",
     "nixpkgs_package",
 )
-load("//bazel_tools:os_info.bzl", "os_info")
-
-os_info(name = "os_info")
-
-load("@os_info//:os_info.bzl", "is_linux", "is_windows")
 load("//bazel_tools:ghc_dwarf.bzl", "ghc_dwarf")
 
 ghc_dwarf(name = "ghc_dwarf")
