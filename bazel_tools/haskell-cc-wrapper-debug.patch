@@ -1,0 +1,27 @@
+diff --git a/haskell/private/cc_wrapper.py.tpl b/haskell/private/cc_wrapper.py.tpl
+index 2fb4ec73..4dc9266a 100644
+--- a/haskell/private/cc_wrapper.py.tpl
++++ b/haskell/private/cc_wrapper.py.tpl
+@@ -48,6 +48,12 @@ import subprocess
+ import sys
+ import tempfile
+ 
++import time
++
++dbg = open("/tmp/cc_wrapper.log", "a")
++def debug(*args):
++    print(*args, file=dbg, flush=True)
++
+ WORKSPACE = "{:workspace:}"
+ CC = "{:cc:}"
+ PLATFORM = "{:platform:}"
+@@ -757,7 +763,9 @@ def resolve_rpath(rpath, output):
+             # We don't know what $ORIGIN/@loader_path was meant to refer to.
+             # Try to find an existing, matching rpath by globbing.
+             stripped = replace_origin(rpath, "")
++            debug("GLOB", time.perf_counter_ns(), stripped)
+             candidates = glob.glob(os.path.join("**", stripped), recursive=True)
++            debug("    ", time.perf_counter_ns())
+             if not candidates:
+                 # Path does not exist. It will be sorted out later, since no
+                 # library will be found underneath it.
