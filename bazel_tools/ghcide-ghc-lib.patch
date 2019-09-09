@@ -1,0 +1,34 @@
+diff --git a/ghcide.cabal b/ghcide.cabal
+index 0955866..3316277 100644
+--- a/ghcide.cabal
++++ b/ghcide.cabal
+@@ -33,9 +33,8 @@ library
+         directory,
+         extra,
+         filepath,
+-        ghc-boot-th,
+-        ghc-boot,
+-        ghc >= 8.4,
++        ghc-lib,
++        ghc-lib-parser,
+         hashable,
+         haskell-lsp-types,
+         haskell-lsp >= 0.15,
+@@ -61,7 +60,6 @@ library
+       c-sources:
+         cbits/getmodtime.c
+ 
+-    cpp-options: -DGHC_STABLE
+     default-extensions:
+         BangPatterns
+         DeriveFunctor
+@@ -127,7 +125,8 @@ executable ghcide
+         extra,
+         filepath,
+         ghc-paths,
+-        ghc,
++        ghc-lib,
++        ghc-lib-parser,
+         haskell-lsp,
+         hie-bios,
+         ghcide,

@@ -1,0 +1,47 @@
+resolver: lts-14.1
+packages:
+  - archive: https://digitalassetsdk.bintray.com/ghc-lib/ghc-lib-parser-8.8.1.20190830.tar.gz
+    sha256: "8e223494b9622cfd46282a9544626f66e477d7652551cce7186603bfaa18d15d"
+    size: 1568376
+  - archive: https://digitalassetsdk.bintray.com/ghc-lib/ghc-lib-8.8.1.20190830.tar.gz
+    sha256: "9fa2ea51c634c0d9b2a4b132abdec398c6b2eb0150821ac5664abff2fe63373d"
+    size: 2710899
+  - github: digital-asset/hlint
+    commit: "e679bd34bb4e7783e1468f5988c22e71d0152e9e"
+    sha256: "c7d2a68459677aaec71cbe224f2b290a633b1aaddf94e773720bd159b3343cad"
+    size: 164284
+  - github: awakesecurity/gRPC-haskell
+    subdirs:
+      - .
+      - core
+    commit: "11681ec6b99add18a8d1315f202634aea343d146"
+    sha256: "c6201f4e2fd39f25ca1d47b1dac4efdf151de88a2eb58254d61abc2760e58fda"
+    size: 109615
+  - github: awakesecurity/proto3-wire
+    commit: "4f355bbac895d577d8a28f567ab4380f042ccc24"
+    sha256: "031e05d523a887fbc546096618bc11dceabae224462a6cdd6aab11c1658e17a3"
+    size: 20149
+  - github: awakesecurity/proto3-suite
+    commit: "f5ca2bee361d518de5c60b9d05d0f54c5d2f22af"
+    sha256: "6a803b1655824e5bec2c518b39b6def438af26135d631b60c9b70bf3af5f0db2"
+    size: 78288
+  - github: alanz/haskell-lsp
+    subdirs:
+      - .
+      - haskell-lsp-types
+    commit: "bfbd8630504ebc57b70948689c37b85cfbe589da"
+    sha256: "9a5c2871333a5e7e82abdf0bd8c3ab52a130d03832a899aee68bea993cdead1b"
+    size: 82672
+  - github: bubba/lsp-test
+    commit: "d126623dc6895d325e3d204d74e2a22d4f515587"
+    sha256: "214848612d319bbded67341c51fd151d65cc80264b9cfe70755ef6941b450ec9"
+    size: 34301
+  - github: mpickering/hie-bios
+    commit: "7a75f520b2e7a482440edd023be8e267a0fa153f"
+    sha256: "782469b30bb06cf26873e1c84bd58c8427020ff5777f4ef9d84c75cd26e3ea23"
+    size: 18328
+  - bytestring-nums-0.3.6
+  - hpp-0.6.1
+  # Core packages, need to be listed for integer-simple flags.
+  - integer-simple-0.1.1.1
+  - text-1.2.3.1
