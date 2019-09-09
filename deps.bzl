@@ -30,8 +30,8 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive", "http_file"
 load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 
 rules_scala_version = "8092d5f6165a8d9c4797d5f089c1ba4eee3326b1"
-rules_haskell_version = "74d91c116c59f0a3ad41e376d3307d85ddcc3253"
-rules_haskell_sha256 = "5f2423d4707c5601f465d7343c68ff4e8f271c1269e79af4dc2d156cb8a0c17d"
+rules_haskell_version = "3b5a62a7a4660372e71e39563e30188e8ad572ed"
+rules_haskell_sha256 = "a5a83d19be656b3d9b6d03b4d81ba1302dc89a62ba42e8541f4fd7934b0c9572"
 rules_nixpkgs_version = "5ffb8a4ee9a52bc6bc12f95cd64ecbd82a79bc82"
 
 def daml_deps():
@@ -41,12 +41,6 @@ def daml_deps():
             strip_prefix = "rules_haskell-%s" % rules_haskell_version,
             urls = ["https://github.com/tweag/rules_haskell/archive/%s.tar.gz" % rules_haskell_version],
             patches = [
-                # Remove once https://github.com/tweag/rules_haskell/pull/1039 is merged.
-                "@com_github_digital_asset_daml//bazel_tools:haskell-cc-wrapper.patch",
-                # Upstream once https://github.com/tweag/rules_haskell/pull/1039 is merged.
-                # Used to work around https://github.com/tweag/rules_haskell/issues/1062.
-                "@com_github_digital_asset_daml//bazel_tools:haskell-cc-wrapper-include-dirs.patch",
-                "@com_github_digital_asset_daml//bazel_tools:haskell-cc-wrapper-globbing.patch",
                 "@com_github_digital_asset_daml//bazel_tools:haskell-windows-remove-fake-libs.patch",
                 "@com_github_digital_asset_daml//bazel_tools:haskell-windows-extra-libraries.patch",
                 "@com_github_digital_asset_daml//bazel_tools:haskell-ghci-grpc.patch",
