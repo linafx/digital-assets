@@ -47,6 +47,13 @@ def daml_deps():
                 # Used to work around https://github.com/tweag/rules_haskell/issues/1062.
                 "@com_github_digital_asset_daml//bazel_tools:haskell-cc-wrapper-include-dirs.patch",
                 "@com_github_digital_asset_daml//bazel_tools:haskell-cc-wrapper-globbing.patch",
+                # Remove once https://github.com/tweag/rules_haskell/pull/1068 is merged.
+                "@com_github_digital_asset_daml//bazel_tools:haskell-stack-snapshot-deps.patch",
+                # Remove once https://github.com/tweag/rules_haskell/pull/1070 is merged.
+                "@com_github_digital_asset_daml//bazel_tools:haskell-cabal-collisions.patch",
+                # Remove once https://github.com/tweag/rules_haskell/pull/1095 is merged.
+                "@com_github_digital_asset_daml//bazel_tools:haskell-cabal-components.patch",
+                "@com_github_digital_asset_daml//bazel_tools:haskell-cabal-wrapper-relative-to.patch",
                 "@com_github_digital_asset_daml//bazel_tools:haskell-windows-remove-fake-libs.patch",
                 "@com_github_digital_asset_daml//bazel_tools:haskell-windows-extra-libraries.patch",
                 "@com_github_digital_asset_daml//bazel_tools:haskell-ghci-grpc.patch",
