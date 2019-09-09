@@ -64,12 +64,12 @@ genrule(
         "ORIGPWD=`pwd`\ncd daml-lf/archive\n" +
         "\n".join(
             [
-                "$$ORIGPWD/$(location @haskell_proto3__suite//:compile-proto-file) --proto da/daml_lf%s.proto --out $$ORIGPWD/$(@D)" % vx
+                "$$ORIGPWD/$(location @proto3_suite//:compile-proto-file) --proto da/daml_lf%s.proto --out $$ORIGPWD/$(@D)" % vx
                 for vx in [""] + ["_%s" % v for v in LF_MAJOR_VERSIONS]
             ],
         ),
     tools = [
-        "@haskell_proto3__suite//:compile-proto-file",
+        "@proto3_suite//:compile-proto-file",
     ],
 )
 
