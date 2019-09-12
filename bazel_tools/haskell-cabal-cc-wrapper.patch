@@ -1,0 +1,32 @@
+diff --git a/haskell/cabal.bzl b/haskell/cabal.bzl
+index 747705e6..5f8ea5a4 100644
+--- a/haskell/cabal.bzl
++++ b/haskell/cabal.bzl
+@@ -109,6 +109,7 @@ def _prepare_cabal_inputs(hs, cc, dep_info, cc_info, component, package_id, tool
+             "%{ghc_pkg}": hs.tools.ghc_pkg.path,
+             "%{runghc}": hs.tools.runghc.path,
+             "%{ar}": cc.tools.ar,
++            "%{cc}": cc.tools.cc,
+             "%{strip}": cc.tools.strip,
+             # XXX Workaround
+             # https://github.com/bazelbuild/bazel/issues/5980.
+diff --git a/haskell/private/cabal_wrapper.sh.tpl b/haskell/private/cabal_wrapper.sh.tpl
+index 1250b25b..932eee4a 100644
+--- a/haskell/private/cabal_wrapper.sh.tpl
++++ b/haskell/private/cabal_wrapper.sh.tpl
+@@ -84,6 +84,7 @@ done
+ shift 1
+ 
+ ar=$(realpath %{ar})
++cc=$(realpath %{cc})
+ strip=$(realpath %{strip})
+ distdir=$(mktemp -d)
+ libdir=$pkgroot/iface
+@@ -119,6 +120,7 @@ $execroot/%{runghc} $setup configure \
+     --with-compiler=$execroot/%{ghc} \
+     --with-hc-pkg=$execroot/%{ghc_pkg} \
+     --with-ar=$ar \
++    --with-gcc=$cc \
+     --with-strip=$strip \
+     --enable-deterministic \
+     $ENABLE_RELOCATABLE \

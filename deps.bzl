@@ -55,6 +55,7 @@ def daml_deps():
                 # Remove once https://github.com/tweag/rules_haskell/pull/1095 is merged.
                 "@com_github_digital_asset_daml//bazel_tools:haskell-cabal-components.patch",
                 "@com_github_digital_asset_daml//bazel_tools:haskell-cabal-wrapper-relative-to.patch",
+                "@com_github_digital_asset_daml//bazel_tools:haskell-cabal-cc-wrapper.patch",
                 "@com_github_digital_asset_daml//bazel_tools:haskell-windows-remove-fake-libs.patch",
                 "@com_github_digital_asset_daml//bazel_tools:haskell-windows-extra-libraries.patch",
                 "@com_github_digital_asset_daml//bazel_tools:haskell-ghci-grpc.patch",
