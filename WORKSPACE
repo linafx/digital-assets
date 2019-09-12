@@ -154,20 +154,22 @@ haskell_cabal_library(
     version = "0.0.0.0",
     srcs = glob(["**"]),
     deps = packages["grpc-haskell-core"].deps + [
-        ":gpr",
         ":grpc",
+        ":libgpr",
     ],
     tools = ["@c2hs//:c2hs"],
     visibility = ["//visibility:public"],
 )
 fat_cc_library(
-    name = "gpr",
-    input_lib = "@com_github_grpc_grpc//:gpr",
-)
-fat_cc_library(
     name = "grpc",
     input_lib = "@com_github_grpc_grpc//:grpc",
 )
+# Cabal requires libgpr next to libgrpc. However, fat_cc_library of grpc
+# already contains gpr and providing a second copy would cause duplicate symbol
+# errors. Instead, we define an empty dummy libgpr.
+genrule(name = "gpr-source", outs = ["gpr.c"], cmd = "touch $(OUTS)")
+cc_library(name = "gpr", srcs = [":gpr-source"])
+cc_library(name = "libgpr", srcs = [":gpr"])
     """,
     patch_args = ["-p2"],
     patches = [
