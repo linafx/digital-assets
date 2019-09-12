@@ -47,6 +47,7 @@ def daml_deps():
                 # Used to work around https://github.com/tweag/rules_haskell/issues/1062.
                 "@com_github_digital_asset_daml//bazel_tools:haskell-cc-wrapper-include-dirs.patch",
                 "@com_github_digital_asset_daml//bazel_tools:haskell-cc-wrapper-globbing.patch",
+                "@com_github_digital_asset_daml//bazel_tools:haskell-cc-wrapper-darwin-rpath-library-dirs.patch",
                 # Remove once https://github.com/tweag/rules_haskell/pull/1068 is merged.
                 "@com_github_digital_asset_daml//bazel_tools:haskell-stack-snapshot-deps.patch",
                 # Remove once https://github.com/tweag/rules_haskell/pull/1070 is merged.
