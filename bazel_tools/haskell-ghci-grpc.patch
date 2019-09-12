@@ -7,7 +7,7 @@ index 9c6e1d5..e2952bd 100644
  
          static_lib = mangle_static_library(hs, dynamic_lib, static_lib, fixed_lib_dir)
  
-+        if hs.toolchain.is_darwin and hs.label.name.endswith("@ghci") and dynamic_lib and (get_lib_name(dynamic_lib) == "gpr" or get_lib_name(dynamic_lib) == "grpc"):
++        if hs.toolchain.is_darwin and fixup_dir == "_ghci_libs" and dynamic_lib and get_lib_name(dynamic_lib) == "grpc":
 +            dynamic_libs.append(symlink_dynamic_library(hs, dynamic_lib, fixup_dir))
 +            continue
 +
