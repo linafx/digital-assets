@@ -9,6 +9,11 @@ RULES_HASKELL_EXEC_ROOT=$(dirname $(readlink ${BUILD_WORKSPACE_DIRECTORY}/bazel-
 # of resetting any program flags in the GHC settings file. So we
 # restore them here. See
 # https://ghc.haskell.org/trac/ghc/ticket/7929.
-PGM_ARGS="-pgma {CC} -pgmc {CC} -pgml {CC} -pgmP {CC} -optc-fno-stack-protector -optP-E -optP-undef -optP-traditional"
+cat >cc_wrapper.sh <<EOF
+#!/usr/bin/env bash
+echo "$@" >&2
+exec {C} "$@"
+EOF
+PGM_ARGS="-pgma $CC -pgmc $CC -pgml $CC -pgmP $CC -optc-fno-stack-protector -optP-E -optP-undef -optP-traditional"
 echo "{ENV}" > "$ENV_FILE"
 echo $PGM_ARGS "{ARGS}" > "$ARGS_FILE"
