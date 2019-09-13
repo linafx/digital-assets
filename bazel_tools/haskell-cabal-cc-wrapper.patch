@@ -1,8 +1,8 @@
 diff --git a/haskell/cabal.bzl b/haskell/cabal.bzl
-index 747705e6..5f8ea5a4 100644
+index 747705e6..4e3b133e 100644
 --- a/haskell/cabal.bzl
 +++ b/haskell/cabal.bzl
-@@ -109,6 +109,7 @@ def _prepare_cabal_inputs(hs, cc, dep_info, cc_info, component, package_id, tool
+@@ -109,10 +109,12 @@ def _prepare_cabal_inputs(hs, cc, dep_info, cc_info, component, package_id, tool
              "%{ghc_pkg}": hs.tools.ghc_pkg.path,
              "%{runghc}": hs.tools.runghc.path,
              "%{ar}": cc.tools.ar,
@@ -10,8 +10,13 @@ index 747705e6..5f8ea5a4 100644
              "%{strip}": cc.tools.strip,
              # XXX Workaround
              # https://github.com/bazelbuild/bazel/issues/5980.
+             "%{env}": render_env(env),
++            "%{is_darwin}": str(hs.toolchain.is_darwin),
+             "%{is_windows}": str(hs.toolchain.is_windows),
+         },
+     )
 diff --git a/haskell/private/cabal_wrapper.sh.tpl b/haskell/private/cabal_wrapper.sh.tpl
-index 1250b25b..932eee4a 100644
+index 1250b25b..bf9e52d6 100644
 --- a/haskell/private/cabal_wrapper.sh.tpl
 +++ b/haskell/private/cabal_wrapper.sh.tpl
 @@ -84,6 +84,7 @@ done
@@ -22,11 +27,23 @@ index 1250b25b..932eee4a 100644
  strip=$(realpath %{strip})
  distdir=$(mktemp -d)
  libdir=$pkgroot/iface
-@@ -119,6 +120,7 @@ $execroot/%{runghc} $setup configure \
+@@ -99,6 +100,11 @@ trap cleanup EXIT
+ 
+ %{ghc_pkg} recache --package-db=$package_database
+ 
++WITH_GCC=
++if [[ %{is_darwin} == True ]]; then
++    WITH_GCC="--with-gcc=$cc"
++fi
++
+ ENABLE_RELOCATABLE=
+ if [[ %{is_windows} != True ]]; then
+     ENABLE_RELOCATABLE=--enable-relocatable
+@@ -119,6 +125,7 @@ $execroot/%{runghc} $setup configure \
      --with-compiler=$execroot/%{ghc} \
      --with-hc-pkg=$execroot/%{ghc_pkg} \
      --with-ar=$ar \
-+    --with-gcc=$cc \
++    $WITH_GCC \
      --with-strip=$strip \
      --enable-deterministic \
      $ENABLE_RELOCATABLE \
