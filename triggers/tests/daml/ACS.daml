@@ -47,6 +47,9 @@ test = Trigger
             | cId.templateId.entityName == "Asset" ->
             let createMirror : Command = createCmd (AssetMirror { issuer = party })
             in (createMirror :: cmds, TM.insert cId.contractId cId.templateId acs)
+            | cId.templateId.entityName == "AssetMirror" ->
+            let pokeMirror : Command = exerciseCmd @AssetMirror @PokeMirror cId PokeMirror
+            in (pokeMirror :: cmds, acs)
           ArchivedEvent (Archived _ cId)
             | cId.templateId.entityName == "Asset" -> (cmds, TM.delete cId.contractId acs)
           _ -> (cmds, acs)
@@ -62,3 +65,7 @@ template AssetMirror
     issuer : Party
   where
     signatory issuer
+
+    controller issuer can
+      nonconsuming PokeMirror : ()
+        do return ()
