@@ -33,26 +33,33 @@ test = Trigger
   }
   where
     update : Message -> TriggerState -> (TriggerState, Optional Commands,  Text)
-    update (MTransaction t) (TriggerState acs nextId party) = case foldl updateEvent ([], acs) (events t) of
-      ([], acs) -> (TriggerState acs nextId  party, None, "No command")
-      (cmds, acs) ->
+    update (MTransaction t) (TriggerState acs nextId party) = case foldl updateEvent ([], acs, []) (events t) of
+      ([], acs, log) -> (TriggerState acs nextId  party, None, unlines ("No command" :: log))
+      (cmds, acs, log) ->
         ( TriggerState acs (nextId + 1) party
         , Some $ Commands ("command_" <> show nextId) cmds
-        , "Submitted " <> show (length cmds) <> " commands"
+        , unlines ("Submitted " <> show (length cmds) <> " commands" :: log)
         )
       where
-        updateEvent : ([Command], TextMap Identifier) -> Event -> ([Command], TextMap Identifier)
-        updateEvent (cmds, acs) ev = case ev of
+        updateEvent : ([Command], TextMap Identifier, [Text]) -> Event -> ([Command], TextMap Identifier, [Text])
+        updateEvent (cmds, acs, log) ev = case ev of
           CreatedEvent (Created _ cId)
             | cId.templateId.entityName == "Asset" ->
             let proposeMirror : Command = createCmd (AssetMirrorProposal { issuer = party })
-            in (proposeMirror :: cmds, TM.insert cId.contractId cId.templateId acs)
+            in (proposeMirror :: cmds, TM.insert cId.contractId cId.templateId acs, "Asset created - mirror proposed" :: log)
             | cId.templateId.entityName == "AssetMirrorProposal" ->
             let accept : Command = exerciseCmd @AssetMirrorProposal @Accept cId Accept
-            in (accept :: cmds, acs)
+            in (accept :: cmds, acs, "Proposal created - accepted" :: log)
+            | cId.templateId.entityName == "AssetMirror" ->
+            (cmds, acs, "Mirror created" :: log)
           ArchivedEvent (Archived _ cId)
-            | cId.templateId.entityName == "Asset" -> (cmds, TM.delete cId.contractId acs)
-          _ -> (cmds, acs)
+            | cId.templateId.entityName == "Asset" -> (cmds, TM.delete cId.contractId acs, "Asset archived" :: log)
+          _ -> (cmds, acs, log)
+
+unlines : [Text] -> Text
+unlines [] = ""
+unlines [x] = x
+unlines (x :: xs) = x <> "\n" <> unlines xs
 
 template Asset
   with

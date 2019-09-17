@@ -278,7 +278,10 @@ object AcsMain {
 
               } yield
                 (acsResponses
-                  .flatMap(x => x.activeContracts)
+                  .flatMap(x => {
+                    println(s"DEBUGDEBUG x $x")
+                    x.activeContracts
+                  })
                   .filter(x => x.getTemplateId.entityName == "AssetMirror")
                   .size)
               val activeMirrorContracts = Await.result(activeMirrorContractsF, Duration.Inf)
