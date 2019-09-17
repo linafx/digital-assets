@@ -74,7 +74,7 @@ data TemplateId = TemplateId
 
 -- You can think of this as an existential `data Dynamic = forall a. Dynamic a`
 -- that you can’t convert back from.
-data LedgerValue = LedgerValue {}
+data LedgerValue = LedgerValue {} deriving Show
 
 -- | At runtime we turn this into the identity function
 -- and convert the result to ledger values.
@@ -89,6 +89,7 @@ data Command
       { contractId : AnyContractId
       , choiceArg : LedgerValue
       }
+  deriving (Show)
 
 createCmd : Template t => t -> Command
 createCmd templateArg =

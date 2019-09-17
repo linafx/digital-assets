@@ -17,6 +17,7 @@ import scalaz.std.either._
 import scala.collection.JavaConverters._
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.concurrent.duration.Duration
+import scala.util.{Success, Failure}
 
 import com.digitalasset.ledger.api.domain.LedgerId
 import com.digitalasset.ledger.api.refinements.ApiTypes.{ApplicationId}
@@ -489,6 +490,7 @@ class Runner(
                     maximumRecordTime = Some(fromInstant(Instant.EPOCH.plusSeconds(5))),
                     commands = commands
                   )
+                  println(s"Commands: $commands")
                   submit(SubmitRequest(commands = Some(commandsArg)))
                 }
               }
@@ -541,7 +543,12 @@ object RunnerMain {
             sequencer)
           runner <- Future {
             new Runner(client.ledgerId, applicationId, config.ledgerParty, dar, submitRequest => {
-              val _ = client.commandClient.submitSingleCommand(submitRequest)
+              println(s"SUBMIT $submitRequest")
+              val completion = client.commandClient.trackSingleCommand(submitRequest)
+              completion onComplete {
+                case Success(x) => println(s"COMPLETED $x")
+                case Failure(x) => println(s"FAILED $x")
+              }
             })
           }
           acsResponses <- client.activeContractSetClient

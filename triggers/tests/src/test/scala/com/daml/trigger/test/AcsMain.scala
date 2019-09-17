@@ -216,7 +216,12 @@ object AcsMain {
             }
             runner <- Future {
               new Runner(client.ledgerId, applicationId, party, dar, submitRequest => {
-                val _ = client.commandClient.submitSingleCommand(submitRequest)
+                println(s"SUBMIT $submitRequest")
+                val completion = client.commandClient.trackSingleCommand(submitRequest)
+                completion onComplete {
+                  case Success(x) => println(s"COMPLETED $x")
+                  case Failure(x) => println(s"FAILED $x")
+                }
               })
             }
             finalState <- client.transactionClient

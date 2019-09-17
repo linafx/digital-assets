@@ -38,7 +38,7 @@ test = Trigger
       (cmds, acs, log) ->
         ( TriggerState acs (nextId + 1) party
         , Some $ Commands ("command_" <> show nextId) cmds
-        , unlines ("Submitted " <> show (length cmds) <> " commands" :: log)
+        , unlines ("Submitted " <> show (length cmds) <> " commands" :: map show cmds ++ ["ACS" <> show acs] ++ log)
         )
       where
         updateEvent : ([Command], TextMap Identifier, [Text]) -> Event -> ([Command], TextMap Identifier, [Text])
