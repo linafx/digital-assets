@@ -291,6 +291,11 @@ load("@rules_haskell//haskell:cabal.bzl", "stack_snapshot")
 
 stack_snapshot(
     name = "stackage",
+    extra_deps = {
+        "bzlib-conduit": ["@bzip2//:libbz2"],
+        "digest": ["@com_github_madler_zlib//:libz"],
+        "zlib": ["@com_github_madler_zlib//:libz"],
+    },
     flags = dicts.add(
         {
             "ghcide": ["ghc-lib"],
@@ -466,11 +471,6 @@ stack_snapshot(
     vendored_packages = {
         "ghcide": "@ghcide_ghc_lib//:ghcide",
         "grpc-haskell-core": "@grpc_haskell_core//:grpc-haskell-core",
-    },
-    deps = {
-        "bzlib-conduit": ["@bzip2//:libbz2"],
-        "digest": ["@com_github_madler_zlib//:libz"],
-        "zlib": ["@com_github_madler_zlib//:libz"],
     },
 )
 
