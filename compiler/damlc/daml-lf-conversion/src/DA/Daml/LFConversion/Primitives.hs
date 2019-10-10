@@ -13,6 +13,7 @@ import           DA.Daml.LFConversion.UtilLF
 import           DA.Daml.LF.Ast
 import           DA.Pretty (renderPretty)
 import qualified Data.Text as T
+import           Data.List.Extra
 
 convertPrim :: Version -> String -> Type -> Expr
 -- Update
@@ -222,6 +223,27 @@ convertPrim _ "BEToTextNumeric" (TNumeric n :-> TText) =
 convertPrim _ "BENumericFromText" (TText :-> TOptional (TNumeric n)) =
     ETyApp (EBuiltin BENumericFromText) n
 
+-- External instance methods
+convertPrim _ primId _
+    | [pkgId, mod, method] <- splitOn ":" primId =
+        EVal $
+        Qualified
+            { qualPackage = PRImport $ PackageId $ T.pack pkgId
+            , qualModule = ModuleName $ map T.pack $ splitOn "." mod
+            , qualObject =
+                  case method of
+                      "extSignatory" -> ExprValName "$csignatory"
+                      "extObserver" -> ExprValName "$cobserver"
+                      "extAgreement" -> ExprValName "$cagreement"
+                      "extFetch" -> ExprValName "$cfetch"
+                      "extEnsure" -> ExprValName "$censure"
+                      "extCreate" -> ExprValName "$ccreate"
+                      "extArchive" -> ExprValName "$carchive"
+                      "extToAnyTemplate" -> ExprValName "$ctoAnyTemplate"
+                      "extFromAnyTemplate" -> ExprValName "$cfromAnyTemplate"
+                      other ->
+                          error $ "Unknown external instance method: " <> other
+            }
 
 convertPrim _ x ty = error $ "Unknown primitive " ++ show x ++ " at type " ++ renderPretty ty
 

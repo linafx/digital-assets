@@ -10,12 +10,15 @@ module DA.Daml.Compiler.Upgrade
     , Qualify(..)
     ) where
 
+import "ghc-lib-parser" Bag
 import "ghc-lib-parser" BasicTypes
 import Control.Lens (toListOf)
+import Control.Monad
 import qualified DA.Daml.LF.Ast.Base as LF
 import DA.Daml.LF.Ast.Optics
 import qualified DA.Daml.LF.Ast.Util as LF
 import DA.Daml.Preprocessor.Generics
+import Data.Char
 import Data.List.Extra
 import qualified Data.Map.Strict as MS
 import Data.Maybe
@@ -23,20 +26,23 @@ import qualified Data.NameMap as NM
 import qualified Data.Text as T
 import Development.IDE.GHC.Util
 import Development.IDE.Types.Location
+import "ghc-lib-parser" FastString
 import "ghc-lib" GHC
 import "ghc-lib-parser" Module
 import "ghc-lib-parser" Name
-import "ghc-lib-parser" Outputable (ppr, showSDoc, showSDocForUser, alwaysQualify)
+import "ghc-lib-parser" Outputable
+    ( alwaysQualify
+    , ppr
+    , showSDoc
+    , showSDocForUser
+    )
 import "ghc-lib-parser" PrelNames
 import "ghc-lib-parser" RdrName
+import SdkVersion
 import System.FilePath.Posix
+import "ghc-lib-parser" TcEvidence (HsWrapper(..))
 import "ghc-lib-parser" TysPrim
 import "ghc-lib-parser" TysWiredIn
-import "ghc-lib-parser" FastString
-import "ghc-lib-parser" Bag
-import "ghc-lib-parser" TcEvidence (HsWrapper(..))
-import Control.Monad
-import SdkVersion
 
 -- | Generate a module containing generic instances for data types that don't have them already.
 generateGenInstancesModule :: String -> (String, ParsedSource) -> String
@@ -233,7 +239,6 @@ generateSrcFromLf (Qualify qualify) thisPkgId pkgMap m = noLoc mod
             , LF.DataRecord fs <- [dataCons]
             ]
     templateMethodNames =
-        map mkRdrName
             [ "signatory"
             , "observer"
             , "agreement"
@@ -244,12 +249,17 @@ generateSrcFromLf (Qualify qualify) thisPkgId pkgMap m = noLoc mod
             , "toAnyTemplate"
             , "fromAnyTemplate"
             ]
-    classMethodStub :: Located RdrName -> LHsBindLR GhcPs GhcPs
+
+    firstUpper :: String -> String
+    firstUpper [] = []
+    firstUpper (x:xs) = toUpper x : xs
+
+    classMethodStub :: T.Text -> LHsBindLR GhcPs GhcPs
     classMethodStub funName =
         noLoc $
         FunBind
             { fun_ext = noExt
-            , fun_id = funName
+            , fun_id = mkRdrName funName
             , fun_matches =
                   MG
                       { mg_ext = noExt
@@ -260,7 +270,7 @@ generateSrcFromLf (Qualify qualify) thisPkgId pkgMap m = noLoc mod
                                       { m_ext = noExt
                                       , m_ctxt =
                                             FunRhs
-                                                { mc_fun = funName
+                                                { mc_fun = mkRdrName funName
                                                 , mc_fixity = Prefix
                                                 , mc_strictness = NoSrcStrict
                                                 }
@@ -275,19 +285,31 @@ generateSrcFromLf (Qualify qualify) thisPkgId pkgMap m = noLoc mod
                                                             noExt
                                                             []
                                                             (noLoc $
-                                                             HsApp
+                                                             HsAppType
                                                                  noExt
                                                                  (noLoc $
                                                                   HsVar
                                                                       noExt
-                                                                      (noLoc
-                                                                           error_RDR))
-                                                                 (noLoc $
-                                                                  HsLit noExt $
-                                                                  HsString
-                                                                      NoSourceText $
-                                                                  mkFastString
-                                                                      "undefined template class method in generated code"))
+                                                                      (mkRdrName
+                                                                           "primitive"))
+                                                                 (HsWC noExt $
+                                                                  (noLoc $
+                                                                   HsTyLit noExt $
+                                                                   HsStrTy
+                                                                       NoSourceText $
+                                                                   mkFastString $
+                                                                   ((T.unpack $
+                                                                     LF.unPackageId
+                                                                         thisPkgId)
+                                                                    <> ":" <>
+                                                                    (T.unpack $
+                                                                     LF.moduleNameString $
+                                                                     LF.moduleName m)
+                                                                    <> ":" <>
+                                                                    ("ext" <>
+                                                                     (firstUpper $
+                                                                      T.unpack $
+                                                                      funName))))))
                                                       ]
                                                 , grhssLocalBinds =
                                                       noLoc emptyLocalBinds
