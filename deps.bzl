@@ -30,8 +30,8 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive", "http_file"
 load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 
 rules_scala_version = "8092d5f6165a8d9c4797d5f089c1ba4eee3326b1"
-rules_haskell_version = "6a2c09fa4da023ff890749125590fe752a1ba2c4"
-rules_haskell_sha256 = "a3d588ca64163d59a2330554e9c8704ab6e07bab861957595e8c26c02a6c2a29"
+rules_haskell_version = "359f344a60e32a052fdbcc1eb6f5c1c429b16217"
+rules_haskell_sha256 = "56b8f7a517d1081185e90fd85b5b65cca5edb10e10ab2111cea28aad8043a047"
 rules_nixpkgs_version = "5ffb8a4ee9a52bc6bc12f95cd64ecbd82a79bc82"
 
 def daml_deps():
@@ -43,8 +43,6 @@ def daml_deps():
             patches = [
                 # Upstream to rules_haskell and remove this patach.
                 "@com_github_digital_asset_daml//bazel_tools:haskell-cc-wrapper-darwin-rpath-library-dirs.patch",
-                # Upstream to rules_haskell and remove this patch.
-                "@com_github_digital_asset_daml//bazel_tools:haskell-cabal-cc-wrapper.patch",
                 # The fake libs issue should be fixed in upstream rules_haskell
                 # or GHC. Remove this patch once that's available.
                 "@com_github_digital_asset_daml//bazel_tools:haskell-windows-remove-fake-libs.patch",
