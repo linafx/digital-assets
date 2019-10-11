@@ -1,0 +1,17 @@
+diff --git a/haskell/private/unix/unix_configure.bzl b/haskell/private/unix/unix_configure.bzl
+index 112d74e7..267052e4 100644
+--- a/haskell/private/unix/unix_configure.bzl
++++ b/haskell/private/unix/unix_configure.bzl
+@@ -43,7 +43,11 @@ toolchain(
+             for (cmd, cmd_path) in commands.items()
+             if cmd_path
+         ]),
+-        os = "osx" if cpu == "darwin" else "linux",
++        os = {
++            "darwin": "osx",
++            "k8": "linux",
++            "x64_windows": "windows",
++        }[cpu],
+     ))
+ 
+ unix_config = repository_rule(

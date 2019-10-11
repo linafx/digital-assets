@@ -42,6 +42,8 @@ def daml_deps():
             urls = ["https://github.com/tweag/rules_haskell/archive/%s.tar.gz" % rules_haskell_version],
             patches = [
                 # Upstream to rules_haskell and remove this patach.
+                "@com_github_digital_asset_daml//bazel_tools:haskell-unix-toolchain.patch",
+                # Upstream to rules_haskell and remove this patach.
                 "@com_github_digital_asset_daml//bazel_tools:haskell-cc-wrapper-darwin-rpath-library-dirs.patch",
                 # The fake libs issue should be fixed in upstream rules_haskell
                 # or GHC. Remove this patch once that's available.
