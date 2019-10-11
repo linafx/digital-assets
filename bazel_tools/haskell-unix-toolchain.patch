@@ -1,17 +1,29 @@
+diff --git a/haskell/private/cabal_wrapper.py.tpl b/haskell/private/cabal_wrapper.py.tpl
+index 80feb4c2..fcf6ebe0 100755
+--- a/haskell/private/cabal_wrapper.py.tpl
++++ b/haskell/private/cabal_wrapper.py.tpl
+@@ -169,7 +169,7 @@ def make_relocatable_paths(line):
+ 
+     # The $execroot is an absolute path and should not leak into the output.
+     # Replace each ocurrence of execroot by a path relative to ${pkgroot}.
+-    line = re.sub(execroot + '\S*', make_relative_to_pkgroot, line)
++    line = re.sub(re.escape(execroot) + '\S*', make_relative_to_pkgroot, line)
+     return line
+ 
+ if libraries != [] and os.path.isfile(package_conf_file):
 diff --git a/haskell/private/unix/unix_configure.bzl b/haskell/private/unix/unix_configure.bzl
-index 112d74e7..267052e4 100644
+index 112d74e7..87221143 100644
 --- a/haskell/private/unix/unix_configure.bzl
 +++ b/haskell/private/unix/unix_configure.bzl
-@@ -43,7 +43,11 @@ toolchain(
+@@ -43,7 +43,10 @@ toolchain(
              for (cmd, cmd_path) in commands.items()
              if cmd_path
          ]),
 -        os = "osx" if cpu == "darwin" else "linux",
 +        os = {
 +            "darwin": "osx",
-+            "k8": "linux",
 +            "x64_windows": "windows",
-+        }[cpu],
++        }.get(cpu, "linux"),
      ))
  
  unix_config = repository_rule(
