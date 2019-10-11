@@ -1,26 +1,58 @@
+diff --git a/haskell/cabal.bzl b/haskell/cabal.bzl
+index d1e0133e..8fd0e6be 100644
+--- a/haskell/cabal.bzl
++++ b/haskell/cabal.bzl
+@@ -86,7 +86,8 @@ def _cabal_tool_flag(tool):
+         return "--with-{}={}".format(tool.basename, tool.path)
+ 
+ def _make_path(hs, binaries):
+-    return ":".join([binary.dirname for binary in binaries.to_list()])
++    path_list_sep = ";" if hs.is_windows else ":"
++    return path_list_sep.join([binary.dirname for binary in binaries.to_list()])
+ 
+ def _prepare_cabal_inputs(hs, cc, dep_info, cc_info, component, package_id, tool_inputs, tool_input_manifests, cabal, setup, srcs, flags, cabal_wrapper, package_database):
+     """Compute Cabal wrapper, arguments, inputs."""
 diff --git a/haskell/private/cabal_wrapper.py.tpl b/haskell/private/cabal_wrapper.py.tpl
-index 80feb4c2..4c1ff7c0 100755
+index 80feb4c2..18810f79 100755
 --- a/haskell/private/cabal_wrapper.py.tpl
 +++ b/haskell/private/cabal_wrapper.py.tpl
-@@ -26,7 +26,7 @@ import subprocess
+@@ -26,7 +26,9 @@ import subprocess
  import sys
  import tempfile
  
 -debug = False
 +debug = True
++
++path_list_sep = ":" if "%{is_windows}" != True else ";"
  
  def run(cmd, *args, **kwargs):
      if debug:
-@@ -35,6 +35,8 @@ def run(cmd, *args, **kwargs):
+@@ -35,9 +37,11 @@ def run(cmd, *args, **kwargs):
      subprocess.call(cmd, *args, **kwargs)
  
  def canonicalize_path(path):
+-    return ":".join([
 +    if debug:
 +        print("canonicalize_path(%s)" % path)
-     return ":".join([
++    return path_list_sep.join([
          os.path.abspath(entry)
-         for entry in path.split(":")
-@@ -169,7 +171,7 @@ def make_relocatable_paths(line):
+-        for entry in path.split(":")
++        for entry in path.split(path_list_sep)
+         if entry != ""
+     ])
+ 
+@@ -45,8 +49,8 @@ def canonicalize_path(path):
+ os.environ["LD_LIBRARY_PATH"] = canonicalize_path(os.getenv("LD_LIBRARY_PATH", ""))
+ os.environ["LIBRARY_PATH"] = canonicalize_path(os.getenv("LIBRARY_PATH", ""))
+ 
+-base_path = ":".join(%{unix_paths})
+-os.environ["PATH"] = canonicalize_path(os.getenv("EXTRA_PATH", "") + ":" + base_path)
++base_path = path_list_sep.join(%{unix_paths})
++os.environ["PATH"] = canonicalize_path(os.getenv("EXTRA_PATH", "") + path_list_sep + base_path)
+ 
+ 
+ component = sys.argv.pop(1)
+@@ -169,7 +173,7 @@ def make_relocatable_paths(line):
  
      # The $execroot is an absolute path and should not leak into the output.
      # Replace each ocurrence of execroot by a path relative to ${pkgroot}.
