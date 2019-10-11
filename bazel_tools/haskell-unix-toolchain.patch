@@ -13,7 +13,7 @@ index d1e0133e..7cba2b05 100644
  def _prepare_cabal_inputs(hs, cc, dep_info, cc_info, component, package_id, tool_inputs, tool_input_manifests, cabal, setup, srcs, flags, cabal_wrapper, package_database):
      """Compute Cabal wrapper, arguments, inputs."""
 diff --git a/haskell/private/cabal_wrapper.py.tpl b/haskell/private/cabal_wrapper.py.tpl
-index 80feb4c2..83fdd8a9 100755
+index 80feb4c2..9f249f61 100755
 --- a/haskell/private/cabal_wrapper.py.tpl
 +++ b/haskell/private/cabal_wrapper.py.tpl
 @@ -26,7 +26,9 @@ import subprocess
@@ -27,7 +27,7 @@ index 80feb4c2..83fdd8a9 100755
  
  def run(cmd, *args, **kwargs):
      if debug:
-@@ -34,10 +36,30 @@ def run(cmd, *args, **kwargs):
+@@ -34,10 +36,35 @@ def run(cmd, *args, **kwargs):
          sys.stderr.flush()
      subprocess.call(cmd, *args, **kwargs)
  
@@ -42,12 +42,17 @@ index 80feb4c2..83fdd8a9 100755
 +    if "%{is_windows}" != "True":
 +        return path
 +    else:
++        if debug:
++            print("posix_path(%s)" % path)
 +        drive, path = os.path.splitdrive(path)
 +        path = path.replace("\\", "/")
-+        if drive == "":
-+            return path
-+        elif len(drive) == 2 and drive[1] == ":":
-+            return "/%s%s" % (drive[0], path)
++        if drive.startswith("\\\\?\\"):
++            path = path[len("\\\\?\\"):]
++        if len(drive) == 2 and drive[1] == ":":
++            path = "/%s%s" % (drive[0].lower(), path)
++        if debug:
++            print("  --> %s" % path)
++        return result
 +
  def canonicalize_path(path):
 -    return ":".join([
@@ -61,7 +66,7 @@ index 80feb4c2..83fdd8a9 100755
          if entry != ""
      ])
  
-@@ -45,17 +67,17 @@ def canonicalize_path(path):
+@@ -45,17 +72,17 @@ def canonicalize_path(path):
  os.environ["LD_LIBRARY_PATH"] = canonicalize_path(os.getenv("LD_LIBRARY_PATH", ""))
  os.environ["LIBRARY_PATH"] = canonicalize_path(os.getenv("LIBRARY_PATH", ""))
  
@@ -83,7 +88,7 @@ index 80feb4c2..83fdd8a9 100755
  libdir = os.path.join(pkgroot, "{}_iface".format(name))
  dynlibdir = os.path.join(pkgroot, "lib")
  bindir = os.path.join(pkgroot, "bin")
-@@ -169,7 +191,7 @@ def make_relocatable_paths(line):
+@@ -169,7 +196,7 @@ def make_relocatable_paths(line):
  
      # The $execroot is an absolute path and should not leak into the output.
      # Replace each ocurrence of execroot by a path relative to ${pkgroot}.
