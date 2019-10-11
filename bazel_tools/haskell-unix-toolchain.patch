@@ -1,5 +1,5 @@
 diff --git a/haskell/cabal.bzl b/haskell/cabal.bzl
-index d1e0133e..8fd0e6be 100644
+index d1e0133e..7cba2b05 100644
 --- a/haskell/cabal.bzl
 +++ b/haskell/cabal.bzl
 @@ -86,7 +86,8 @@ def _cabal_tool_flag(tool):
@@ -7,7 +7,7 @@ index d1e0133e..8fd0e6be 100644
  
  def _make_path(hs, binaries):
 -    return ":".join([binary.dirname for binary in binaries.to_list()])
-+    path_list_sep = ";" if hs.is_windows else ":"
++    path_list_sep = ";" if hs.toolchain.is_windows else ":"
 +    return path_list_sep.join([binary.dirname for binary in binaries.to_list()])
  
  def _prepare_cabal_inputs(hs, cc, dep_info, cc_info, component, package_id, tool_inputs, tool_input_manifests, cabal, setup, srcs, flags, cabal_wrapper, package_database):
