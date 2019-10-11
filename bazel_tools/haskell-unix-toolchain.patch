@@ -1,8 +1,26 @@
 diff --git a/haskell/private/cabal_wrapper.py.tpl b/haskell/private/cabal_wrapper.py.tpl
-index 80feb4c2..fcf6ebe0 100755
+index 80feb4c2..4c1ff7c0 100755
 --- a/haskell/private/cabal_wrapper.py.tpl
 +++ b/haskell/private/cabal_wrapper.py.tpl
-@@ -169,7 +169,7 @@ def make_relocatable_paths(line):
+@@ -26,7 +26,7 @@ import subprocess
+ import sys
+ import tempfile
+ 
+-debug = False
++debug = True
+ 
+ def run(cmd, *args, **kwargs):
+     if debug:
+@@ -35,6 +35,8 @@ def run(cmd, *args, **kwargs):
+     subprocess.call(cmd, *args, **kwargs)
+ 
+ def canonicalize_path(path):
++    if debug:
++        print("canonicalize_path(%s)" % path)
+     return ":".join([
+         os.path.abspath(entry)
+         for entry in path.split(":")
+@@ -169,7 +171,7 @@ def make_relocatable_paths(line):
  
      # The $execroot is an absolute path and should not leak into the output.
      # Replace each ocurrence of execroot by a path relative to ${pkgroot}.
