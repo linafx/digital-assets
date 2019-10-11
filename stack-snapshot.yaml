@@ -1,11 +1,11 @@
 resolver: lts-14.1
 packages:
-  - archive: http://digitalassetsdk.bintray.com/ghc-lib/ghc-lib-parser-8.8.1.20190925.tar.gz
-    sha256: "02c71094a0bb06d6f6c4bbd444f9a26804c8eca423cc77fd3824ccd498ddaefe"
-    size: 1568831
-  - archive: http://digitalassetsdk.bintray.com/ghc-lib/ghc-lib-8.8.1.20190925.tar.gz
-    sha256: "4aa88ed404dcf8a67f712ad37d8ad9f4ed51fe6180c15978a97034acf7dee834"
-    size: 2711856
+  - archive: http://digitalassetsdk.bintray.com/ghc-lib/ghc-lib-parser-8.8.1.20191010.tar.gz
+    sha256: "5f1226f407ddc728a17bbafbf97c5b908ce88f19856ae32819a8a0a589558a2b"
+    size: 1568916
+  - archive: http://digitalassetsdk.bintray.com/ghc-lib/ghc-lib-8.8.1.20191010.tar.gz
+    sha256: "fbc246d396db5dd3d1608f992b4efed86151d0e66f9fd13c83286e4f7273e8ea"
+    size: 2711511
   - github: digital-asset/hlint
     commit: "f407a620cf38821320fb000e6ccd52f6bb081fc6"
     sha256: "5b5429a332910ebec481fe0f99ffce3159b10aef9188ba661512f8267fcde9a8"

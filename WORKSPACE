@@ -36,6 +36,12 @@ os_info(name = "os_info")
 
 load("@os_info//:os_info.bzl", "is_linux", "is_windows")
 
+GHCIDE_VERSION = "0.0.3"
+
+GHCIDE_REV = "2a67821e608a95a660af7414fdcfa8cd907576e8"
+
+GHCIDE_SHA256 = "cc062fa8b2f45390d82befd9b2b1be372e7b6c1285947eb6b0cf199b633a5528"
+
 http_archive(
     name = "alex",
     build_file_content = """
@@ -215,7 +221,7 @@ deps = [
 haskell_cabal_library(
     name = "ghcide-lib",
     package_name = "ghcide",
-    version = "0.0.3",
+    version = "{version}",
     srcs = glob(["**"]),
     deps = deps,
     visibility = ["//visibility:public"],
@@ -226,10 +232,10 @@ haskell_cabal_binary(
     deps = deps + [":ghcide-lib"],
     visibility = ["//visibility:public"],
 )
-    """,
-    sha256 = "82fc58fb03f10dd7795bf1aabd5d9f3175f60240968b9fa8755fd08a49ce8f07",
-    strip_prefix = "ghcide-dcd7cb499e33273e1d5835ea1e69907e8224e483",
-    urls = ["https://github.com/digital-asset/ghcide/archive/dcd7cb499e33273e1d5835ea1e69907e8224e483.tar.gz"],
+    """.format(version = GHCIDE_VERSION),
+    sha256 = GHCIDE_SHA256,
+    strip_prefix = "ghcide-%s" % GHCIDE_REV,
+    urls = ["https://github.com/digital-asset/ghcide/archive/%s.tar.gz" % GHCIDE_REV],
 )
 
 http_archive(
@@ -240,7 +246,7 @@ load("@rules_haskell//haskell:defs.bzl", "haskell_library")
 load("@stackage//:packages.bzl", "packages")
 haskell_cabal_library(
     name = "ghcide",
-    version = "0.0.3",
+    version = "{version}",
     srcs = glob(["**"]),
     flags = packages["ghcide"].flags,
     deps = packages["ghcide"].deps,
@@ -278,12 +284,12 @@ haskell_library(
     ],
     visibility = ["//visibility:public"],
 )
-    """,
+    """.format(version = GHCIDE_VERSION),
     patch_args = ["-p1"],
     patches = ["@com_github_digital_asset_daml//bazel_tools:haskell-ghcide-expose-compat.patch"],
-    sha256 = "82fc58fb03f10dd7795bf1aabd5d9f3175f60240968b9fa8755fd08a49ce8f07",
-    strip_prefix = "ghcide-dcd7cb499e33273e1d5835ea1e69907e8224e483",
-    urls = ["https://github.com/digital-asset/ghcide/archive/dcd7cb499e33273e1d5835ea1e69907e8224e483.tar.gz"],
+    sha256 = GHCIDE_SHA256,
+    strip_prefix = "ghcide-%s" % GHCIDE_REV,
+    urls = ["https://github.com/digital-asset/ghcide/archive/%s.tar.gz" % GHCIDE_REV],
 )
 
 load("@bazel_skylib//lib:dicts.bzl", "dicts")
