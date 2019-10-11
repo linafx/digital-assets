@@ -12,11 +12,31 @@ index d1e0133e..7cba2b05 100644
  
  def _prepare_cabal_inputs(hs, cc, dep_info, cc_info, component, package_id, tool_inputs, tool_input_manifests, cabal, setup, srcs, flags, cabal_wrapper, package_database):
      """Compute Cabal wrapper, arguments, inputs."""
+diff --git a/haskell/cabal_wrapper.bzl b/haskell/cabal_wrapper.bzl
+index 4e32f2ad..3433aaa4 100644
+--- a/haskell/cabal_wrapper.bzl
++++ b/haskell/cabal_wrapper.bzl
+@@ -32,6 +32,7 @@ def _cabal_wrapper_impl(ctx):
+             "%{unix_paths}": repr(unix_toolchain.paths),
+             "%{strip}": cc_toolchain.strip_executable(),
+             "%{is_windows}": str(hs.toolchain.is_windows),
++            "%{workspace}": ctx.workspace_name,
+         },
+     )
+     return [DefaultInfo(
 diff --git a/haskell/private/cabal_wrapper.py.tpl b/haskell/private/cabal_wrapper.py.tpl
-index 80feb4c2..73fec5d3 100755
+index 80feb4c2..4ca03bd1 100755
 --- a/haskell/private/cabal_wrapper.py.tpl
 +++ b/haskell/private/cabal_wrapper.py.tpl
-@@ -26,7 +26,9 @@ import subprocess
+@@ -16,6 +16,7 @@
+ 
+ from __future__ import print_function
+ 
++from bazel_tools.tools.python.runfiles import runfiles as bazel_runfiles
+ from contextlib import contextmanager
+ from glob import glob
+ import os
+@@ -26,7 +27,9 @@ import subprocess
  import sys
  import tempfile
  
@@ -27,10 +47,17 @@ index 80feb4c2..73fec5d3 100755
  
  def run(cmd, *args, **kwargs):
      if debug:
-@@ -34,10 +36,35 @@ def run(cmd, *args, **kwargs):
+@@ -34,10 +37,42 @@ def run(cmd, *args, **kwargs):
          sys.stderr.flush()
      subprocess.call(cmd, *args, **kwargs)
  
++def find_exe(exe):
++    if os.path.isfile(exe):
++        return os.path.abspath(exe)
++    else:
++        r = bazel_runfiles.Create()
++        return r.Rlocation("/".join(["%{workspace}", exe]))
++
 +def posix_path(path):
 +    """Convert the given path to POSIX format.
 +
@@ -66,7 +93,7 @@ index 80feb4c2..73fec5d3 100755
          if entry != ""
      ])
  
-@@ -45,17 +72,17 @@ def canonicalize_path(path):
+@@ -45,26 +80,26 @@ def canonicalize_path(path):
  os.environ["LD_LIBRARY_PATH"] = canonicalize_path(os.getenv("LD_LIBRARY_PATH", ""))
  os.environ["LIBRARY_PATH"] = canonicalize_path(os.getenv("LIBRARY_PATH", ""))
  
@@ -88,7 +115,32 @@ index 80feb4c2..73fec5d3 100755
  libdir = os.path.join(pkgroot, "{}_iface".format(name))
  dynlibdir = os.path.join(pkgroot, "lib")
  bindir = os.path.join(pkgroot, "bin")
-@@ -169,7 +196,7 @@ def make_relocatable_paths(line):
+ datadir = os.path.join(pkgroot, "{}_data".format(name))
+ package_database = os.path.join(pkgroot, "{}.conf.d".format(name))
+ 
+-runghc = os.path.join(execroot, r"%{runghc}")
+-ghc = os.path.join(execroot, r"%{ghc}")
+-ghc_pkg = os.path.join(execroot, r"%{ghc_pkg}")
++runghc = find_exe(r"%{runghc}")
++ghc = find_exe(r"%{ghc}")
++ghc_pkg = find_exe(r"%{ghc_pkg}")
+ 
+ extra_args = []
+ current_arg = sys.argv.pop(1)
+@@ -75,9 +110,9 @@ del current_arg
+ 
+ path_args = sys.argv[1:]
+ 
+-ar = os.path.realpath("%{ar}")
+-cc = os.path.realpath("%{cc}")
+-strip = os.path.realpath("%{strip}")
++ar = find_exe("%{ar}")
++cc = find_exe("%{cc}")
++strip = find_exe("%{strip}")
+ 
+ def recache_db():
+     run([ghc_pkg, "recache", "--package-db=" + package_database])
+@@ -169,7 +204,7 @@ def make_relocatable_paths(line):
  
      # The $execroot is an absolute path and should not leak into the output.
      # Replace each ocurrence of execroot by a path relative to ${pkgroot}.
