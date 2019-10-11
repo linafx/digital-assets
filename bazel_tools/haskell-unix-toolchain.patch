@@ -13,7 +13,7 @@ index d1e0133e..7cba2b05 100644
  def _prepare_cabal_inputs(hs, cc, dep_info, cc_info, component, package_id, tool_inputs, tool_input_manifests, cabal, setup, srcs, flags, cabal_wrapper, package_database):
      """Compute Cabal wrapper, arguments, inputs."""
 diff --git a/haskell/private/cabal_wrapper.py.tpl b/haskell/private/cabal_wrapper.py.tpl
-index 80feb4c2..9f249f61 100755
+index 80feb4c2..73fec5d3 100755
 --- a/haskell/private/cabal_wrapper.py.tpl
 +++ b/haskell/private/cabal_wrapper.py.tpl
 @@ -26,7 +26,9 @@ import subprocess
@@ -52,7 +52,7 @@ index 80feb4c2..9f249f61 100755
 +            path = "/%s%s" % (drive[0].lower(), path)
 +        if debug:
 +            print("  --> %s" % path)
-+        return result
++        return path
 +
  def canonicalize_path(path):
 -    return ":".join([
