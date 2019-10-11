@@ -29,9 +29,9 @@ packages:
     subdirs:
       - .
       - haskell-lsp-types
-    commit: "bfbd8630504ebc57b70948689c37b85cfbe589da"
-    sha256: "9a5c2871333a5e7e82abdf0bd8c3ab52a130d03832a899aee68bea993cdead1b"
-    size: 82672
+    commit: "5d1dfe82c9955d81cc0e0bb7a3e8bf6d2c4c42e4"
+    sha256: "c8b93dc2692bca5162278c783d8cc5011a118a726e7df3f2632f3f0d480455c1"
+    size: 83733
   - github: bubba/lsp-test
     commit: "d126623dc6895d325e3d204d74e2a22d4f515587"
     sha256: "214848612d319bbded67341c51fd151d65cc80264b9cfe70755ef6941b450ec9"
