@@ -29,7 +29,7 @@ index 4e32f2ad..025c503a 100644
      )
      return [DefaultInfo(
 diff --git a/haskell/private/cabal_wrapper.py.tpl b/haskell/private/cabal_wrapper.py.tpl
-index 80feb4c2..9069fd4f 100755
+index 80feb4c2..b209e335 100755
 --- a/haskell/private/cabal_wrapper.py.tpl
 +++ b/haskell/private/cabal_wrapper.py.tpl
 @@ -16,6 +16,7 @@
@@ -137,7 +137,7 @@ index 80feb4c2..9069fd4f 100755
  
  def recache_db():
      run([ghc_pkg, "recache", "--package-db=" + package_database])
-@@ -96,12 +135,31 @@ def tmpdir():
+@@ -96,12 +135,32 @@ def tmpdir():
          shutil.rmtree(distdir)
  
  with tmpdir() as distdir:
@@ -147,8 +147,9 @@ index 80feb4c2..9069fd4f 100755
 +        #   https://github.com/bazelbuild/bazel/issues/9390
 +        # We can work around it by creating another thin wrapper.
 +        cc_unwrapped = find_exe("%{cc_unwrapped}")
-+        cc_new = os.path.join(distdir, "cc_wrapper")
-+        src = open(os.path.join(distdir, "cc_wrapper.c"), "w")
++        cc_path = os.path.join(distdir, "cc_wrapper")
++        src_path = os.path.join(distdir, "cc_wrapper.c")
++        src = open(src_path "w")
 +        src.write("""\
 +            #include <unistd.h>
 +            #include <stdio.h>
@@ -160,8 +161,8 @@ index 80feb4c2..9069fd4f 100755
 +                return 1;
 +            }}
 +        """.format(cc = cc))
-+        run([cc_unwrapped, "-o", cc_new, src])
-+        cc = cc_new
++        run([cc_unwrapped, "-o", cc_path, src_path])
++        cc = cc_path
 +
      # Use the cc-wrapper for Cabal builds.
 -    # Note, we cannot currently use it on Windows because the solution to the
@@ -174,7 +175,7 @@ index 80feb4c2..9069fd4f 100755
      enable_relocatable_flags = ["--enable-relocatable"] \
              if "%{is_windows}" != "True" else []
  
-@@ -169,7 +227,7 @@ def make_relocatable_paths(line):
+@@ -169,7 +228,7 @@ def make_relocatable_paths(line):
  
      # The $execroot is an absolute path and should not leak into the output.
      # Replace each ocurrence of execroot by a path relative to ${pkgroot}.
