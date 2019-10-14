@@ -25,7 +25,7 @@ index 4e32f2ad..3433aaa4 100644
      )
      return [DefaultInfo(
 diff --git a/haskell/private/cabal_wrapper.py.tpl b/haskell/private/cabal_wrapper.py.tpl
-index 80feb4c2..7e7691de 100755
+index 80feb4c2..41236ea6 100755
 --- a/haskell/private/cabal_wrapper.py.tpl
 +++ b/haskell/private/cabal_wrapper.py.tpl
 @@ -16,6 +16,7 @@
@@ -115,11 +115,10 @@ index 80feb4c2..7e7691de 100755
  component = sys.argv.pop(1)
  name = sys.argv.pop(1)
  execroot = os.getcwd()
--setup = os.path.join(execroot, sys.argv.pop(1))
 +execroot_posix = posix_path(execroot)
 +print("execroot: %s" % execroot, file=sys.stderr)
 +print("execroot_posix: %s" % execroot_posix, file=sys.stderr)
-+setup = os.path.join(execroot_posix, sys.argv.pop(1))
+ setup = os.path.join(execroot, sys.argv.pop(1))
  srcdir = os.path.join(execroot, sys.argv.pop(1))
  # By definition (see ghc-pkg source code).
  pkgroot = os.path.realpath(os.path.join(execroot, os.path.dirname(sys.argv.pop(1))))
