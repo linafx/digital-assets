@@ -29,7 +29,7 @@ index 4e32f2ad..025c503a 100644
      )
      return [DefaultInfo(
 diff --git a/haskell/private/cabal_wrapper.py.tpl b/haskell/private/cabal_wrapper.py.tpl
-index 80feb4c2..49257f73 100755
+index 80feb4c2..83a554a5 100755
 --- a/haskell/private/cabal_wrapper.py.tpl
 +++ b/haskell/private/cabal_wrapper.py.tpl
 @@ -16,6 +16,7 @@
@@ -152,13 +152,13 @@ index 80feb4c2..49257f73 100755
 +        src.write("""\
 +            #include <unistd.h>
 +            #include <stdio.h>
-+            int main(int argc, char **argv) {
++            int main(int argc, char **argv) {{
 +                const char *cc = "{cc}";
 +                argv[0] = cc;
 +                execv(cc, argv);
 +                perror("Failed to execute cc_wrapper");
 +                return 1;
-+            }
++            }}
 +        """.format(cc = cc))
 +        run([cc_unwrapped, "-o", cc_new, src])
 +        cc = cc_new
