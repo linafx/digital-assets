@@ -25,7 +25,7 @@ index 4e32f2ad..3433aaa4 100644
      )
      return [DefaultInfo(
 diff --git a/haskell/private/cabal_wrapper.py.tpl b/haskell/private/cabal_wrapper.py.tpl
-index 80feb4c2..4ca03bd1 100755
+index 80feb4c2..6ac5169a 100755
 --- a/haskell/private/cabal_wrapper.py.tpl
 +++ b/haskell/private/cabal_wrapper.py.tpl
 @@ -16,6 +16,7 @@
@@ -47,7 +47,7 @@ index 80feb4c2..4ca03bd1 100755
  
  def run(cmd, *args, **kwargs):
      if debug:
-@@ -34,10 +37,42 @@ def run(cmd, *args, **kwargs):
+@@ -34,10 +37,44 @@ def run(cmd, *args, **kwargs):
          sys.stderr.flush()
      subprocess.call(cmd, *args, **kwargs)
  
@@ -74,9 +74,11 @@ index 80feb4c2..4ca03bd1 100755
 +        drive, path = os.path.splitdrive(path)
 +        path = path.replace("\\", "/")
 +        if drive.startswith("\\\\?\\"):
-+            path = path[len("\\\\?\\"):]
++            drive = drive[len("\\\\?\\"):]
 +        if len(drive) == 2 and drive[1] == ":":
-+            path = "/%s%s" % (drive[0].lower(), path)
++            drive_letter = drive[0].lower()
++            if not path.lower().startswith("/%s" % drive_letter):
++                path = "/%s%s" % (drive_letter, path)
 +        if debug:
 +            print("  --> %s" % path)
 +        return path
@@ -93,7 +95,7 @@ index 80feb4c2..4ca03bd1 100755
          if entry != ""
      ])
  
-@@ -45,26 +80,26 @@ def canonicalize_path(path):
+@@ -45,26 +82,26 @@ def canonicalize_path(path):
  os.environ["LD_LIBRARY_PATH"] = canonicalize_path(os.getenv("LD_LIBRARY_PATH", ""))
  os.environ["LIBRARY_PATH"] = canonicalize_path(os.getenv("LIBRARY_PATH", ""))
  
@@ -127,7 +129,7 @@ index 80feb4c2..4ca03bd1 100755
  
  extra_args = []
  current_arg = sys.argv.pop(1)
-@@ -75,9 +110,9 @@ del current_arg
+@@ -75,9 +112,9 @@ del current_arg
  
  path_args = sys.argv[1:]
  
@@ -140,7 +142,7 @@ index 80feb4c2..4ca03bd1 100755
  
  def recache_db():
      run([ghc_pkg, "recache", "--package-db=" + package_database])
-@@ -169,7 +204,7 @@ def make_relocatable_paths(line):
+@@ -169,7 +206,7 @@ def make_relocatable_paths(line):
  
      # The $execroot is an absolute path and should not leak into the output.
      # Replace each ocurrence of execroot by a path relative to ${pkgroot}.
