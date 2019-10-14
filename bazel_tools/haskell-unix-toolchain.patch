@@ -29,7 +29,7 @@ index 4e32f2ad..025c503a 100644
      )
      return [DefaultInfo(
 diff --git a/haskell/private/cabal_wrapper.py.tpl b/haskell/private/cabal_wrapper.py.tpl
-index 80feb4c2..b209e335 100755
+index 80feb4c2..da72ec9f 100755
 --- a/haskell/private/cabal_wrapper.py.tpl
 +++ b/haskell/private/cabal_wrapper.py.tpl
 @@ -16,6 +16,7 @@
@@ -149,7 +149,7 @@ index 80feb4c2..b209e335 100755
 +        cc_unwrapped = find_exe("%{cc_unwrapped}")
 +        cc_path = os.path.join(distdir, "cc_wrapper")
 +        src_path = os.path.join(distdir, "cc_wrapper.c")
-+        src = open(src_path "w")
++        src = open(src_path, "w")
 +        src.write("""\
 +            #include <unistd.h>
 +            #include <stdio.h>
