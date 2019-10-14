@@ -25,7 +25,7 @@ index 4e32f2ad..3433aaa4 100644
      )
      return [DefaultInfo(
 diff --git a/haskell/private/cabal_wrapper.py.tpl b/haskell/private/cabal_wrapper.py.tpl
-index 80feb4c2..701d618c 100755
+index 80feb4c2..dc17ec83 100755
 --- a/haskell/private/cabal_wrapper.py.tpl
 +++ b/haskell/private/cabal_wrapper.py.tpl
 @@ -16,6 +16,7 @@
@@ -160,7 +160,7 @@ index 80feb4c2..701d618c 100755
  
      # Cabal really wants the current working directory to be directory
      # where the .cabal file is located. So we have no choice but to chance
-@@ -112,36 +152,36 @@ with tmpdir() as distdir:
+@@ -112,36 +152,37 @@ with tmpdir() as distdir:
      old_cwd = os.getcwd()
      os.chdir(srcdir)
      os.putenv("HOME", "/var/empty")
@@ -168,6 +168,7 @@ index 80feb4c2..701d618c 100755
 -        component, \
 -        "--verbose=0", \
 -        "--user", \
++    print(repr([ arg.replace("=", "=" + execroot_posix + "/") for arg in path_args if arg ]), file=sys.stderr)
 +    run([runghc, setup, "configure",
 +        component,
 +        "--verbose=0",
@@ -219,7 +220,7 @@ index 80feb4c2..701d618c 100755
          [ "--package-db=" + package_database ], # This arg must come last.
          )
      run([runghc, setup, "build", "--verbose=0", "--builddir=" + distdir])
-@@ -169,7 +209,7 @@ def make_relocatable_paths(line):
+@@ -169,7 +210,7 @@ def make_relocatable_paths(line):
  
      # The $execroot is an absolute path and should not leak into the output.
      # Replace each ocurrence of execroot by a path relative to ${pkgroot}.
