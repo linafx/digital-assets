@@ -25,7 +25,7 @@ index 4e32f2ad..3433aaa4 100644
      )
      return [DefaultInfo(
 diff --git a/haskell/private/cabal_wrapper.py.tpl b/haskell/private/cabal_wrapper.py.tpl
-index 80feb4c2..a977cc99 100755
+index 80feb4c2..9fc17717 100755
 --- a/haskell/private/cabal_wrapper.py.tpl
 +++ b/haskell/private/cabal_wrapper.py.tpl
 @@ -16,6 +16,7 @@
@@ -165,7 +165,7 @@ index 80feb4c2..a977cc99 100755
  
      # Cabal really wants the current working directory to be directory
      # where the .cabal file is located. So we have no choice but to chance
-@@ -112,36 +159,81 @@ with tmpdir() as distdir:
+@@ -112,40 +159,85 @@ with tmpdir() as distdir:
      old_cwd = os.getcwd()
      os.chdir(srcdir)
      os.putenv("HOME", "/var/empty")
@@ -245,7 +245,7 @@ index 80feb4c2..a977cc99 100755
 -        "--datadir=" + datadir, \
 +        enable_relocatable_flags +
 +        [
-+        "--builddir=" + distdir,
++        "--builddir=" + posix_path(distdir),
 +        "--prefix=" + pkgroot,
 +        "--libdir=" + libdir,
 +        "--dynlibdir=" + dynlibdir,
@@ -268,7 +268,13 @@ index 80feb4c2..a977cc99 100755
 +        [ arg.replace("=", "=" + execroot + "/") for arg in path_args if arg ] +
          [ "--package-db=" + package_database ], # This arg must come last.
          )
-     run([runghc, setup, "build", "--verbose=0", "--builddir=" + distdir])
+-    run([runghc, setup, "build", "--verbose=0", "--builddir=" + distdir])
+-    run([runghc, setup, "install", "--verbose=0", "--builddir=" + distdir])
++    run([runghc, setup, "build", "--verbose=0", "--builddir=" + posix_path(distdir)])
++    run([runghc, setup, "install", "--verbose=0", "--builddir=" + posix_path(distdir)])
+     os.chdir(old_cwd)
+ 
+ # XXX Cabal has a bizarre layout that we can't control directly. It
 @@ -169,7 +261,7 @@ def make_relocatable_paths(line):
  
      # The $execroot is an absolute path and should not leak into the output.
