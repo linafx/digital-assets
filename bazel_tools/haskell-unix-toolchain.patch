@@ -29,7 +29,7 @@ index 4e32f2ad..025c503a 100644
      )
      return [DefaultInfo(
 diff --git a/haskell/private/cabal_wrapper.py.tpl b/haskell/private/cabal_wrapper.py.tpl
-index 80feb4c2..c0746375 100755
+index 80feb4c2..dcbdca41 100755
 --- a/haskell/private/cabal_wrapper.py.tpl
 +++ b/haskell/private/cabal_wrapper.py.tpl
 @@ -16,6 +16,7 @@
@@ -141,7 +141,7 @@ index 80feb4c2..c0746375 100755
          shutil.rmtree(distdir)
  
  with tmpdir() as distdir:
-+    if "${is_windows}" == "True":
++    if "%{is_windows}" == "True":
 +        # Note, we cannot currently use cc_wrapper.exe on Windows because the
 +        # solution to the following issue is not released, yet.
 +        #   https://github.com/bazelbuild/bazel/issues/9390
