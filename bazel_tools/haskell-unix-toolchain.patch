@@ -25,7 +25,7 @@ index 4e32f2ad..3433aaa4 100644
      )
      return [DefaultInfo(
 diff --git a/haskell/private/cabal_wrapper.py.tpl b/haskell/private/cabal_wrapper.py.tpl
-index 80feb4c2..57925799 100755
+index 80feb4c2..52d50d33 100755
 --- a/haskell/private/cabal_wrapper.py.tpl
 +++ b/haskell/private/cabal_wrapper.py.tpl
 @@ -16,6 +16,7 @@
@@ -47,16 +47,22 @@ index 80feb4c2..57925799 100755
  
  def run(cmd, *args, **kwargs):
      if debug:
-@@ -34,10 +37,44 @@ def run(cmd, *args, **kwargs):
+@@ -34,10 +37,50 @@ def run(cmd, *args, **kwargs):
          sys.stderr.flush()
      subprocess.call(cmd, *args, **kwargs)
  
 +def find_exe(exe):
++    if debug:
++        print("find_exe(%s)", exe, file=sys.stderr))
 +    if os.path.isfile(exe):
-+        return os.path.abspath(exe)
++        path = os.path.abspath(exe)
 +    else:
 +        r = bazel_runfiles.Create()
-+        return r.Rlocation("/".join(["%{workspace}", exe]))
++        path = r.Rlocation("/".join(["%{workspace}", exe]))
++        if not os.path.isfile(exe) and "%{is_windows}" == "True":
++            path = r.Rlocation("/".join(["%{workspace}", exe + ".exe"))
++    if debug:
++        print("  --> %s", path, file=sys.stderr)
 +
 +def posix_path(path):
 +    """Convert the given path to POSIX format.
@@ -95,7 +101,7 @@ index 80feb4c2..57925799 100755
          if entry != ""
      ])
  
-@@ -45,26 +82,30 @@ def canonicalize_path(path):
+@@ -45,26 +88,30 @@ def canonicalize_path(path):
  os.environ["LD_LIBRARY_PATH"] = canonicalize_path(os.getenv("LD_LIBRARY_PATH", ""))
  os.environ["LIBRARY_PATH"] = canonicalize_path(os.getenv("LIBRARY_PATH", ""))
  
@@ -132,7 +138,7 @@ index 80feb4c2..57925799 100755
  
  extra_args = []
  current_arg = sys.argv.pop(1)
-@@ -74,10 +115,11 @@ while current_arg != "--":
+@@ -74,10 +121,11 @@ while current_arg != "--":
  del current_arg
  
  path_args = sys.argv[1:]
@@ -147,7 +153,7 @@ index 80feb4c2..57925799 100755
  
  def recache_db():
      run([ghc_pkg, "recache", "--package-db=" + package_database])
-@@ -100,10 +142,8 @@ with tmpdir() as distdir:
+@@ -100,10 +148,8 @@ with tmpdir() as distdir:
      # Note, we cannot currently use it on Windows because the solution to the
      # following issue is not released, yet.
      #   https://github.com/bazelbuild/bazel/issues/9390
@@ -160,7 +166,7 @@ index 80feb4c2..57925799 100755
  
      # Cabal really wants the current working directory to be directory
      # where the .cabal file is located. So we have no choice but to chance
-@@ -112,36 +152,81 @@ with tmpdir() as distdir:
+@@ -112,36 +158,81 @@ with tmpdir() as distdir:
      old_cwd = os.getcwd()
      os.chdir(srcdir)
      os.putenv("HOME", "/var/empty")
@@ -185,27 +191,15 @@ index 80feb4c2..57925799 100755
 +        component,
 +        "--verbose=0",
 +        "--user",
-         "--with-compiler=" + ghc,
-         "--with-hc-pkg=" + ghc_pkg,
-         "--with-ar=" + ar,
-         ] +
--        with_gcc_flags + \
--        [ \
++        "--with-compiler=" + ghc,
++        "--with-hc-pkg=" + ghc_pkg,
++        "--with-ar=" + ar,
++        ] +
 +        with_gcc_flags +
 +        [
-         "--with-strip=" + strip,
--        "--enable-deterministic", \
++        "--with-strip=" + strip,
 +        "--enable-deterministic",
-         ] +
--        enable_relocatable_flags + \
--        [ \
--        "--builddir=" + distdir, \
--        "--prefix=" + pkgroot, \
--        "--libdir=" + libdir, \
--        "--dynlibdir=" + dynlibdir, \
--        "--libsubdir=", \
--        "--bindir=" + bindir, \
--        "--datadir=" + datadir, \
++        ] +
 +        enable_relocatable_flags #+
 +        #[
 +        #"--builddir=" + distdir,
@@ -229,15 +223,27 @@ index 80feb4c2..57925799 100755
 +        component,
 +        "--verbose=0",
 +        "--user",
-+        "--with-compiler=" + ghc,
-+        "--with-hc-pkg=" + ghc_pkg,
-+        "--with-ar=" + ar,
-+        ] +
+         "--with-compiler=" + ghc,
+         "--with-hc-pkg=" + ghc_pkg,
+         "--with-ar=" + ar,
+         ] +
+-        with_gcc_flags + \
+-        [ \
 +        with_gcc_flags +
 +        [
-+        "--with-strip=" + strip,
+         "--with-strip=" + strip,
+-        "--enable-deterministic", \
 +        "--enable-deterministic",
-+        ] +
+         ] +
+-        enable_relocatable_flags + \
+-        [ \
+-        "--builddir=" + distdir, \
+-        "--prefix=" + pkgroot, \
+-        "--libdir=" + libdir, \
+-        "--dynlibdir=" + dynlibdir, \
+-        "--libsubdir=", \
+-        "--bindir=" + bindir, \
+-        "--datadir=" + datadir, \
 +        enable_relocatable_flags +
 +        [
 +        "--builddir=" + distdir,
@@ -264,7 +270,7 @@ index 80feb4c2..57925799 100755
          [ "--package-db=" + package_database ], # This arg must come last.
          )
      run([runghc, setup, "build", "--verbose=0", "--builddir=" + distdir])
-@@ -169,7 +254,7 @@ def make_relocatable_paths(line):
+@@ -169,7 +260,7 @@ def make_relocatable_paths(line):
  
      # The $execroot is an absolute path and should not leak into the output.
      # Replace each ocurrence of execroot by a path relative to ${pkgroot}.
