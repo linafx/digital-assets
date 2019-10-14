@@ -25,7 +25,7 @@ index 4e32f2ad..3433aaa4 100644
      )
      return [DefaultInfo(
 diff --git a/haskell/private/cabal_wrapper.py.tpl b/haskell/private/cabal_wrapper.py.tpl
-index 80feb4c2..d18a9c04 100755
+index 80feb4c2..950f14c3 100755
 --- a/haskell/private/cabal_wrapper.py.tpl
 +++ b/haskell/private/cabal_wrapper.py.tpl
 @@ -16,6 +16,7 @@
@@ -176,38 +176,6 @@ index 80feb4c2..d18a9c04 100755
 +        component,
 +        "--verbose=0",
 +        "--user",
-+        "--with-compiler=" + ghc,
-+        "--with-hc-pkg=" + ghc_pkg,
-+        "--with-ar=" + ar,
-+        ] +
-+        with_gcc_flags +
-+        [
-+        "--with-strip=" + strip,
-+        "--enable-deterministic",
-+        ] +
-+        enable_relocatable_flags +
-+        [
-+        "--builddir=" + distdir,
-+        "--prefix=" + pkgroot,
-+        "--libdir=" + libdir,
-+        "--dynlibdir=" + dynlibdir,
-+        "--libsubdir=",
-+        "--bindir=" + bindir,
-+        "--datadir=" + datadir,
-+        # Note, setting --datasubdir is required to work around
-+        #   https://github.com/haskell/cabal/issues/6235
-+        "--datasubdir=",
-+        "--package-db=clear",
-+        "--package-db=global",
-+        ] +
-+        extra_args +
-+        [ arg.replace("=", "=" + execroot_posix + "/") for arg in path_args if arg ] +
-+        [ "--package-db=" + package_database ], # This arg must come last.
-+        ), file=sys.stderr)
-+    run([runghc, setup, "configure",
-+        component,
-+        "--verbose=0",
-+        "--user",
          "--with-compiler=" + ghc,
          "--with-hc-pkg=" + ghc_pkg,
          "--with-ar=" + ar,
@@ -229,6 +197,38 @@ index 80feb4c2..d18a9c04 100755
 -        "--libsubdir=", \
 -        "--bindir=" + bindir, \
 -        "--datadir=" + datadir, \
++        enable_relocatable_flags +
++        #[
++        #"--builddir=" + distdir,
++        #"--prefix=" + pkgroot,
++        #"--libdir=" + libdir,
++        #"--dynlibdir=" + dynlibdir,
++        #"--libsubdir=",
++        #"--bindir=" + bindir,
++        #"--datadir=" + datadir,
++        ## Note, setting --datasubdir is required to work around
++        ##   https://github.com/haskell/cabal/issues/6235
++        #"--datasubdir=",
++        #"--package-db=clear",
++        #"--package-db=global",
++        #] +
++        #extra_args +
++        #[ arg.replace("=", "=" + execroot_posix + "/") for arg in path_args if arg ] +
++        #[ "--package-db=" + package_database ], # This arg must come last.
++        ), file=sys.stderr)
++    run([runghc, setup, "configure",
++        component,
++        "--verbose=0",
++        "--user",
++        "--with-compiler=" + ghc,
++        "--with-hc-pkg=" + ghc_pkg,
++        "--with-ar=" + ar,
++        ] +
++        with_gcc_flags +
++        [
++        "--with-strip=" + strip,
++        "--enable-deterministic",
++        ] +
 +        enable_relocatable_flags +
 +        [
 +        "--builddir=" + distdir,
