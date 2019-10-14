@@ -29,7 +29,7 @@ index 4e32f2ad..025c503a 100644
      )
      return [DefaultInfo(
 diff --git a/haskell/private/cabal_wrapper.py.tpl b/haskell/private/cabal_wrapper.py.tpl
-index 80feb4c2..9dfba11f 100755
+index 80feb4c2..b90e9b95 100755
 --- a/haskell/private/cabal_wrapper.py.tpl
 +++ b/haskell/private/cabal_wrapper.py.tpl
 @@ -16,6 +16,7 @@
@@ -164,9 +164,9 @@ index 80feb4c2..9dfba11f 100755
 +    }}
 +    _flushall();
 +    return res;
-+}}""".format(cc = cc.replace("\\", "\\\\")))
-+        run([cc, "-x", "c++", "-Wno-write-strings", "-o", cc_path, src_path])
-+        cc = os.path.join(execroot, cc_path)
++}}""".format(cc = os.path.relpath(cc, start=srcdir).replace("\\", "\\\\")))
++        run([os.path.relpath(cc), "-o", cc_path, src_path])
++        cc = os.path.relpath(cc_path, start=srcdir)
 +
      # Use the cc-wrapper for Cabal builds.
 -    # Note, we cannot currently use it on Windows because the solution to the
