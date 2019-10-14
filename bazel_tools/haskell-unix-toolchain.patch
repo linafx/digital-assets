@@ -29,7 +29,7 @@ index 4e32f2ad..025c503a 100644
      )
      return [DefaultInfo(
 diff --git a/haskell/private/cabal_wrapper.py.tpl b/haskell/private/cabal_wrapper.py.tpl
-index 80feb4c2..18aeeb6b 100755
+index 80feb4c2..1d90e42e 100755
 --- a/haskell/private/cabal_wrapper.py.tpl
 +++ b/haskell/private/cabal_wrapper.py.tpl
 @@ -16,6 +16,7 @@
@@ -146,7 +146,7 @@ index 80feb4c2..18aeeb6b 100755
 +        # solution to the following issue is not released, yet.
 +        #   https://github.com/bazelbuild/bazel/issues/9390
 +        # We can work around it by creating another thin wrapper.
-+        cc_unwrapped = find_exe("%{cc_unwrapped}")
++        cc_unwrapped = find_exe("%{cc_unwrapped}") # XXX
 +        cc_path = "cc_wrapper.exe"
 +        src_path = "cc_wrapper.c"
 +        src = open(src_path, "w")
@@ -165,7 +165,7 @@ index 80feb4c2..18aeeb6b 100755
 +    _flushall();
 +    return res;
 +}}""".format(cc = cc.replace("\\", "\\\\")))
-+        run([cc_unwrapped, "-o", cc_path, src_path])
++        run([cc, "-o", cc_path, src_path])
 +        cc = os.path.join(execroot, cc_path)
 +
      # Use the cc-wrapper for Cabal builds.
