@@ -29,7 +29,7 @@ index 4e32f2ad..025c503a 100644
      )
      return [DefaultInfo(
 diff --git a/haskell/private/cabal_wrapper.py.tpl b/haskell/private/cabal_wrapper.py.tpl
-index 80feb4c2..a2c51a8b 100755
+index 80feb4c2..fcd8adef 100755
 --- a/haskell/private/cabal_wrapper.py.tpl
 +++ b/haskell/private/cabal_wrapper.py.tpl
 @@ -16,6 +16,7 @@
@@ -137,10 +137,26 @@ index 80feb4c2..a2c51a8b 100755
  
  def recache_db():
      run([ghc_pkg, "recache", "--package-db=" + package_database])
-@@ -96,12 +135,36 @@ def tmpdir():
+@@ -96,21 +135,46 @@ def tmpdir():
          shutil.rmtree(distdir)
  
  with tmpdir() as distdir:
+-    # Use the cc-wrapper for Cabal builds.
+-    # Note, we cannot currently use it on Windows because the solution to the
+-    # following issue is not released, yet.
+-    #   https://github.com/bazelbuild/bazel/issues/9390
+-    with_gcc_flags = ["--with-gcc=" + cc] \
+-            if "%{is_windows}" != "True" else []
+-    enable_relocatable_flags = ["--enable-relocatable"] \
+-            if "%{is_windows}" != "True" else []
+-
+     # Cabal really wants the current working directory to be directory
+     # where the .cabal file is located. So we have no choice but to chance
+     # cd into it, but then we have to rewrite all relative references into
+     # absolute ones before doing so (using $execroot).
+     old_cwd = os.getcwd()
+     os.chdir(srcdir)
++
 +    if "%{is_windows}" == "True":
 +        # Note, we cannot currently use cc_wrapper.exe on Windows because the
 +        # solution to the following issue is not released, yet.
@@ -166,20 +182,18 @@ index 80feb4c2..a2c51a8b 100755
 +    return res;
 +}}""".format(cc = cc.replace("\\", "\\\\")))
 +        run([os.path.relpath(cc_unwrapped), "-o", cc_path, src_path])
-+        cc = os.path.relpath(cc_path, start=srcdir)
++        cc = cc_path
 +
-     # Use the cc-wrapper for Cabal builds.
--    # Note, we cannot currently use it on Windows because the solution to the
--    # following issue is not released, yet.
--    #   https://github.com/bazelbuild/bazel/issues/9390
--    with_gcc_flags = ["--with-gcc=" + cc] \
--            if "%{is_windows}" != "True" else []
++    # Use the cc-wrapper for Cabal builds.
 +    with_gcc_flags = ["--with-gcc=" + cc]
 +
-     enable_relocatable_flags = ["--enable-relocatable"] \
-             if "%{is_windows}" != "True" else []
- 
-@@ -169,7 +232,7 @@ def make_relocatable_paths(line):
++    enable_relocatable_flags = ["--enable-relocatable"] \
++            if "%{is_windows}" != "True" else []
++
+     os.putenv("HOME", "/var/empty")
+     run([runghc, setup, "configure", \
+         component, \
+@@ -169,7 +233,7 @@ def make_relocatable_paths(line):
  
      # The $execroot is an absolute path and should not leak into the output.
      # Replace each ocurrence of execroot by a path relative to ${pkgroot}.
