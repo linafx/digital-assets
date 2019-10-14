@@ -25,7 +25,7 @@ index 4e32f2ad..3433aaa4 100644
      )
      return [DefaultInfo(
 diff --git a/haskell/private/cabal_wrapper.py.tpl b/haskell/private/cabal_wrapper.py.tpl
-index 80feb4c2..6ac5169a 100755
+index 80feb4c2..51ff1992 100755
 --- a/haskell/private/cabal_wrapper.py.tpl
 +++ b/haskell/private/cabal_wrapper.py.tpl
 @@ -16,6 +16,7 @@
@@ -95,7 +95,7 @@ index 80feb4c2..6ac5169a 100755
          if entry != ""
      ])
  
-@@ -45,26 +82,26 @@ def canonicalize_path(path):
+@@ -45,26 +82,27 @@ def canonicalize_path(path):
  os.environ["LD_LIBRARY_PATH"] = canonicalize_path(os.getenv("LD_LIBRARY_PATH", ""))
  os.environ["LIBRARY_PATH"] = canonicalize_path(os.getenv("LIBRARY_PATH", ""))
  
@@ -107,13 +107,14 @@ index 80feb4c2..6ac5169a 100755
  
  component = sys.argv.pop(1)
  name = sys.argv.pop(1)
--execroot = os.getcwd()
-+execroot = posix_path(os.getcwd())
- setup = os.path.join(execroot, sys.argv.pop(1))
+ execroot = os.getcwd()
+-setup = os.path.join(execroot, sys.argv.pop(1))
++execroot_posix = posix_path(execroot)
++setup = os.path.join(execroot_posix, sys.argv.pop(1))
  srcdir = os.path.join(execroot, sys.argv.pop(1))
  # By definition (see ghc-pkg source code).
 -pkgroot = os.path.realpath(os.path.join(execroot, os.path.dirname(sys.argv.pop(1))))
-+pkgroot = posix_path(os.path.realpath(os.path.join(execroot, os.path.dirname(sys.argv.pop(1)))))
++pkgroot = posix_path(os.path.realpath(os.path.join(execroot_posix, os.path.dirname(sys.argv.pop(1)))))
  libdir = os.path.join(pkgroot, "{}_iface".format(name))
  dynlibdir = os.path.join(pkgroot, "lib")
  bindir = os.path.join(pkgroot, "bin")
@@ -129,7 +130,7 @@ index 80feb4c2..6ac5169a 100755
  
  extra_args = []
  current_arg = sys.argv.pop(1)
-@@ -75,9 +112,9 @@ del current_arg
+@@ -75,9 +113,9 @@ del current_arg
  
  path_args = sys.argv[1:]
  
@@ -142,12 +143,21 @@ index 80feb4c2..6ac5169a 100755
  
  def recache_db():
      run([ghc_pkg, "recache", "--package-db=" + package_database])
-@@ -169,7 +206,7 @@ def make_relocatable_paths(line):
+@@ -141,7 +179,7 @@ with tmpdir() as distdir:
+         "--package-db=global", \
+         ] + \
+         extra_args + \
+-        [ arg.replace("=", "=" + execroot + "/") for arg in path_args ] + \
++        [ arg.replace("=", "=" + execroot_posix + "/") for arg in path_args ] + \
+         [ "--package-db=" + package_database ], # This arg must come last.
+         )
+     run([runghc, setup, "build", "--verbose=0", "--builddir=" + distdir])
+@@ -169,7 +207,7 @@ def make_relocatable_paths(line):
  
      # The $execroot is an absolute path and should not leak into the output.
      # Replace each ocurrence of execroot by a path relative to ${pkgroot}.
 -    line = re.sub(execroot + '\S*', make_relative_to_pkgroot, line)
-+    line = re.sub(re.escape(execroot) + '\S*', make_relative_to_pkgroot, line)
++    line = re.sub(re.escape(execroot_posix) + '\S*', make_relative_to_pkgroot, line)
      return line
  
  if libraries != [] and os.path.isfile(package_conf_file):
