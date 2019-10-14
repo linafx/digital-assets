@@ -13,14 +13,14 @@ index d1e0133e..7cba2b05 100644
  def _prepare_cabal_inputs(hs, cc, dep_info, cc_info, component, package_id, tool_inputs, tool_input_manifests, cabal, setup, srcs, flags, cabal_wrapper, package_database):
      """Compute Cabal wrapper, arguments, inputs."""
 diff --git a/haskell/cabal_wrapper.bzl b/haskell/cabal_wrapper.bzl
-index 4e32f2ad..50269e7c 100644
+index 4e32f2ad..025c503a 100644
 --- a/haskell/cabal_wrapper.bzl
 +++ b/haskell/cabal_wrapper.bzl
 @@ -29,9 +29,11 @@ def _cabal_wrapper_impl(ctx):
              "%{runghc}": hs.tools.runghc.path,
              "%{ar}": ar,
              "%{cc}": hs_toolchain.cc_wrapper.executable.path,
-+            "%{cc_unwrapped}": cc_toolchain.cc_executable(),
++            "%{cc_unwrapped}": cc_toolchain.compiler_executable(),
              "%{unix_paths}": repr(unix_toolchain.paths),
              "%{strip}": cc_toolchain.strip_executable(),
              "%{is_windows}": str(hs.toolchain.is_windows),
