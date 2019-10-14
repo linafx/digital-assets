@@ -25,7 +25,7 @@ index 4e32f2ad..3433aaa4 100644
      )
      return [DefaultInfo(
 diff --git a/haskell/private/cabal_wrapper.py.tpl b/haskell/private/cabal_wrapper.py.tpl
-index 80feb4c2..65ff79e2 100755
+index 80feb4c2..7e7691de 100755
 --- a/haskell/private/cabal_wrapper.py.tpl
 +++ b/haskell/private/cabal_wrapper.py.tpl
 @@ -16,6 +16,7 @@
@@ -47,7 +47,7 @@ index 80feb4c2..65ff79e2 100755
  
  def run(cmd, *args, **kwargs):
      if debug:
-@@ -34,10 +37,50 @@ def run(cmd, *args, **kwargs):
+@@ -34,10 +37,51 @@ def run(cmd, *args, **kwargs):
          sys.stderr.flush()
      subprocess.call(cmd, *args, **kwargs)
  
@@ -63,6 +63,7 @@ index 80feb4c2..65ff79e2 100755
 +            path = r.Rlocation("/".join(["%{workspace}", exe + ".exe"]))
 +    if debug:
 +        print("  --> %s", path, file=sys.stderr)
++    return path
 +
 +def posix_path(path):
 +    """Convert the given path to POSIX format.
@@ -101,7 +102,7 @@ index 80feb4c2..65ff79e2 100755
          if entry != ""
      ])
  
-@@ -45,26 +88,30 @@ def canonicalize_path(path):
+@@ -45,26 +89,30 @@ def canonicalize_path(path):
  os.environ["LD_LIBRARY_PATH"] = canonicalize_path(os.getenv("LD_LIBRARY_PATH", ""))
  os.environ["LIBRARY_PATH"] = canonicalize_path(os.getenv("LIBRARY_PATH", ""))
  
@@ -138,7 +139,7 @@ index 80feb4c2..65ff79e2 100755
  
  extra_args = []
  current_arg = sys.argv.pop(1)
-@@ -74,10 +121,11 @@ while current_arg != "--":
+@@ -74,10 +122,11 @@ while current_arg != "--":
  del current_arg
  
  path_args = sys.argv[1:]
@@ -153,7 +154,7 @@ index 80feb4c2..65ff79e2 100755
  
  def recache_db():
      run([ghc_pkg, "recache", "--package-db=" + package_database])
-@@ -100,10 +148,8 @@ with tmpdir() as distdir:
+@@ -100,10 +149,8 @@ with tmpdir() as distdir:
      # Note, we cannot currently use it on Windows because the solution to the
      # following issue is not released, yet.
      #   https://github.com/bazelbuild/bazel/issues/9390
@@ -166,7 +167,7 @@ index 80feb4c2..65ff79e2 100755
  
      # Cabal really wants the current working directory to be directory
      # where the .cabal file is located. So we have no choice but to chance
-@@ -112,36 +158,81 @@ with tmpdir() as distdir:
+@@ -112,36 +159,81 @@ with tmpdir() as distdir:
      old_cwd = os.getcwd()
      os.chdir(srcdir)
      os.putenv("HOME", "/var/empty")
@@ -270,7 +271,7 @@ index 80feb4c2..65ff79e2 100755
          [ "--package-db=" + package_database ], # This arg must come last.
          )
      run([runghc, setup, "build", "--verbose=0", "--builddir=" + distdir])
-@@ -169,7 +260,7 @@ def make_relocatable_paths(line):
+@@ -169,7 +261,7 @@ def make_relocatable_paths(line):
  
      # The $execroot is an absolute path and should not leak into the output.
      # Replace each ocurrence of execroot by a path relative to ${pkgroot}.
