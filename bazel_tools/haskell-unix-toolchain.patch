@@ -25,7 +25,7 @@ index 4e32f2ad..3433aaa4 100644
      )
      return [DefaultInfo(
 diff --git a/haskell/private/cabal_wrapper.py.tpl b/haskell/private/cabal_wrapper.py.tpl
-index 80feb4c2..950f14c3 100755
+index 80feb4c2..1f098821 100755
 --- a/haskell/private/cabal_wrapper.py.tpl
 +++ b/haskell/private/cabal_wrapper.py.tpl
 @@ -16,6 +16,7 @@
@@ -197,7 +197,7 @@ index 80feb4c2..950f14c3 100755
 -        "--libsubdir=", \
 -        "--bindir=" + bindir, \
 -        "--datadir=" + datadir, \
-+        enable_relocatable_flags +
++        enable_relocatable_flags #+
 +        #[
 +        #"--builddir=" + distdir,
 +        #"--prefix=" + pkgroot,
