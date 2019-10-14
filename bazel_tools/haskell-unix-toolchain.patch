@@ -29,7 +29,7 @@ index 4e32f2ad..025c503a 100644
      )
      return [DefaultInfo(
 diff --git a/haskell/private/cabal_wrapper.py.tpl b/haskell/private/cabal_wrapper.py.tpl
-index 80feb4c2..58839e65 100755
+index 80feb4c2..51092aaa 100755
 --- a/haskell/private/cabal_wrapper.py.tpl
 +++ b/haskell/private/cabal_wrapper.py.tpl
 @@ -16,6 +16,7 @@
@@ -137,7 +137,7 @@ index 80feb4c2..58839e65 100755
  
  def recache_db():
      run([ghc_pkg, "recache", "--package-db=" + package_database])
-@@ -96,21 +135,46 @@ def tmpdir():
+@@ -96,21 +135,47 @@ def tmpdir():
          shutil.rmtree(distdir)
  
  with tmpdir() as distdir:
@@ -181,7 +181,8 @@ index 80feb4c2..58839e65 100755
 +    _flushall();
 +    return res;
 +}}""".format(cc = cc.replace("\\", "\\\\")))
-+        run([os.path.relpath(cc_unwrapped), "-x", "c++", "-Wno-write-string", "-lstdc++", "-o", cc_path, src_path])
++        libdir = os.path.relpath(os.path.realpath(os.path.join(os.path.dirname(cc_unwrapped), "../x86_64-w64-mingw32/lib")))
++        run([os.path.relpath(cc_unwrapped), "-x", "c++", "-Wno-write-string", "-lstdc++", "-L%s" % libdir, "-o", cc_path, src_path])
 +        cc = cc_path
 +
 +    # Use the cc-wrapper for Cabal builds.
@@ -193,7 +194,7 @@ index 80feb4c2..58839e65 100755
      os.putenv("HOME", "/var/empty")
      run([runghc, setup, "configure", \
          component, \
-@@ -169,7 +233,7 @@ def make_relocatable_paths(line):
+@@ -169,7 +234,7 @@ def make_relocatable_paths(line):
  
      # The $execroot is an absolute path and should not leak into the output.
      # Replace each ocurrence of execroot by a path relative to ${pkgroot}.
