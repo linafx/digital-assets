@@ -29,7 +29,7 @@ index 4e32f2ad..025c503a 100644
      )
      return [DefaultInfo(
 diff --git a/haskell/private/cabal_wrapper.py.tpl b/haskell/private/cabal_wrapper.py.tpl
-index 80feb4c2..dcbdca41 100755
+index 80feb4c2..49257f73 100755
 --- a/haskell/private/cabal_wrapper.py.tpl
 +++ b/haskell/private/cabal_wrapper.py.tpl
 @@ -16,6 +16,7 @@
@@ -147,8 +147,8 @@ index 80feb4c2..dcbdca41 100755
 +        #   https://github.com/bazelbuild/bazel/issues/9390
 +        # We can work around it by creating another thin wrapper.
 +        cc_unwrapped = find_exe("${cc_unwrapped}")
-+        cc_new = os.path.join([distdir, "cc_wrapper"])
-+        src = open(os.path.join([distdir, "cc_wrapper.c"]), "w")
++        cc_new = os.path.join(distdir, "cc_wrapper")
++        src = open(os.path.join(distdir, "cc_wrapper.c"), "w")
 +        src.write("""\
 +            #include <unistd.h>
 +            #include <stdio.h>
