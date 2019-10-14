@@ -25,7 +25,7 @@ index 4e32f2ad..3433aaa4 100644
      )
      return [DefaultInfo(
 diff --git a/haskell/private/cabal_wrapper.py.tpl b/haskell/private/cabal_wrapper.py.tpl
-index 80feb4c2..cb6b61dd 100755
+index 80feb4c2..a977cc99 100755
 --- a/haskell/private/cabal_wrapper.py.tpl
 +++ b/haskell/private/cabal_wrapper.py.tpl
 @@ -16,6 +16,7 @@
@@ -265,7 +265,7 @@ index 80feb4c2..cb6b61dd 100755
 +        "--package-db=global",
 +        ] +
 +        extra_args +
-+        [ arg.replace("=", "=" + execroot_posix + "/") for arg in path_args if arg ] +
++        [ arg.replace("=", "=" + execroot + "/") for arg in path_args if arg ] +
          [ "--package-db=" + package_database ], # This arg must come last.
          )
      run([runghc, setup, "build", "--verbose=0", "--builddir=" + distdir])
@@ -274,7 +274,7 @@ index 80feb4c2..cb6b61dd 100755
      # The $execroot is an absolute path and should not leak into the output.
      # Replace each ocurrence of execroot by a path relative to ${pkgroot}.
 -    line = re.sub(execroot + '\S*', make_relative_to_pkgroot, line)
-+    line = re.sub(re.escape(execroot_posix) + '\S*', make_relative_to_pkgroot, line)
++    line = re.sub(re.escape(execroot) + '\S*', make_relative_to_pkgroot, line)
      return line
  
  if libraries != [] and os.path.isfile(package_conf_file):
