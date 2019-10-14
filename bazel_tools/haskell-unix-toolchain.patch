@@ -25,7 +25,7 @@ index 4e32f2ad..3433aaa4 100644
      )
      return [DefaultInfo(
 diff --git a/haskell/private/cabal_wrapper.py.tpl b/haskell/private/cabal_wrapper.py.tpl
-index 80feb4c2..51ff1992 100755
+index 80feb4c2..18f14cc5 100755
 --- a/haskell/private/cabal_wrapper.py.tpl
 +++ b/haskell/private/cabal_wrapper.py.tpl
 @@ -16,6 +16,7 @@
@@ -70,7 +70,7 @@ index 80feb4c2..51ff1992 100755
 +        return path
 +    else:
 +        if debug:
-+            print("posix_path(%s)" % path)
++            print("posix_path(%s)" % path, file=sys.stderr)
 +        drive, path = os.path.splitdrive(path)
 +        path = path.replace("\\", "/")
 +        if drive.startswith("\\\\?\\"):
@@ -80,7 +80,7 @@ index 80feb4c2..51ff1992 100755
 +            if not path.lower().startswith("/%s" % drive_letter):
 +                path = "/%s%s" % (drive_letter, path)
 +        if debug:
-+            print("  --> %s" % path)
++            print("  --> %s" % path, file=sys.stderr)
 +        return path
 +
  def canonicalize_path(path):
@@ -88,14 +88,14 @@ index 80feb4c2..51ff1992 100755
 -        os.path.abspath(entry)
 -        for entry in path.split(":")
 +    if debug:
-+        print("canonicalize_path(%s)" % path)
++        print("canonicalize_path(%s)" % path, file=sys.stderr)
 +    return path_list_sep.join([
 +        posix_path(os.path.abspath(entry))
 +        for entry in path.split(path_list_sep)
          if entry != ""
      ])
  
-@@ -45,26 +82,27 @@ def canonicalize_path(path):
+@@ -45,26 +82,29 @@ def canonicalize_path(path):
  os.environ["LD_LIBRARY_PATH"] = canonicalize_path(os.getenv("LD_LIBRARY_PATH", ""))
  os.environ["LIBRARY_PATH"] = canonicalize_path(os.getenv("LIBRARY_PATH", ""))
  
@@ -110,6 +110,8 @@ index 80feb4c2..51ff1992 100755
  execroot = os.getcwd()
 -setup = os.path.join(execroot, sys.argv.pop(1))
 +execroot_posix = posix_path(execroot)
++print("execroot: %s" % execroot, file=sys.stderr)
++print("execroot_posix: %s" % execroot_posix, file=sys.stderr)
 +setup = os.path.join(execroot_posix, sys.argv.pop(1))
  srcdir = os.path.join(execroot, sys.argv.pop(1))
  # By definition (see ghc-pkg source code).
@@ -130,7 +132,7 @@ index 80feb4c2..51ff1992 100755
  
  extra_args = []
  current_arg = sys.argv.pop(1)
-@@ -75,9 +113,9 @@ del current_arg
+@@ -75,9 +115,9 @@ del current_arg
  
  path_args = sys.argv[1:]
  
@@ -143,7 +145,7 @@ index 80feb4c2..51ff1992 100755
  
  def recache_db():
      run([ghc_pkg, "recache", "--package-db=" + package_database])
-@@ -141,7 +179,7 @@ with tmpdir() as distdir:
+@@ -141,7 +181,7 @@ with tmpdir() as distdir:
          "--package-db=global", \
          ] + \
          extra_args + \
@@ -152,7 +154,7 @@ index 80feb4c2..51ff1992 100755
          [ "--package-db=" + package_database ], # This arg must come last.
          )
      run([runghc, setup, "build", "--verbose=0", "--builddir=" + distdir])
-@@ -169,7 +207,7 @@ def make_relocatable_paths(line):
+@@ -169,7 +209,7 @@ def make_relocatable_paths(line):
  
      # The $execroot is an absolute path and should not leak into the output.
      # Replace each ocurrence of execroot by a path relative to ${pkgroot}.
