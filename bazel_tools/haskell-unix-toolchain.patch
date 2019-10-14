@@ -29,7 +29,7 @@ index 4e32f2ad..025c503a 100644
      )
      return [DefaultInfo(
 diff --git a/haskell/private/cabal_wrapper.py.tpl b/haskell/private/cabal_wrapper.py.tpl
-index 80feb4c2..da72ec9f 100755
+index 80feb4c2..d2295048 100755
 --- a/haskell/private/cabal_wrapper.py.tpl
 +++ b/haskell/private/cabal_wrapper.py.tpl
 @@ -16,6 +16,7 @@
@@ -137,7 +137,7 @@ index 80feb4c2..da72ec9f 100755
  
  def recache_db():
      run([ghc_pkg, "recache", "--package-db=" + package_database])
-@@ -96,12 +135,32 @@ def tmpdir():
+@@ -96,12 +135,37 @@ def tmpdir():
          shutil.rmtree(distdir)
  
  with tmpdir() as distdir:
@@ -147,20 +147,25 @@ index 80feb4c2..da72ec9f 100755
 +        #   https://github.com/bazelbuild/bazel/issues/9390
 +        # We can work around it by creating another thin wrapper.
 +        cc_unwrapped = find_exe("%{cc_unwrapped}")
-+        cc_path = os.path.join(distdir, "cc_wrapper")
++        cc_path = os.path.join(distdir, "cc_wrapper.exe")
 +        src_path = os.path.join(distdir, "cc_wrapper.c")
 +        src = open(src_path, "w")
 +        src.write("""\
++            #include <errno.h>
 +            #include <unistd.h>
 +            #include <stdio.h>
++            #include <stdlib.h>
 +            int main(int argc, char **argv) {{
-+                const char *cc = "{cc}";
++                char *cc = "{cc}";
 +                argv[0] = cc;
-+                execv(cc, argv);
-+                perror("Failed to execute cc_wrapper");
-+                return 1;
++                int res = spawnv(_P_WAIT, cc, argv);
++                if (errno) {{
++                    perror("Failed to execute cc_wrapper");
++                }}
++                _flushall();
++                return res;
 +            }}
-+        """.format(cc = cc))
++        """.format(cc = cc.replace("\\", "\\\\")))
 +        run([cc_unwrapped, "-o", cc_path, src_path])
 +        cc = cc_path
 +
@@ -175,7 +180,7 @@ index 80feb4c2..da72ec9f 100755
      enable_relocatable_flags = ["--enable-relocatable"] \
              if "%{is_windows}" != "True" else []
  
-@@ -169,7 +228,7 @@ def make_relocatable_paths(line):
+@@ -169,7 +233,7 @@ def make_relocatable_paths(line):
  
      # The $execroot is an absolute path and should not leak into the output.
      # Replace each ocurrence of execroot by a path relative to ${pkgroot}.
