@@ -25,7 +25,7 @@ index 4e32f2ad..3433aaa4 100644
      )
      return [DefaultInfo(
 diff --git a/haskell/private/cabal_wrapper.py.tpl b/haskell/private/cabal_wrapper.py.tpl
-index 80feb4c2..1f098821 100755
+index 80feb4c2..57925799 100755
 --- a/haskell/private/cabal_wrapper.py.tpl
 +++ b/haskell/private/cabal_wrapper.py.tpl
 @@ -16,6 +16,7 @@
@@ -160,7 +160,7 @@ index 80feb4c2..1f098821 100755
  
      # Cabal really wants the current working directory to be directory
      # where the .cabal file is located. So we have no choice but to chance
-@@ -112,36 +152,72 @@ with tmpdir() as distdir:
+@@ -112,36 +152,81 @@ with tmpdir() as distdir:
      old_cwd = os.getcwd()
      os.chdir(srcdir)
      os.putenv("HOME", "/var/empty")
@@ -172,6 +172,15 @@ index 80feb4c2..1f098821 100755
 +    print("list execroot_posix", repr([ arg.replace("=", "=" + execroot_posix + "/") for arg in path_args if arg ]), file=sys.stderr)
 +    print("list package_database", repr([ "--package-db=" + package_database ]), file=sys.stderr)
 +    print("distdir", repr(distdir), file=sys.stderr)
++    print("runghc", repr(runghc), file=sys.stderr)
++    print("setup", repr(setup), file=sys.stderr)
++    print("component", repr(component), file=sys.stderr)
++    print("ghc", repr(ghc), file=sys.stderr)
++    print("ghc_pkg", repr(ghc_pkg), file=sys.stderr)
++    print("ar", repr(ar), file=sys.stderr)
++    print("with_gcc_flags", repr(with_gcc_flags), file=sys.stderr)
++    print("strip", repr(strip), file=sys.stderr)
++    print("enable_relocatable_flags", repr(enable_relocatable_flags), file=sys.stderr)
 +    print("run", repr([runghc, setup, "configure",
 +        component,
 +        "--verbose=0",
@@ -255,7 +264,7 @@ index 80feb4c2..1f098821 100755
          [ "--package-db=" + package_database ], # This arg must come last.
          )
      run([runghc, setup, "build", "--verbose=0", "--builddir=" + distdir])
-@@ -169,7 +245,7 @@ def make_relocatable_paths(line):
+@@ -169,7 +254,7 @@ def make_relocatable_paths(line):
  
      # The $execroot is an absolute path and should not leak into the output.
      # Replace each ocurrence of execroot by a path relative to ${pkgroot}.
