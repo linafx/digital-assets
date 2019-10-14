@@ -25,7 +25,7 @@ index 4e32f2ad..3433aaa4 100644
      )
      return [DefaultInfo(
 diff --git a/haskell/private/cabal_wrapper.py.tpl b/haskell/private/cabal_wrapper.py.tpl
-index 80feb4c2..52d50d33 100755
+index 80feb4c2..8229b364 100755
 --- a/haskell/private/cabal_wrapper.py.tpl
 +++ b/haskell/private/cabal_wrapper.py.tpl
 @@ -16,6 +16,7 @@
@@ -53,7 +53,7 @@ index 80feb4c2..52d50d33 100755
  
 +def find_exe(exe):
 +    if debug:
-+        print("find_exe(%s)", exe, file=sys.stderr))
++        print("find_exe(%s)", exe, file=sys.stderr)
 +    if os.path.isfile(exe):
 +        path = os.path.abspath(exe)
 +    else:
