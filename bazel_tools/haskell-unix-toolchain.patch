@@ -29,7 +29,7 @@ index 4e32f2ad..025c503a 100644
      )
      return [DefaultInfo(
 diff --git a/haskell/private/cabal_wrapper.py.tpl b/haskell/private/cabal_wrapper.py.tpl
-index 80feb4c2..664c9a7b 100755
+index 80feb4c2..609a86fb 100755
 --- a/haskell/private/cabal_wrapper.py.tpl
 +++ b/haskell/private/cabal_wrapper.py.tpl
 @@ -16,6 +16,7 @@
@@ -165,7 +165,7 @@ index 80feb4c2..664c9a7b 100755
 +    _flushall();
 +    return res;
 +}}""".format(cc = cc.replace("\\", "\\\\")))
-+        run([cc_unwrapped, "-lmingw32", "-o", cc_path, src_path])
++        run([cc_unwrapped, "-o", cc_path, src_path])
 +        cc = cc_path
 +
      # Use the cc-wrapper for Cabal builds.
