@@ -29,7 +29,7 @@ index 4e32f2ad..025c503a 100644
      )
      return [DefaultInfo(
 diff --git a/haskell/private/cabal_wrapper.py.tpl b/haskell/private/cabal_wrapper.py.tpl
-index 80feb4c2..d2295048 100755
+index 80feb4c2..609a86fb 100755
 --- a/haskell/private/cabal_wrapper.py.tpl
 +++ b/haskell/private/cabal_wrapper.py.tpl
 @@ -16,6 +16,7 @@
@@ -137,7 +137,7 @@ index 80feb4c2..d2295048 100755
  
  def recache_db():
      run([ghc_pkg, "recache", "--package-db=" + package_database])
-@@ -96,12 +135,37 @@ def tmpdir():
+@@ -96,12 +135,36 @@ def tmpdir():
          shutil.rmtree(distdir)
  
  with tmpdir() as distdir:
@@ -151,21 +151,20 @@ index 80feb4c2..d2295048 100755
 +        src_path = os.path.join(distdir, "cc_wrapper.c")
 +        src = open(src_path, "w")
 +        src.write("""\
-+            #include <errno.h>
-+            #include <unistd.h>
-+            #include <stdio.h>
-+            #include <stdlib.h>
-+            int main(int argc, char **argv) {{
-+                char *cc = "{cc}";
-+                argv[0] = cc;
-+                int res = spawnv(_P_WAIT, cc, argv);
-+                if (errno) {{
-+                    perror("Failed to execute cc_wrapper");
-+                }}
-+                _flushall();
-+                return res;
-+            }}
-+        """.format(cc = cc.replace("\\", "\\\\")))
++#include <errno.h>
++#include <unistd.h>
++#include <stdio.h>
++#include <stdlib.h>
++int main(int argc, char **argv) {{
++    char *cc = "{cc}";
++    argv[0] = cc;
++    int res = spawnv(_P_WAIT, cc, argv);
++    if (errno) {{
++        perror("Failed to execute cc_wrapper");
++    }}
++    _flushall();
++    return res;
++}}""".format(cc = cc.replace("\\", "\\\\")))
 +        run([cc_unwrapped, "-o", cc_path, src_path])
 +        cc = cc_path
 +
@@ -180,7 +179,7 @@ index 80feb4c2..d2295048 100755
      enable_relocatable_flags = ["--enable-relocatable"] \
              if "%{is_windows}" != "True" else []
  
-@@ -169,7 +233,7 @@ def make_relocatable_paths(line):
+@@ -169,7 +232,7 @@ def make_relocatable_paths(line):
  
      # The $execroot is an absolute path and should not leak into the output.
      # Replace each ocurrence of execroot by a path relative to ${pkgroot}.
