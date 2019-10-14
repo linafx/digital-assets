@@ -13,14 +13,10 @@ index d1e0133e..7cba2b05 100644
  def _prepare_cabal_inputs(hs, cc, dep_info, cc_info, component, package_id, tool_inputs, tool_input_manifests, cabal, setup, srcs, flags, cabal_wrapper, package_database):
      """Compute Cabal wrapper, arguments, inputs."""
 diff --git a/haskell/cabal_wrapper.bzl b/haskell/cabal_wrapper.bzl
-index 4e32f2ad..025c503a 100644
+index 4e32f2ad..3433aaa4 100644
 --- a/haskell/cabal_wrapper.bzl
 +++ b/haskell/cabal_wrapper.bzl
-@@ -29,9 +29,11 @@ def _cabal_wrapper_impl(ctx):
-             "%{runghc}": hs.tools.runghc.path,
-             "%{ar}": ar,
-             "%{cc}": hs_toolchain.cc_wrapper.executable.path,
-+            "%{cc_unwrapped}": cc_toolchain.compiler_executable(),
+@@ -32,6 +32,7 @@ def _cabal_wrapper_impl(ctx):
              "%{unix_paths}": repr(unix_toolchain.paths),
              "%{strip}": cc_toolchain.strip_executable(),
              "%{is_windows}": str(hs.toolchain.is_windows),
@@ -29,7 +25,7 @@ index 4e32f2ad..025c503a 100644
      )
      return [DefaultInfo(
 diff --git a/haskell/private/cabal_wrapper.py.tpl b/haskell/private/cabal_wrapper.py.tpl
-index 80feb4c2..a9047da9 100755
+index 80feb4c2..beab56ed 100755
 --- a/haskell/private/cabal_wrapper.py.tpl
 +++ b/haskell/private/cabal_wrapper.py.tpl
 @@ -16,6 +16,7 @@
@@ -137,7 +133,7 @@ index 80feb4c2..a9047da9 100755
  
  def recache_db():
      run([ghc_pkg, "recache", "--package-db=" + package_database])
-@@ -96,21 +135,46 @@ def tmpdir():
+@@ -96,21 +135,36 @@ def tmpdir():
          shutil.rmtree(distdir)
  
  with tmpdir() as distdir:
@@ -162,26 +158,16 @@ index 80feb4c2..a9047da9 100755
 +        # solution to the following issue is not released, yet.
 +        #   https://github.com/bazelbuild/bazel/issues/9390
 +        # We can work around it by creating another thin wrapper.
-+        cc_unwrapped = find_exe("%{cc_unwrapped}") # XXX
 +        cc_path = "cc_wrapper.exe"
-+        src_path = "cc_wrapper.c"
++        src_path = "cc_wrapper.hs"
 +        src = open(src_path, "w")
 +        src.write("""\
-+#include <errno.h>
-+#include <unistd.h>
-+#include <stdio.h>
-+#include <stdlib.h>
-+int main(int argc, char **argv) {{
-+    char *cc = "{cc}";
-+    argv[0] = cc;
-+    int res = spawnv(_P_WAIT, cc, argv);
-+    if (errno) {{
-+        perror("Failed to execute cc_wrapper");
-+    }}
-+    _flushall();
-+    return res;
-+}}""".format(cc = cc.replace("\\", "\\\\")))
-+        run([os.path.relpath(cc_unwrapped), "-mconsole", "-o", cc_path, src_path])
++import System.Environment (getArgs)
++import System.Process (callProcess)
++main :: IO ()
++main = callProcess "{cc}" =<< getArgs
++""".format(cc = cc.replace("\\", "\\\\")))
++        run([ghc, "-o", cc_path, src_path])
 +        cc = cc_path
 +
 +    # Use the cc-wrapper for Cabal builds.
@@ -193,7 +179,7 @@ index 80feb4c2..a9047da9 100755
      os.putenv("HOME", "/var/empty")
      run([runghc, setup, "configure", \
          component, \
-@@ -169,7 +233,7 @@ def make_relocatable_paths(line):
+@@ -169,7 +223,7 @@ def make_relocatable_paths(line):
  
      # The $execroot is an absolute path and should not leak into the output.
      # Replace each ocurrence of execroot by a path relative to ${pkgroot}.
