@@ -25,7 +25,7 @@ index 4e32f2ad..3433aaa4 100644
      )
      return [DefaultInfo(
 diff --git a/haskell/private/cabal_wrapper.py.tpl b/haskell/private/cabal_wrapper.py.tpl
-index 80feb4c2..c3dfadac 100755
+index 80feb4c2..701d618c 100755
 --- a/haskell/private/cabal_wrapper.py.tpl
 +++ b/haskell/private/cabal_wrapper.py.tpl
 @@ -16,6 +16,7 @@
@@ -147,16 +147,79 @@ index 80feb4c2..c3dfadac 100755
  
  def recache_db():
      run([ghc_pkg, "recache", "--package-db=" + package_database])
-@@ -141,7 +183,7 @@ with tmpdir() as distdir:
-         "--package-db=global", \
-         ] + \
-         extra_args + \
+@@ -100,10 +142,8 @@ with tmpdir() as distdir:
+     # Note, we cannot currently use it on Windows because the solution to the
+     # following issue is not released, yet.
+     #   https://github.com/bazelbuild/bazel/issues/9390
+-    with_gcc_flags = ["--with-gcc=" + cc] \
+-            if "%{is_windows}" != "True" else []
+-    enable_relocatable_flags = ["--enable-relocatable"] \
+-            if "%{is_windows}" != "True" else []
++    with_gcc_flags = ["--with-gcc=" + cc] if "%{is_windows}" != "True" else []
++    enable_relocatable_flags = ["--enable-relocatable"] if "%{is_windows}" != "True" else []
+ 
+     # Cabal really wants the current working directory to be directory
+     # where the .cabal file is located. So we have no choice but to chance
+@@ -112,36 +152,36 @@ with tmpdir() as distdir:
+     old_cwd = os.getcwd()
+     os.chdir(srcdir)
+     os.putenv("HOME", "/var/empty")
+-    run([runghc, setup, "configure", \
+-        component, \
+-        "--verbose=0", \
+-        "--user", \
++    run([runghc, setup, "configure",
++        component,
++        "--verbose=0",
++        "--user",
+         "--with-compiler=" + ghc,
+         "--with-hc-pkg=" + ghc_pkg,
+         "--with-ar=" + ar,
+         ] +
+-        with_gcc_flags + \
+-        [ \
++        with_gcc_flags +
++        [
+         "--with-strip=" + strip,
+-        "--enable-deterministic", \
++        "--enable-deterministic",
+         ] +
+-        enable_relocatable_flags + \
+-        [ \
+-        "--builddir=" + distdir, \
+-        "--prefix=" + pkgroot, \
+-        "--libdir=" + libdir, \
+-        "--dynlibdir=" + dynlibdir, \
+-        "--libsubdir=", \
+-        "--bindir=" + bindir, \
+-        "--datadir=" + datadir, \
++        enable_relocatable_flags +
++        [
++        "--builddir=" + distdir,
++        "--prefix=" + pkgroot,
++        "--libdir=" + libdir,
++        "--dynlibdir=" + dynlibdir,
++        "--libsubdir=",
++        "--bindir=" + bindir,
++        "--datadir=" + datadir,
+         # Note, setting --datasubdir is required to work around
+         #   https://github.com/haskell/cabal/issues/6235
+-        "--datasubdir=", \
+-        "--package-db=clear", \
+-        "--package-db=global", \
+-        ] + \
+-        extra_args + \
 -        [ arg.replace("=", "=" + execroot + "/") for arg in path_args ] + \
-+        [ arg.replace("=", "=" + execroot_posix + "/") for arg in path_args if arg ] + \
++        "--datasubdir=",
++        "--package-db=clear",
++        "--package-db=global",
++        ] +
++        extra_args +
++        [ arg.replace("=", "=" + execroot_posix + "/") for arg in path_args if arg ] +
          [ "--package-db=" + package_database ], # This arg must come last.
          )
      run([runghc, setup, "build", "--verbose=0", "--builddir=" + distdir])
-@@ -169,7 +211,7 @@ def make_relocatable_paths(line):
+@@ -169,7 +209,7 @@ def make_relocatable_paths(line):
  
      # The $execroot is an absolute path and should not leak into the output.
      # Replace each ocurrence of execroot by a path relative to ${pkgroot}.
