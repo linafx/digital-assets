@@ -13,10 +13,14 @@ index d1e0133e..7cba2b05 100644
  def _prepare_cabal_inputs(hs, cc, dep_info, cc_info, component, package_id, tool_inputs, tool_input_manifests, cabal, setup, srcs, flags, cabal_wrapper, package_database):
      """Compute Cabal wrapper, arguments, inputs."""
 diff --git a/haskell/cabal_wrapper.bzl b/haskell/cabal_wrapper.bzl
-index 4e32f2ad..3433aaa4 100644
+index 4e32f2ad..50269e7c 100644
 --- a/haskell/cabal_wrapper.bzl
 +++ b/haskell/cabal_wrapper.bzl
-@@ -32,6 +32,7 @@ def _cabal_wrapper_impl(ctx):
+@@ -29,9 +29,11 @@ def _cabal_wrapper_impl(ctx):
+             "%{runghc}": hs.tools.runghc.path,
+             "%{ar}": ar,
+             "%{cc}": hs_toolchain.cc_wrapper.executable.path,
++            "%{cc_unwrapped}": cc_toolchain.cc_executable(),
              "%{unix_paths}": repr(unix_toolchain.paths),
              "%{strip}": cc_toolchain.strip_executable(),
              "%{is_windows}": str(hs.toolchain.is_windows),
@@ -25,7 +29,7 @@ index 4e32f2ad..3433aaa4 100644
      )
      return [DefaultInfo(
 diff --git a/haskell/private/cabal_wrapper.py.tpl b/haskell/private/cabal_wrapper.py.tpl
-index 80feb4c2..9fc17717 100755
+index 80feb4c2..07dba015 100755
 --- a/haskell/private/cabal_wrapper.py.tpl
 +++ b/haskell/private/cabal_wrapper.py.tpl
 @@ -16,6 +16,7 @@
@@ -36,24 +40,19 @@ index 80feb4c2..9fc17717 100755
  from contextlib import contextmanager
  from glob import glob
  import os
-@@ -26,7 +27,9 @@ import subprocess
- import sys
- import tempfile
+@@ -28,16 +29,54 @@ import tempfile
  
--debug = False
-+debug = True
-+
+ debug = False
+ 
 +path_list_sep = ":" if "%{is_windows}" != "True" else ";"
- 
++
  def run(cmd, *args, **kwargs):
      if debug:
-@@ -34,10 +37,51 @@ def run(cmd, *args, **kwargs):
+         print("+ " + " ".join(["'{}'".format(arg) for arg in cmd]), file=sys.stderr)
          sys.stderr.flush()
      subprocess.call(cmd, *args, **kwargs)
  
 +def find_exe(exe):
-+    if debug:
-+        print("find_exe(%s)", exe, file=sys.stderr)
 +    if os.path.isfile(exe):
 +        path = os.path.abspath(exe)
 +    else:
@@ -62,7 +61,7 @@ index 80feb4c2..9fc17717 100755
 +        if not os.path.isfile(exe) and "%{is_windows}" == "True":
 +            path = r.Rlocation("/".join(["%{workspace}", exe + ".exe"]))
 +    if debug:
-+        print("  --> %s", path, file=sys.stderr)
++        print("find_exe(%s) = %s" % (exe, path), file=sys.stderr)
 +    return path
 +
 +def posix_path(path):
@@ -76,9 +75,8 @@ index 80feb4c2..9fc17717 100755
 +    if "%{is_windows}" != "True":
 +        return path
 +    else:
-+        if debug:
-+            print("posix_path(%s)" % path, file=sys.stderr)
-+        drive, path = os.path.splitdrive(path)
++        input_path = path
++        drive, path = os.path.splitdrive(input_path)
 +        path = path.replace("\\", "/")
 +        if drive.startswith("\\\\?\\"):
 +            drive = drive[len("\\\\?\\"):]
@@ -87,13 +85,11 @@ index 80feb4c2..9fc17717 100755
 +            if not path.lower().startswith("/%s" % drive_letter):
 +                path = "/%s%s" % (drive_letter, path)
 +        if debug:
-+            print("  --> %s" % path, file=sys.stderr)
++            print("posix_path(%s) = %s" % (input_path, path), file=sys.stderr)
 +        return path
 +
  def canonicalize_path(path):
 -    return ":".join([
-+    if debug:
-+        print("canonicalize_path(%s)" % path, file=sys.stderr)
 +    return path_list_sep.join([
          os.path.abspath(entry)
 -        for entry in path.split(":")
@@ -101,7 +97,7 @@ index 80feb4c2..9fc17717 100755
          if entry != ""
      ])
  
-@@ -45,26 +89,30 @@ def canonicalize_path(path):
+@@ -45,8 +84,8 @@ def canonicalize_path(path):
  os.environ["LD_LIBRARY_PATH"] = canonicalize_path(os.getenv("LD_LIBRARY_PATH", ""))
  os.environ["LIBRARY_PATH"] = canonicalize_path(os.getenv("LIBRARY_PATH", ""))
  
@@ -112,19 +108,7 @@ index 80feb4c2..9fc17717 100755
  
  
  component = sys.argv.pop(1)
- name = sys.argv.pop(1)
- execroot = os.getcwd()
-+execroot_posix = posix_path(execroot)
-+print("execroot: %s" % execroot, file=sys.stderr)
-+print("execroot_posix: %s" % execroot_posix, file=sys.stderr)
- setup = os.path.join(execroot, sys.argv.pop(1))
- srcdir = os.path.join(execroot, sys.argv.pop(1))
- # By definition (see ghc-pkg source code).
- pkgroot = os.path.realpath(os.path.join(execroot, os.path.dirname(sys.argv.pop(1))))
-+pkgroot_posix = os.path.realpath(os.path.join(execroot_posix, os.path.dirname(sys.argv.pop(1))))
- libdir = os.path.join(pkgroot, "{}_iface".format(name))
- dynlibdir = os.path.join(pkgroot, "lib")
- bindir = os.path.join(pkgroot, "bin")
+@@ -62,9 +101,9 @@ bindir = os.path.join(pkgroot, "bin")
  datadir = os.path.join(pkgroot, "{}_data".format(name))
  package_database = os.path.join(pkgroot, "{}.conf.d".format(name))
  
@@ -137,11 +121,9 @@ index 80feb4c2..9fc17717 100755
  
  extra_args = []
  current_arg = sys.argv.pop(1)
-@@ -74,10 +122,11 @@ while current_arg != "--":
- del current_arg
+@@ -75,9 +114,9 @@ del current_arg
  
  path_args = sys.argv[1:]
-+print("path_args", path_args, file=sys.stderr)
  
 -ar = os.path.realpath("%{ar}")
 -cc = os.path.realpath("%{cc}")
@@ -152,130 +134,44 @@ index 80feb4c2..9fc17717 100755
  
  def recache_db():
      run([ghc_pkg, "recache", "--package-db=" + package_database])
-@@ -100,10 +149,8 @@ with tmpdir() as distdir:
-     # Note, we cannot currently use it on Windows because the solution to the
-     # following issue is not released, yet.
-     #   https://github.com/bazelbuild/bazel/issues/9390
+@@ -96,12 +135,31 @@ def tmpdir():
+         shutil.rmtree(distdir)
+ 
+ with tmpdir() as distdir:
++    if "${is_windows}" == "True":
++        # Note, we cannot currently use cc_wrapper.exe on Windows because the
++        # solution to the following issue is not released, yet.
++        #   https://github.com/bazelbuild/bazel/issues/9390
++        # We can work around it by creating another thin wrapper.
++        cc_unwrapped = find_exe("${cc_unwrapped}")
++        cc_new = os.path.join([distdir, "cc_wrapper"])
++        src = open(os.path.join([distdir, "cc_wrapper.c"]), "w")
++        src.write("""\
++            #include <unistd.h>
++            #include <stdio.h>
++            int main(int argc, char **argv) {
++                const char *cc = "{cc}";
++                argv[0] = cc;
++                execv(cc, argv);
++                perror("Failed to execute cc_wrapper");
++                return 1;
++            }
++        """.format(cc = cc))
++        run([cc_unwrapped, "-o", cc_new, src])
++        cc = cc_new
++
+     # Use the cc-wrapper for Cabal builds.
+-    # Note, we cannot currently use it on Windows because the solution to the
+-    # following issue is not released, yet.
+-    #   https://github.com/bazelbuild/bazel/issues/9390
 -    with_gcc_flags = ["--with-gcc=" + cc] \
 -            if "%{is_windows}" != "True" else []
--    enable_relocatable_flags = ["--enable-relocatable"] \
--            if "%{is_windows}" != "True" else []
-+    with_gcc_flags = ["--with-gcc=" + cc] if "%{is_windows}" != "True" else []
-+    enable_relocatable_flags = ["--enable-relocatable"] if "%{is_windows}" != "True" else []
++    with_gcc_flags = ["--with-gcc=" + cc]
++
+     enable_relocatable_flags = ["--enable-relocatable"] \
+             if "%{is_windows}" != "True" else []
  
-     # Cabal really wants the current working directory to be directory
-     # where the .cabal file is located. So we have no choice but to chance
-@@ -112,40 +159,85 @@ with tmpdir() as distdir:
-     old_cwd = os.getcwd()
-     os.chdir(srcdir)
-     os.putenv("HOME", "/var/empty")
--    run([runghc, setup, "configure", \
--        component, \
--        "--verbose=0", \
--        "--user", \
-+    print("extra_args", repr(extra_args), file=sys.stderr)
-+    print("list execroot_posix", repr([ arg.replace("=", "=" + execroot_posix + "/") for arg in path_args if arg ]), file=sys.stderr)
-+    print("list package_database", repr([ "--package-db=" + package_database ]), file=sys.stderr)
-+    print("distdir", repr(distdir), file=sys.stderr)
-+    print("runghc", repr(runghc), file=sys.stderr)
-+    print("setup", repr(setup), file=sys.stderr)
-+    print("component", repr(component), file=sys.stderr)
-+    print("ghc", repr(ghc), file=sys.stderr)
-+    print("ghc_pkg", repr(ghc_pkg), file=sys.stderr)
-+    print("ar", repr(ar), file=sys.stderr)
-+    print("with_gcc_flags", repr(with_gcc_flags), file=sys.stderr)
-+    print("strip", repr(strip), file=sys.stderr)
-+    print("enable_relocatable_flags", repr(enable_relocatable_flags), file=sys.stderr)
-+    print("run", repr([runghc, setup, "configure",
-+        component,
-+        "--verbose=0",
-+        "--user",
-+        "--with-compiler=" + ghc,
-+        "--with-hc-pkg=" + ghc_pkg,
-+        "--with-ar=" + ar,
-+        ] +
-+        with_gcc_flags +
-+        [
-+        "--with-strip=" + strip,
-+        "--enable-deterministic",
-+        ] +
-+        enable_relocatable_flags #+
-+        #[
-+        #"--builddir=" + distdir,
-+        #"--prefix=" + pkgroot,
-+        #"--libdir=" + libdir,
-+        #"--dynlibdir=" + dynlibdir,
-+        #"--libsubdir=",
-+        #"--bindir=" + bindir,
-+        #"--datadir=" + datadir,
-+        ## Note, setting --datasubdir is required to work around
-+        ##   https://github.com/haskell/cabal/issues/6235
-+        #"--datasubdir=",
-+        #"--package-db=clear",
-+        #"--package-db=global",
-+        #] +
-+        #extra_args +
-+        #[ arg.replace("=", "=" + execroot_posix + "/") for arg in path_args if arg ] +
-+        #[ "--package-db=" + package_database ], # This arg must come last.
-+        ), file=sys.stderr)
-+    run([runghc, setup, "configure",
-+        component,
-+        "--verbose=0",
-+        "--user",
-         "--with-compiler=" + ghc,
-         "--with-hc-pkg=" + ghc_pkg,
-         "--with-ar=" + ar,
-         ] +
--        with_gcc_flags + \
--        [ \
-+        with_gcc_flags +
-+        [
-         "--with-strip=" + strip,
--        "--enable-deterministic", \
-+        "--enable-deterministic",
-         ] +
--        enable_relocatable_flags + \
--        [ \
--        "--builddir=" + distdir, \
--        "--prefix=" + pkgroot, \
--        "--libdir=" + libdir, \
--        "--dynlibdir=" + dynlibdir, \
--        "--libsubdir=", \
--        "--bindir=" + bindir, \
--        "--datadir=" + datadir, \
-+        enable_relocatable_flags +
-+        [
-+        "--builddir=" + posix_path(distdir),
-+        "--prefix=" + pkgroot,
-+        "--libdir=" + libdir,
-+        "--dynlibdir=" + dynlibdir,
-+        "--libsubdir=",
-+        "--bindir=" + bindir,
-+        "--datadir=" + datadir,
-         # Note, setting --datasubdir is required to work around
-         #   https://github.com/haskell/cabal/issues/6235
--        "--datasubdir=", \
--        "--package-db=clear", \
--        "--package-db=global", \
--        ] + \
--        extra_args + \
--        [ arg.replace("=", "=" + execroot + "/") for arg in path_args ] + \
-+        "--datasubdir=",
-+        "--package-db=clear",
-+        "--package-db=global",
-+        ] +
-+        extra_args +
-+        [ arg.replace("=", "=" + execroot + "/") for arg in path_args if arg ] +
-         [ "--package-db=" + package_database ], # This arg must come last.
-         )
--    run([runghc, setup, "build", "--verbose=0", "--builddir=" + distdir])
--    run([runghc, setup, "install", "--verbose=0", "--builddir=" + distdir])
-+    run([runghc, setup, "build", "--verbose=0", "--builddir=" + posix_path(distdir)])
-+    run([runghc, setup, "install", "--verbose=0", "--builddir=" + posix_path(distdir)])
-     os.chdir(old_cwd)
- 
- # XXX Cabal has a bizarre layout that we can't control directly. It
-@@ -169,7 +261,7 @@ def make_relocatable_paths(line):
+@@ -169,7 +227,7 @@ def make_relocatable_paths(line):
  
      # The $execroot is an absolute path and should not leak into the output.
      # Replace each ocurrence of execroot by a path relative to ${pkgroot}.
