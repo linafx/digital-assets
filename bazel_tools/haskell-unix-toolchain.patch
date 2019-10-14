@@ -29,7 +29,7 @@ index 4e32f2ad..025c503a 100644
      )
      return [DefaultInfo(
 diff --git a/haskell/private/cabal_wrapper.py.tpl b/haskell/private/cabal_wrapper.py.tpl
-index 80feb4c2..07dba015 100755
+index 80feb4c2..c0746375 100755
 --- a/haskell/private/cabal_wrapper.py.tpl
 +++ b/haskell/private/cabal_wrapper.py.tpl
 @@ -16,6 +16,7 @@
@@ -40,15 +40,18 @@ index 80feb4c2..07dba015 100755
  from contextlib import contextmanager
  from glob import glob
  import os
-@@ -28,16 +29,54 @@ import tempfile
+@@ -26,7 +27,9 @@ import subprocess
+ import sys
+ import tempfile
  
- debug = False
- 
-+path_list_sep = ":" if "%{is_windows}" != "True" else ";"
+-debug = False
++debug = True
 +
++path_list_sep = ":" if "%{is_windows}" != "True" else ";"
+ 
  def run(cmd, *args, **kwargs):
      if debug:
-         print("+ " + " ".join(["'{}'".format(arg) for arg in cmd]), file=sys.stderr)
+@@ -34,10 +37,46 @@ def run(cmd, *args, **kwargs):
          sys.stderr.flush()
      subprocess.call(cmd, *args, **kwargs)
  
