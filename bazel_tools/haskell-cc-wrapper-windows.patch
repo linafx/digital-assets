@@ -1,15 +1,26 @@
 diff --git a/haskell/private/cc_wrapper_windows.sh.tpl b/haskell/private/cc_wrapper_windows.sh.tpl
-index d4bc6756..f0e945cf 100644
+index d4bc6756..1e45a6e9 100644
 --- a/haskell/private/cc_wrapper_windows.sh.tpl
 +++ b/haskell/private/cc_wrapper_windows.sh.tpl
-@@ -101,8 +101,10 @@ unquote_arg() {
-     output="$input"
- }
+@@ -25,6 +25,13 @@
+ # shellcheck disable=SC1090
  
+ set -euo pipefail
 +DEBUG="/c/users/admin/daml/cc_wrapper.log"
++debug() {
++  echo "$@" >> "$DEBUG"
++}
++debug "======================================================================"
++debug "CC_WRAPPER" "$@"
++debug "----------------------------------------------------------------------"
+ 
+ # ----------------------------------------------------------
+ # Find compiler
+@@ -103,6 +110,7 @@ unquote_arg() {
+ 
  add_arg() {
      quote_arg "$1" >> "$RESPONSE_FILE"
-+    echo "ARG: $1" >> "$DEBUG"
++    debug "ARG: $1"
  }
  
  # ----------------------------------------------------------
