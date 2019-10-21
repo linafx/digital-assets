@@ -25,15 +25,16 @@ index d1e0133e..9161ca57 100644
      if with_profiling:
          args.add("--enable-profiling")
 diff --git a/haskell/private/cc_wrapper_windows.sh.tpl b/haskell/private/cc_wrapper_windows.sh.tpl
-index d4bc6756..a0d4b49b 100644
+index d4bc6756..0d5279f2 100644
 --- a/haskell/private/cc_wrapper_windows.sh.tpl
 +++ b/haskell/private/cc_wrapper_windows.sh.tpl
-@@ -25,6 +25,15 @@
+@@ -25,6 +25,16 @@
  # shellcheck disable=SC1090
  
  set -euo pipefail
 +DEBUG="/c/users/admin/daml/cc_wrapper.log"
 +debug() {
++  return
 +  echo "$@" >> "$DEBUG"
 +}
 +debug "======================================================================"
@@ -44,7 +45,7 @@ index d4bc6756..a0d4b49b 100644
  
  # ----------------------------------------------------------
  # Find compiler
-@@ -103,6 +112,7 @@ unquote_arg() {
+@@ -103,6 +113,7 @@ unquote_arg() {
  
  add_arg() {
      quote_arg "$1" >> "$RESPONSE_FILE"
