@@ -20,7 +20,7 @@ def _dev_env_package_impl(ctx):
             fail("Failed to obtain dadew location.\n Exit code %d.\n%s\n%s" %
                  (ps_result.return_code, ps_result.stdout, ps_result.stderr))
 
-        dadew = ps_result.stdout.splitlines(keepends = False)[0]
+        dadew = ps_result.stdout.splitlines()[0]
         tool_home = "%s\\scoop\\apps\\%s\\current" % (dadew, ctx.attr.win_tool)
     else:
         tool_home = "../%s" % ctx.attr.nix_label.name
