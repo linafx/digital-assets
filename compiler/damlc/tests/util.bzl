@@ -2,11 +2,13 @@
 # SPDX-License-Identifier: Apache-2.0
 
 load("//bazel_tools:haskell.bzl", "da_haskell_test")
+load("//bazel_tools:script_runner.bzl", "bash_runfiles_init", "script_runner")
 
 def _damlc_compile_test_impl(ctx):
     stack_opt = "-K" + ctx.attr.stack_limit if ctx.attr.stack_limit else ""
     heap_opt = "-M" + ctx.attr.heap_limit if ctx.attr.heap_limit else ""
     script = """
+      {runfiles_init}
       set -eou pipefail
 
       DAMLC=$(rlocation $TEST_WORKSPACE/{damlc})
@@ -24,22 +26,21 @@ def _damlc_compile_test_impl(ctx):
         main = ctx.files.main[0].short_path,
         stack_opt = stack_opt,
         heap_opt = heap_opt,
-    )
-    ctx.actions.write(
-        output = ctx.outputs.executable,
-        content = script,
+        runfiles_init = bash_runfiles_init,
     )
 
-    # To ensure the files needed by the script are available, we put them in
-    # the runfiles.
-    runfiles = ctx.runfiles(
-        files =
-            ctx.files.srcs + ctx.files.main +
-            [ctx.executable.damlc],
+    script_file = ctx.actions.declare_file("%s.sh" % ctx.label.name)
+    ctx.actions.write(output = script_file, content = script)
+    executable, runfiles = script_runner(
+        ctx,
+        ctx.label.name,
+        script_file,
+        is_test = True,
+        data = ctx.files._sh_runfiles + ctx.files.main + ctx.files.srcs,
     )
-    return [DefaultInfo(
-        runfiles = runfiles,
-    )]
+    damlc_runfiles = ctx.attr.damlc[DefaultInfo].data_runfiles
+    runfiles = runfiles.merge(damlc_runfiles)
+    return [DefaultInfo(executable = executable, runfiles = runfiles)]
 
 damlc_compile_test = rule(
     implementation = _damlc_compile_test_impl,
@@ -54,8 +55,19 @@ damlc_compile_test = rule(
         ),
         "stack_limit": attr.string(),
         "heap_limit": attr.string(),
+        "_cc_runfiles": attr.label(
+            default = Label("@bazel_tools//tools/cpp/runfiles"),
+        ),
+        "_cc_toolchain": attr.label(
+            default = Label("@bazel_tools//tools/cpp:current_cc_toolchain"),
+        ),
+        "_sh_runfiles": attr.label(
+            default = Label("@bazel_tools//tools/bash/runfiles"),
+        ),
     },
+    fragments = ["cpp"],
     test = True,
+    toolchains = ["@bazel_tools//tools/sh:toolchain_type"],
 )
 
 def damlc_integration_test(name, main_function):
