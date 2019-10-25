@@ -1,6 +1,8 @@
 # Copyright (c) 2019 The DAML Authors. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+load("//bazel_tools:script_runner.bzl", "bash_runfiles_init", "script_runner")
+
 def _expand_args(ctx, args):
     return " ".join([ctx.expand_location(a, ctx.attr.data).replace("'", "'\\''") for a in args])
 
@@ -11,6 +13,7 @@ def _client_server_test_impl(ctx):
     ctx.actions.write(
         output = wrapper,
         content = """#!/usr/bin/env bash
+{runfiles_init}
 set -eou pipefail
 
 runner=$(rlocation "$TEST_WORKSPACE/{runner}")
@@ -38,18 +41,23 @@ $runner "$client" "$client_args" "$server" "$server_args"
             server = ctx.executable.server.short_path,
             server_args = _expand_args(ctx, ctx.attr.server_args),
             server_files = _expand_args(ctx, ctx.attr.server_files),
+            runfiles_init = bash_runfiles_init,
         ),
-        is_executable = True,
     )
 
-    runfiles = ctx.runfiles(files = [wrapper], collect_data = True)
+    executable, runfiles = script_runner(
+        ctx,
+        ctx.label.name,
+        wrapper,
+        is_test = True,
+        data = ctx.files._sh_runfiles,
+    )
     runfiles = runfiles.merge(ctx.attr._runner[DefaultInfo].default_runfiles)
     runfiles = runfiles.merge(ctx.attr.client[DefaultInfo].default_runfiles)
     runfiles = runfiles.merge(ctx.attr.server[DefaultInfo].default_runfiles)
 
     return DefaultInfo(
-        executable = wrapper,
-        files = depset([wrapper]),
+        executable = executable,
         runfiles = runfiles,
     )
 
@@ -77,7 +85,18 @@ client_server_test = rule(
         "server_args": attr.string_list(),
         "server_files": attr.string_list(),
         "data": attr.label_list(allow_files = True),
+        "_cc_runfiles": attr.label(
+            default = Label("@bazel_tools//tools/cpp/runfiles"),
+        ),
+        "_cc_toolchain": attr.label(
+            default = Label("@bazel_tools//tools/cpp:current_cc_toolchain"),
+        ),
+        "_sh_runfiles": attr.label(
+            default = Label("@bazel_tools//tools/bash/runfiles"),
+        ),
     },
+    fragments = ["cpp"],
+    toolchains = ["@bazel_tools//tools/sh:toolchain_type"],
 )
 """Create a client-server test.
 
