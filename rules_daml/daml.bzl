@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 load("@bazel_skylib//lib:paths.bzl", "paths")
+load("//bazel_tools:script_runner.bzl", "bash_runfiles_init", "script_runner")
 
 daml_provider = provider(doc = "DAML provider", fields = {
     "dalf": "The DAML-LF file.",
@@ -146,6 +147,7 @@ daml_test = rule(
 
 def _daml_doctest_impl(ctx):
     script = """
+      {runfiles_init}
       set -eou pipefail
       DAMLC=$(rlocation $TEST_WORKSPACE/{damlc})
       CPP=$(rlocation $TEST_WORKSPACE/{cpp})
@@ -164,18 +166,24 @@ def _daml_doctest_impl(ctx):
             for f in ctx.files.srcs
             if all([not f.short_path.endswith(ignore) for ignore in ctx.attr.ignored_srcs])
         ]),
+        runfiles_init = bash_runfiles_init,
     )
+    script_file = ctx.actions.declare_file("%s.sh" % ctx.label.name)
     ctx.actions.write(
-        output = ctx.outputs.executable,
+        output = script_file,
         content = script,
+    )
+    executable, runfiles = script_runner(
+        ctx,
+        ctx.label.name,
+        script_file,
+        is_test = True,
+        data = ctx.files._sh_runfiles + ctx.files.srcs + [ctx.file.version],
     )
     damlc_runfiles = ctx.attr.damlc[DefaultInfo].data_runfiles
     cpp_runfiles = ctx.attr.cpp[DefaultInfo].data_runfiles
-    runfiles = ctx.runfiles(
-        collect_data = True,
-        files = ctx.files.srcs + [ctx.file.version],
-    ).merge(damlc_runfiles).merge(cpp_runfiles)
-    return [DefaultInfo(runfiles = runfiles)]
+    runfiles = runfiles.merge(damlc_runfiles).merge(cpp_runfiles)
+    return [DefaultInfo(executable = executable, runfiles = runfiles)]
 
 daml_doc_test = rule(
     implementation = _daml_doctest_impl,
@@ -210,8 +218,19 @@ daml_doc_test = rule(
             allow_single_file = True,
             default = "//:VERSION",
         ),
+        "_cc_runfiles": attr.label(
+            default = Label("@bazel_tools//tools/cpp/runfiles"),
+        ),
+        "_cc_toolchain": attr.label(
+            default = Label("@bazel_tools//tools/cpp:current_cc_toolchain"),
+        ),
+        "_sh_runfiles": attr.label(
+            default = Label("@bazel_tools//tools/bash/runfiles"),
+        ),
     },
+    fragments = ["cpp"],
     test = True,
+    toolchains = ["@bazel_tools//tools/sh:toolchain_type"],
 )
 
 _daml_binary_script_template = """
