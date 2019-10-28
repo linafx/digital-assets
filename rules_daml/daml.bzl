@@ -250,7 +250,8 @@ daml_doc_test = rule(
 
 _daml_binary_script_template = """
 #!/usr/bin/env sh
-{java} -jar {sandbox} $@ {dar}
+{runfiles_init}
+$(rlocation {workspace}/{java}) -jar $(rlocation {workspace}/{sandbox}) $@ $(rlocation {workspace}/{dar})
 """
 
 def _daml_binary_impl(ctx):
@@ -258,18 +259,20 @@ def _daml_binary_impl(ctx):
         java = ctx.executable._java.short_path,
         sandbox = ctx.file._sandbox.short_path,
         dar = ctx.file.dar.short_path,
+        workspace = ctx.workspace_name,
+        runfiles_init = bash_runfiles_init,
+    )
+    script_file = ctx.actions.declare_file("%s.sh" % ctx.label.name)
+    ctx.actions.write(output = script_file, content = script)
+    executable, runfiles = script_runner(
+        ctx,
+        ctx.label.name,
+        script_file,
+        is_test = False,
+        data = [ctx.file._java, ctx.file._sandbox, ctx.file.dar],
     )
 
-    ctx.actions.write(
-        output = ctx.outputs.executable,
-        content = script,
-    )
-
-    runfiles = ctx.runfiles(
-        files = [ctx.file.dar, ctx.file._sandbox, ctx.executable._java],
-    )
-
-    return [DefaultInfo(runfiles = runfiles)]
+    return [DefaultInfo(executable = executable, runfiles = runfiles)]
 
 daml_binary = rule(
     implementation = _daml_binary_impl,
@@ -290,8 +293,19 @@ daml_binary = rule(
             allow_files = True,
             default = Label("@bazel_tools//tools/jdk:java"),
         ),
+        "_cc_runfiles": attr.label(
+            default = Label("@bazel_tools//tools/cpp/runfiles"),
+        ),
+        "_cc_toolchain": attr.label(
+            default = Label("@bazel_tools//tools/cpp:current_cc_toolchain"),
+        ),
+        "_sh_runfiles": attr.label(
+            default = Label("@bazel_tools//tools/bash/runfiles"),
+        ),
     },
     executable = True,
+    fragments = ["cpp"],
+    toolchains = ["@bazel_tools//tools/sh:toolchain_type"],
 )
 """
 Executable target that runs the DAML sandbox on the given DAR package.
