@@ -34,7 +34,10 @@ import qualified DA.Daml.LF.ScenarioServiceClient as SS
 
 import Language.Haskell.HLint4
 
+import HscTypes (ModIface)
+
 type instance RuleResult GenerateDalf = LF.Module
+type instance RuleResult GenerateSerializedDalf = ()
 type instance RuleResult GenerateRawDalf = LF.Module
 
 -- | A newtype wrapper for LF.Package that does not force the modules
@@ -89,11 +92,38 @@ type instance RuleResult GetScenarioRoot = NormalizedFilePath
 -- envOfInterestVar and envOpenVirtualResources.
 type instance RuleResult GetOpenVirtualResources = Set VirtualResource
 
+type instance RuleResult ReadSerializedDalf = LF.Module
+type instance RuleResult ReadInterface = ModIface
+
+instance Show ModIface where
+    show _ = "<ModIface>"
+
+instance NFData ModIface where
+    rnf = rwhnf
+
 data GenerateDalf = GenerateDalf
     deriving (Eq, Show, Typeable, Generic)
 instance Binary   GenerateDalf
 instance Hashable GenerateDalf
 instance NFData   GenerateDalf
+
+data GenerateSerializedDalf = GenerateSerializedDalf
+    deriving (Eq, Show, Typeable, Generic)
+instance Binary GenerateSerializedDalf
+instance Hashable GenerateSerializedDalf
+instance NFData GenerateSerializedDalf
+
+data ReadSerializedDalf = ReadSerializedDalf
+    deriving (Eq, Show, Typeable, Generic)
+instance Binary   ReadSerializedDalf
+instance Hashable ReadSerializedDalf
+instance NFData   ReadSerializedDalf
+
+data ReadInterface = ReadInterface
+    deriving (Eq, Show, Typeable, Generic)
+instance Binary   ReadInterface
+instance Hashable ReadInterface
+instance NFData   ReadInterface
 
 data GenerateRawDalf = GenerateRawDalf
     deriving (Eq, Show, Typeable, Generic)
@@ -147,16 +177,19 @@ data GetScenarioRoots = GetScenarioRoots
     deriving (Eq, Show, Typeable, Generic)
 instance Hashable GetScenarioRoots
 instance NFData   GetScenarioRoots
+instance Binary   GetScenarioRoots
 
 data GetScenarioRoot = GetScenarioRoot
     deriving (Eq, Show, Typeable, Generic)
 instance Hashable GetScenarioRoot
 instance NFData   GetScenarioRoot
+instance Binary   GetScenarioRoot
 
 data GetOpenVirtualResources = GetOpenVirtualResources
     deriving (Eq, Show, Typeable, Generic)
 instance Hashable GetOpenVirtualResources
 instance NFData   GetOpenVirtualResources
+instance Binary   GetOpenVirtualResources
 
 data GetDlintSettings = GetDlintSettings
     deriving (Eq, Show, Typeable, Generic)
@@ -165,6 +198,7 @@ instance NFData   GetDlintSettings
 instance NFData Hint where rnf = rwhnf
 instance NFData Classify where rnf = rwhnf
 instance Show Hint where show = const "<hint>"
+instance Binary GetDlintSettings
 
 type instance RuleResult GetDlintSettings = ([Classify], Hint)
 
@@ -172,6 +206,7 @@ data GetDlintDiagnostics = GetDlintDiagnostics
     deriving (Eq, Show, Typeable, Generic)
 instance Hashable GetDlintDiagnostics
 instance NFData   GetDlintDiagnostics
+instance Binary   GetDlintDiagnostics
 
 type instance RuleResult GetDlintDiagnostics = ()
 
@@ -179,6 +214,7 @@ data GenerateDocTestModule = GenerateDocTestModule
     deriving (Eq, Show, Typeable, Generic)
 instance Hashable GenerateDocTestModule
 instance NFData   GenerateDocTestModule
+instance Binary   GenerateDocTestModule
 
 -- | File path of the generated module
 type instance RuleResult GenerateDocTestModule = GeneratedModule
@@ -190,3 +226,4 @@ data OfInterest = OfInterest
     deriving (Eq, Show, Typeable, Generic)
 instance Hashable OfInterest
 instance NFData   OfInterest
+instance Binary   OfInterest

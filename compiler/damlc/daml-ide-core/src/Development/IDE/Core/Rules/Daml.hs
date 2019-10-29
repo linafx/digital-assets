@@ -5,32 +5,58 @@ module Development.IDE.Core.Rules.Daml
     , module Development.IDE.Core.Rules.Daml
     ) where
 
+import TcIface (typecheckIface)
+import LoadIface (readIface)
+import TidyPgm
+import DynFlags
+import qualified GHC
+import qualified Module as GHC
+import GhcMonad
+import Data.IORef
+import qualified Proto3.Suite             as Proto
+import DA.Daml.LF.Proto3.DecodeV1
+import DA.Daml.LF.Proto3.EncodeV1
+import HscTypes
+import MkIface
+import Fingerprint
+import Maybes (MaybeErr(..))
+import TcRnMonad (initIfaceLoad)
+
+import System.IO
+
 import Control.Concurrent.Extra
 import Control.Exception
 import Control.Monad.Except
 import Control.Monad.Extra
 import Control.Monad.Trans.Maybe
+import Development.IDE.Core.Compile
+import Development.IDE.GHC.Error
+import Development.IDE.GHC.Warnings
 import Development.IDE.Core.OfInterest
+import Development.IDE.GHC.Util
 import Development.IDE.Types.Logger hiding (Priority)
 import DA.Daml.Options.Types
 import qualified Text.PrettyPrint.Annotated.HughesPJClass as HughesPJPretty
 import Development.IDE.Types.Location as Base
 import Data.Aeson hiding (Options)
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Lazy as BSL
 import qualified Data.ByteString.UTF8 as BS
 import Data.Either.Extra
 import Data.Foldable
-import Data.List
+import Data.List.Extra
 import qualified Data.IntMap.Strict as IntMap
 import qualified Data.Map.Strict as Map
 import Data.Maybe
 import qualified Data.NameMap as NM
 import Data.Set (Set)
 import qualified Data.Set as Set
+import qualified Data.Text.Encoding as T
 import qualified Data.Text.Extended as T
+import qualified Data.Text.Lazy as TL
 import Data.Tuple.Extra
 import Development.Shake hiding (Diagnostic, Env)
-import "ghc-lib" GHC
+import "ghc-lib" GHC hiding (typecheckModule, Succeeded)
 import "ghc-lib-parser" Module (stringToUnitId, UnitId(..), DefUnitId(..))
 import Safe
 import System.IO.Error
@@ -132,9 +158,6 @@ getRawDalf absFile = fmap getWhnfPackage <$> use GenerateRawPackage absFile
 getDalf :: NormalizedFilePath -> Action (Maybe LF.Package)
 getDalf file = fmap getWhnfPackage <$> use GeneratePackage file
 
-getDalfModule :: NormalizedFilePath -> Action (Maybe LF.Module)
-getDalfModule file = use GenerateDalf file
-
 -- | A dependency on a compiled library.
 data DalfDependency = DalfDependency
   { ddName         :: !T.Text
@@ -171,12 +194,12 @@ priorityGenerateDalf = priorityGenerateCore
 -- or type checking it.
 generateRawDalfRule :: Rules ()
 generateRawDalfRule =
-    define $ \GenerateRawDalf file -> do
+    defineEarlyCutoff $ \GenerateRawDalf file -> do
         lfVersion <- getDamlLfVersion
         (coreDiags, mbCore) <- generateCore file
-        fmap (first (coreDiags ++)) $
+        fmap (\(fingerprint, (diags, res)) -> (fingerprint, (coreDiags ++ diags, res))) $
             case mbCore of
-                Nothing -> return ([], Nothing)
+                Nothing -> return (Nothing, ([], Nothing))
                 Just core -> do
                     setPriority priorityGenerateDalf
                     -- Generate the map from package names to package hashes
@@ -184,8 +207,12 @@ generateRawDalfRule =
                     let pkgMap0 = Map.map (LF.unPackageId . dalfPackageId) pkgMap
                     -- GHC Core to DAML LF
                     case convertModule lfVersion pkgMap0 file core of
-                        Left e -> return ([e], Nothing)
-                        Right v -> return ([], Just $ LF.simplifyModule v)
+                        Left e -> return (Nothing, ([e], Nothing))
+                        Right v -> do
+                            let mod = LF.simplifyModule v
+                            tmr <- use_ TypeCheck file
+                            let hash = fingerprintToBS . mi_mod_hash . hm_iface . tmrModInfo $ tmr
+                            return (Just hash, ([], Just mod))
 
 -- Generates and type checks the DALF for a module.
 generateDalfRule :: Rules ()
@@ -204,6 +231,143 @@ generateDalfRule =
                 Serializability.inferModule world lfVersion rawDalf
             mapLeft liftError $ LF.checkModule world lfVersion dalf
             pure dalf
+
+ondiskTypeCheck :: HscEnv -> [(ParsedModule, ModIface)] -> ParsedModule -> IO ([FileDiagnostic], Maybe TcModuleResult)
+ondiskTypeCheck hsc pmDeps pm = do
+    fmap (either (, Nothing) (second Just)) $
+      runGhcEnv hsc $
+      catchSrcErrors "typecheck" $ do
+        let mss = map (pm_mod_summary . fst) pmDeps
+        let ifaces = map snd pmDeps
+        session <- getSession
+        setSession session { hsc_mod_graph = mkModuleGraph mss }
+        let ims  = map (GHC.InstalledModule (thisInstalledUnitId $ hsc_dflags session) . moduleName . ms_mod) mss
+            hiPath ms = ".daml/build/interfaces" </> moduleNameString (moduleName $ ms_mod ms) <.> "hi"
+            ifrs = zipWith (\ms -> InstalledFound ((ms_location ms) { ml_hi_file = hiPath ms})) mss ims
+        -- We have to create a new IORef here instead of modifying the existing IORef as
+        -- it is shared between concurrent compilations.
+        prevFinderCache <- liftIO $ readIORef $ hsc_FC session
+        let newFinderCache =
+                foldl'
+                    (\fc (im, ifr) -> GHC.extendInstalledModuleEnv fc im ifr) prevFinderCache
+                    $ zip ims ifrs
+        newFinderCacheVar <- liftIO $ newIORef $! newFinderCache
+        modifySession $ \s -> s { hsc_FC = newFinderCacheVar }
+        mapM_ (uncurry loadDepModule) (reverse $ zip mss ifaces)
+        (warnings, tcm) <- withWarnings "typecheck" $ \tweak ->
+            GHC.typecheckModule pm { pm_mod_summary = tweak (pm_mod_summary pm) }
+        tcm <- mkTcModuleResult tcm
+        pure (map snd warnings, tcm)
+
+loadDepModule :: GhcMonad m => ModSummary -> ModIface -> m ()
+loadDepModule ms iface = do
+    hsc <- getSession
+    details <- liftIO $ fixIO $ \details -> do
+        let hsc' = hsc { hsc_HPT = addToHpt (hsc_HPT hsc) (moduleName mod) (HomeModInfo iface details Nothing) }
+        initIfaceLoad hsc' (typecheckIface iface)
+    let mod_info = HomeModInfo iface details Nothing
+    modifySession $ \e ->
+        e { hsc_HPT = addToHpt (hsc_HPT e) (moduleName mod) mod_info }
+    where mod = ms_mod ms
+
+ondiskDesugar :: HscEnv -> TypecheckedModule -> IO ([FileDiagnostic], Maybe CoreModule)
+ondiskDesugar hsc tm =
+    fmap (either (, Nothing) (second Just)) $
+    runGhcEnv hsc $
+        catchSrcErrors "compile" $ do
+            session <- getSession
+            (warnings, desugar) <- withWarnings "compile" $ \tweak -> do
+                let pm = tm_parsed_module tm
+                let pm' = pm{pm_mod_summary = tweak $ pm_mod_summary pm}
+                let tm' = tm{tm_parsed_module  = pm'}
+                GHC.dm_core_module <$> GHC.desugarModule tm'
+            -- give variables unique OccNames
+            (tidy, details) <- liftIO $ tidyProgram session desugar
+
+            let core = CoreModule
+                         (cg_module tidy)
+                         (md_types details)
+                         (cg_binds tidy)
+                         (mg_safe_haskell desugar)
+
+            return (map snd warnings, core)
+
+generateSerializedDalfRule :: Options -> Rules ()
+generateSerializedDalfRule options =
+    defineOnDisk $ \GenerateSerializedDalf file dalfFile -> do
+        lfVersion <- getDamlLfVersion
+        -- build dependencies
+        files <- discardInternalModules . transitiveModuleDeps =<< use_ GetDependencies file
+        dalfDeps <- uses_ ReadSerializedDalf files
+        -- type checking
+        pm <- use_ GetParsedModule file
+        ifaces <- uses_ ReadInterface files
+        hsc <- hscEnv <$> use_ GhcSession file
+        pmDeps <- uses_ GetParsedModule files
+        (diags, mbRes) <- liftIO $ ondiskTypeCheck hsc (zip pmDeps ifaces) pm
+        case mbRes of
+            Nothing -> pure (diags, Nothing)
+            Just tm -> fmap (first (diags ++)) $ do
+                let ifDir = ".daml/build/interfaces"
+                let ifaceFp = ifDir </> moduleNameString (moduleName (ms_mod (pm_mod_summary pm))) <.> "hi"
+                liftIO $ writeIfaceFile
+                  (hsc_dflags hsc)
+                  ifaceFp
+                  (hm_iface $ tmrModInfo tm)
+                -- compile to core
+                (diags, mbRes) <- liftIO $ ondiskDesugar hsc (tmrModule tm)
+                case mbRes of
+                    Nothing -> pure (diags, Nothing)
+                    Just core -> fmap (first (diags ++)) $ do
+                        -- lf conversion
+                        pkgMap <- useNoFile_ GeneratePackageMap
+                        let pkgIdMap = Map.map (LF.unPackageId . dalfPackageId) pkgMap
+                        case convertModule lfVersion pkgIdMap file core of
+                            Left e -> pure ([e], Nothing)
+                            Right rawDalf -> do
+                                -- LF postprocessing
+                                rawDalf <- pure $ LF.simplifyModule rawDalf
+                                let pkgs = map dalfPackagePkg $ Map.elems pkgMap
+                                let world = LF.initWorldSelf pkgs (buildPackage (optMbPackageName options) lfVersion dalfDeps)
+                                let liftError e = [ideErrorPretty file e]
+                                let dalfOrErr = do
+                                        dalf <- mapLeft liftError $
+                                            Serializability.inferModule world lfVersion rawDalf
+                                        mapLeft liftError $ LF.checkModule world lfVersion dalf
+                                        pure dalf
+                                case dalfOrErr of
+                                    Left diags -> pure (diags, Nothing)
+                                    Right dalf -> do
+                                        writeDalfFile dalfFile dalf
+                                        pure ([], Just ())
+
+readSerializedDalfRule :: Rules ()
+readSerializedDalfRule =
+    defineEarlyCutoff $ \ReadSerializedDalf file -> do
+      let dalfFile = dalfFileName file
+      needOnDisk GenerateSerializedDalf file dalfFile
+      dalf <- readDalfFromFile dalfFile
+      hash <- liftIO $ getFileHash (fromNormalizedFilePath dalfFile)
+      pure (Just $ fingerprintToBS hash, ([], Just dalf))
+
+readInterfaceRule :: Rules ()
+readInterfaceRule =
+    defineEarlyCutoff $ \ReadInterface file -> do
+      hsc <- hscEnv <$> use_ GhcSession file
+      needOnDisk GenerateSerializedDalf file (dalfFileName file)
+      hiPath <- getHiPath file
+      pm <- use_ GetParsedModule file
+      liftIO $ initIfaceLoad hsc $ do
+        let mod = ms_mod $ pm_mod_summary pm
+        Succeeded iface <- readIface mod hiPath
+        pure (Just $ fingerprintToBS $ mi_mod_hash iface, ([], Just iface))
+
+
+
+getHiPath :: NormalizedFilePath -> Action FilePath
+getHiPath file = do
+    pm <- use_ GetParsedModule file
+    pure $ ".daml/build/interfaces" </> moduleNameString (moduleName $ ms_mod $ pm_mod_summary pm) <.> "hi"
 
 -- | Generate a doctest module based on the doc tests in the given module.
 generateDocTestModuleRule :: Rules ()
@@ -235,7 +399,7 @@ generatePackageMap fps = do
 
 generatePackageMapRule :: Options -> Rules ()
 generatePackageMapRule opts =
-    defineNoFile $ \GeneratePackageMap -> do
+    defineEarlyCutoff $ \GeneratePackageMap _file -> assert (null $ fromNormalizedFilePath _file) $ do
         (errs, res) <-
             liftIO $ generatePackageMap (optPackageDbs opts)
         when (errs /= []) $ do
@@ -244,13 +408,47 @@ generatePackageMapRule opts =
                 "Rule GeneratePackageMap generated errors\n" ++
                 "Options: " ++ show (optPackageDbs opts) ++ "\n" ++
                 "Errors:\n" ++ unlines (map show errs)
-        return res
+        let hash = BS.concat $ map (T.encodeUtf8 . LF.unPackageId . dalfPackageId) $ Map.elems res
+        return (Just hash, ([], Just res))
+
 generatePackageRule :: Rules ()
 generatePackageRule =
     define $ \GeneratePackage file -> do
         WhnfPackage deps <- use_ GeneratePackageDeps file
         dalf <- use_ GenerateDalf file
         return ([], Just $ WhnfPackage $ deps{LF.packageModules = NM.insert dalf (LF.packageModules deps)})
+
+generateSerializedPackage :: String -> [NormalizedFilePath] -> MaybeT Action LF.Package
+generateSerializedPackage pkgName rootFiles = do
+    fileDeps <- usesE GetDependencies rootFiles
+    let allFiles = nubSort $ rootFiles <> concatMap transitiveModuleDeps fileDeps
+    files <- lift $ discardInternalModules allFiles
+    lift $ needOnDisks GenerateSerializedDalf $ map (\f -> (f, dalfFileName f)) files
+    dalfs <- usesE ReadSerializedDalf files
+    lfVersion <- lift $ getDamlLfVersion
+    pure $ buildPackage (Just pkgName) lfVersion dalfs
+
+dalfFileName :: NormalizedFilePath -> NormalizedFilePath
+dalfFileName file =
+    toNormalizedFilePath $ ".daml/build" </> fromNormalizedFilePath file -<.> "dalf"
+
+readDalfFromFile :: NormalizedFilePath -> Action LF.Module
+readDalfFromFile dalfFile = do
+    lfVersion <- getDamlLfVersion
+    liftIO $ do
+            bytes <- BS.readFile $ fromNormalizedFilePath dalfFile
+            protoPkg <- case Proto.fromByteString bytes of
+                Left err -> fail (show err)
+                Right a -> pure a
+            case decodeScenarioModule (TL.pack $ LF.renderMinorVersion $ LF.versionMinor lfVersion) protoPkg of
+                Left err -> fail (show err)
+                Right mod -> pure mod
+
+writeDalfFile :: NormalizedFilePath -> LF.Module -> Action ()
+writeDalfFile dalfFile mod = do
+    lfVersion <- getDamlLfVersion
+    liftIO $ createDirectoryIfMissing True (takeDirectory $ fromNormalizedFilePath dalfFile)
+    liftIO $ BSL.writeFile (fromNormalizedFilePath dalfFile) $ Proto.toLazyByteString $ encodeScenarioModule lfVersion mod
 
 -- Generates a DAML-LF archive without adding serializability information
 -- or type checking it. This must only be used for debugging/testing.
@@ -673,6 +871,9 @@ damlRule :: Options -> Rules ()
 damlRule opts = do
     generateRawDalfRule
     generateDalfRule
+    generateSerializedDalfRule opts
+    readSerializedDalfRule
+    readInterfaceRule
     generateDocTestModuleRule
     generatePackageMapRule opts
     generatePackageRule

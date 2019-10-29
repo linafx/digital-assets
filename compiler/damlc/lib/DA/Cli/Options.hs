@@ -394,6 +394,7 @@ optionsParser numProcessors enableScenarioService parsePkgName = Options
     <*> pure Nothing
     <*> optHideAllPackages
     <*> many optPackage
+    <*> pure "/dev/null"
     <*> shakeProfilingOpt
     <*> optShakeThreads
     <*> lfVersionOpt

@@ -42,6 +42,7 @@ data Options = Options
   , optHideAllPkgs :: Bool
     -- ^ hide all imported packages
   , optPackageImports :: [(String, [(String, String)])]
+  , optShakeFiles :: FilePath
     -- ^ list of explicit package imports and modules with aliases
   , optShakeProfiling :: Maybe FilePath
     -- ^ enable shake profiling
@@ -154,6 +155,7 @@ defaultOptions mbVersion =
         , optIfaceDir = Nothing
         , optHideAllPkgs = False
         , optPackageImports = []
+        , optShakeFiles = "/dev/null"
         , optShakeProfiling = Nothing
         , optThreads = 1
         , optDamlLfVersion = fromMaybe LF.versionDefault mbVersion

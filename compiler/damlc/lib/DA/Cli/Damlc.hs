@@ -698,7 +698,10 @@ execBuild projectOpts options mbOutFile initPkgDb =
                 opts <- mkOptions options
                 loggerH <- getLogger opts "package"
                 withDamlIdeState
-                    opts {optMbPackageName = Just $ pkgNameVersion pName pVersion}
+                    opts
+                      { optMbPackageName = Just $ pkgNameVersion pName pVersion
+                      , optShakeFiles = ".daml/build/shake"
+                      }
                     loggerH
                     diagnosticsLogger $ \compilerH -> do
                     mbDar <-
@@ -748,7 +751,7 @@ execPackage projectOpts filePath opts mbOutFile dalfInput =
     effect = withProjectRoot' projectOpts $ \relativize -> do
       loggerH <- getLogger opts "package"
       filePath <- relativize filePath
-      opts' <- mkOptions opts
+      opts' <- mkOptions opts { optShakeFiles = ".daml/build/shake" }
       withDamlIdeState opts' loggerH diagnosticsLogger $ \ide -> do
           -- We leave the sdk version blank and the list of exposed modules empty.
           -- This command is being removed anytime now and not present

@@ -96,7 +96,7 @@ buildDar ::
     -> NormalizedFilePath
     -> FromDalf
     -> IO (Maybe (Zip.ZipArchive ()))
-buildDar service pkgConf@PackageConfigFields {..} ifDir dalfInput = do
+buildDar service pkgConf@PackageConfigFields {..} _ifDir dalfInput = do
     liftIO $
         IdeLogger.logDebug (ideLogger service) $
         "Creating dar: " <> T.pack pSrc
@@ -108,8 +108,9 @@ buildDar service pkgConf@PackageConfigFields {..} ifDir dalfInput = do
         else runAction service $
              runMaybeT $ do
                  files <- getDamlFiles pSrc
-                 pkgs <- usesE GeneratePackage files
-                 let pkg = mergePkgs pkgs
+                 liftIO $ putStrLn "generate serialized"
+                 pkg <- generateSerializedPackage pName files
+                 liftIO $ putStrLn "generated serialized"
                  let pkgModuleNames = map T.unpack $ LF.packageModuleNames pkg
                  let missingExposed =
                          S.fromList (fromMaybe [] pExposedModules) S.\\
@@ -121,7 +122,7 @@ buildDar service pkgConf@PackageConfigFields {..} ifDir dalfInput = do
                      show (S.toList missingExposed)
                  let (dalf, pkgId) = encodeArchiveAndHash pkg
                  -- create the interface files
-                 ifaces <- MaybeT $ writeIfacesAndHie ifDir files
+                 -- ifaces <- MaybeT $ writeIfacesAndHie ifDir files
                  -- get all dalf dependencies.
                  dalfDependencies0 <- getDalfDependencies files
                  let dalfDependencies =
@@ -139,7 +140,7 @@ buildDar service pkgConf@PackageConfigFields {..} ifDir dalfInput = do
                          srcRoot
                          files
                          dataFiles
-                         ifaces
+                         [] -- ifaces
 
 -- | Write interface files and hie files to the location specified by the given options.
 writeIfacesAndHie ::
@@ -188,9 +189,9 @@ getSrcRoot fileOrDir = do
           pure $ toNormalizedFilePath root
 
 -- | Merge several packages into one.
-mergePkgs :: [WhnfPackage] -> LF.Package
-mergePkgs [] = error "No package build when building dar"
-mergePkgs (WhnfPackage pkg0:pkgs) =
+_mergePkgs :: [WhnfPackage] -> LF.Package
+_mergePkgs [] = error "No package build when building dar"
+_mergePkgs (WhnfPackage pkg0:pkgs) =
     foldl
         (\pkg1 (WhnfPackage pkg2) ->
              LF.Package

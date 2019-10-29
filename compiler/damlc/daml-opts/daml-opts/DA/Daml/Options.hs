@@ -56,6 +56,7 @@ toCompileOpts options@Options{..} reportProgress =
           }
       , optExtensions = ["daml"]
       , optThreads = optThreads
+      , optShakeFiles = optShakeFiles
       , optShakeProfiling = optShakeProfiling
       , optReportProgress = reportProgress
       , optLanguageSyntax = "daml"
