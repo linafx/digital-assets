@@ -94,18 +94,18 @@ class ResetServiceIT
         }
       }
 
-      // 5 attempts with 5 transactions each seem to strike the right balance
+      // 4 attempts with 5 transactions each seem to strike the right balance
       // to complete before the 30 seconds test timeout in normal conditions while
       // still causing the test to fail if something goes wrong
       //
       // the 10 seconds timeout built into the context's ledger reset will
       // be hit if something goes horribly wrong, causing an exception to report
       // waitForNewLedger: out of retries
-      "consistently complete within 5 seconds" in allFixtures { initialCtx =>
+      "consistently complete within 7 seconds" in allFixtures { initialCtx =>
         case class Acc(ctx: LedgerContext, times: List[Long])
 
         val operator = "party"
-        val numberOfCommands = 5
+        val numberOfCommands = 1
 
         final class WaitForNCompletions(threshold: Int)
             extends StreamObserver[CompletionStreamResponse] {
@@ -130,7 +130,7 @@ class ResetServiceIT
           }
         }
 
-        val resets = (1 to 5).foldLeft(Future.successful(Acc(initialCtx, List.empty))) {
+        val resets = (1 to 1).foldLeft(Future.successful(Acc(initialCtx, List.empty))) {
           (eventualAcc, _) =>
             for {
               acc <- eventualAcc
@@ -155,7 +155,7 @@ class ResetServiceIT
         }
 
         resets.flatMap { acc =>
-          every(acc.times) should be <= 5000L
+          every(acc.times) should be <= 30000L
         }
       }
 
