@@ -89,6 +89,7 @@ def install_java_deps():
             "org.checkerframework:checker:2.5.4",
             "org.flywaydb:flyway-core:5.2.4",
             "org.freemarker:freemarker-gae:2.3.28",
+            "org.fusesource.jansi:jansi:1.17",
             "org.gnieh:diffson-spray-json_2.12:3.1.0",
             "org.hamcrest:hamcrest-all:1.3",
             "org.jboss.logging:jboss-logging:3.3.0.Final",
