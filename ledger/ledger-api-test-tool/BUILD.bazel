@@ -97,6 +97,7 @@ da_scala_binary(
         "@maven//:io_netty_netty_tcnative_boringssl_static",
         "@maven//:io_netty_netty_transport",
         "@maven//:org_cvogt_scala_extensions_2_12",
+        "@maven//:org_fusesource_jansi_jansi",
         "@maven//:org_slf4j_slf4j_api",
     ],
 )

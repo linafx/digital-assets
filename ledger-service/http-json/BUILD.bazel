@@ -22,6 +22,7 @@ http_json_deps = [
     "@maven//:com_typesafe_akka_akka_slf4j_2_12",
     "@maven//:com_typesafe_scala_logging_scala_logging_2_12",
     "@maven//:io_spray_spray_json_2_12",
+    "@maven//:org_fusesource_jansi_jansi",
     "@maven//:org_scalaz_scalaz_core_2_12",
     "//daml-lf/interface",
     "//daml-lf/transaction",

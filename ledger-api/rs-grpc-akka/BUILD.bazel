@@ -41,6 +41,7 @@ testDependencies = [
     "@maven//:com_typesafe_akka_akka_stream_testkit_2_12",
     "@maven//:com_google_protobuf_protobuf_java",
     "@maven//:org_awaitility_awaitility",
+    "@maven//:org_fusesource_jansi_jansi",
     "@maven//:com_thesamet_scalapb_lenses_2_12",
     "@maven//:com_thesamet_scalapb_scalapb_runtime_2_12",
     "@maven//:com_thesamet_scalapb_scalapb_runtime_grpc_2_12",

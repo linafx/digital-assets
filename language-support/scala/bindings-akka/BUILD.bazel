@@ -20,6 +20,7 @@ bindings_akka_deps = [
     "@maven//:io_grpc_grpc_netty",
     "@maven//:io_netty_netty_handler",
     "@maven//:io_netty_netty_tcnative_boringssl_static",
+    "@maven//:org_fusesource_jansi_jansi",
     "@maven//:org_scalaz_scalaz_core_2_12",
     "@maven//:org_slf4j_slf4j_api",
     "//language-support/java/bindings:bindings-java",

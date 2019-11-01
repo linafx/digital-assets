@@ -71,6 +71,7 @@ da_scala_test(
         "@maven//:com_typesafe_akka_akka_actor_2_12",
         "@maven//:com_typesafe_akka_akka_stream_2_12",
         "@maven//:io_dropwizard_metrics_metrics_core",
+        "@maven//:org_fusesource_jansi_jansi",
         "@maven//:org_scala_lang_modules_scala_java8_compat_2_12",
         "@maven//:org_scalacheck_scalacheck_2_12",
         "@maven//:org_scalatest_scalatest_2_12",

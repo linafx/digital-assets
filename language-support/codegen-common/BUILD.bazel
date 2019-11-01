@@ -12,6 +12,7 @@ codegen_common_deps = [
     "@maven//:com_github_scopt_scopt_2_12",
     "@maven//:com_typesafe_scala_logging_scala_logging_2_12",
     "@maven//:io_circe_circe_core_2_12",
+    "@maven//:org_fusesource_jansi_jansi",
     "@maven//:org_typelevel_cats_core_2_12",
     "//daml-assistant/scala-daml-project-config",
 ]

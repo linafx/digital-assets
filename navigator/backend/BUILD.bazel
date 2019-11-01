@@ -103,6 +103,7 @@ compileDependencies = [
     "@maven//:io_netty_netty_handler",
     "@maven//:io_grpc_grpc_netty",
     "@maven//:io_spray_spray_json_2_12",
+    "@maven//:org_fusesource_jansi_jansi",
     "@maven//:org_sangria_graphql_sangria_2_12",
     "@maven//:org_sangria_graphql_sangria_marshalling_api_2_12",
     "@maven//:org_sangria_graphql_sangria_spray_json_2_12",
