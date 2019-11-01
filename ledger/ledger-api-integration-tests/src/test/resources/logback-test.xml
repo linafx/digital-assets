@@ -50,7 +50,6 @@
     <!--</appender>-->
 
     <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
-        <withJansi>false</withJansi>
         <encoder>
             <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg %mdc%n</pattern>
         </encoder>
