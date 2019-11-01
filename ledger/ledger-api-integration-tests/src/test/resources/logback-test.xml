@@ -55,6 +55,7 @@
         </encoder>
     </appender>
 
+    <!--
     <logger name="com.digitalasset.platform.api.rest" level="warn" />
     <logger name="org.flywaydb" level="warn"/>
     <logger name="org.hibernate" level="warn"/>
@@ -63,8 +64,9 @@
     <logger name="com.digitalasset.grpc" level="warn"/>
     <logger name="io.grpc.netty" level="warn"/>
     <logger name="io.netty" level="warn"/>
+    -->
 
-    <root level="INFO">
+    <root level="TRACE">
         <appender-ref ref="STDOUT" />
     </root>
 </configuration>
