@@ -3,7 +3,7 @@
     "manifests": "dev-env\\windows\\manifests",
     "tools": [
         "7zip",
-        "java-openjdk-8u201",
+        "java-openjdk-8u232",
         "msys2",
         "curl-7.65.3",
         "cacert",
