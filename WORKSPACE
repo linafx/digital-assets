@@ -550,6 +550,7 @@ hazel_repositories(
         "text": {"integer-simple": use_integer_simple},
         "scientific": {"integer-simple": use_integer_simple},
         "hlint": {"ghc-lib": True},  # Force dependency on ghc-lib-parser (don't use the ghc package).
+        "cborg": {"optimize-gmp": not use_integer_simple},
     },
     extra_libs = dicts.add(
         hazel_default_extra_libs,

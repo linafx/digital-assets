@@ -17,6 +17,7 @@ da_haskell_library(
         "mtl",
         "recursion-schemes",
         "safe",
+        "serialise",
         "scientific",
         "template-haskell",
         "text",

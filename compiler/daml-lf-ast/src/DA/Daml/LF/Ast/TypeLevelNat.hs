@@ -15,6 +15,7 @@ module DA.Daml.LF.Ast.TypeLevelNat
     , typeLevelNat
     ) where
 
+import Codec.Serialise
 import Control.DeepSeq
 import Data.Data
 import Data.Hashable
@@ -27,7 +28,7 @@ import GHC.Generics (Generic)
 -- to prevent the construction of values outside of that bound.
 newtype TypeLevelNat
     = TypeLevelNat { unTypeLevelNat :: Int }
-    deriving newtype (Eq, NFData, Ord, Show, Hashable)
+    deriving newtype (Eq, NFData, Ord, Show, Hashable, Serialise)
     deriving (Data, Generic)
 
 data TypeLevelNatError

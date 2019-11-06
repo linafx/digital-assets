@@ -5,6 +5,7 @@ module Development.IDE.Core.Rules.Daml
     , module Development.IDE.Core.Rules.Daml
     ) where
 
+import Codec.Serialise
 import TcIface (typecheckIface)
 import LoadIface (readIface)
 import TidyPgm
@@ -13,9 +14,6 @@ import qualified GHC
 import qualified Module as GHC
 import GhcMonad
 import Data.IORef
-import qualified Proto3.Suite             as Proto
-import DA.Daml.LF.Proto3.DecodeV1
-import DA.Daml.LF.Proto3.EncodeV1
 import HscTypes
 import MkIface
 import Fingerprint
@@ -40,7 +38,6 @@ import qualified Text.PrettyPrint.Annotated.HughesPJClass as HughesPJPretty
 import Development.IDE.Types.Location as Base
 import Data.Aeson hiding (Options)
 import qualified Data.ByteString as BS
-import qualified Data.ByteString.Lazy as BSL
 import qualified Data.ByteString.UTF8 as BS
 import Data.Either.Extra
 import Data.Foldable
@@ -53,7 +50,6 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Extended as T
-import qualified Data.Text.Lazy as TL
 import Data.Tuple.Extra
 import Development.Shake hiding (Diagnostic, Env)
 import "ghc-lib" GHC hiding (typecheckModule, Succeeded)
@@ -433,22 +429,12 @@ dalfFileName file =
     toNormalizedFilePath $ ".daml/build" </> fromNormalizedFilePath file -<.> "dalf"
 
 readDalfFromFile :: NormalizedFilePath -> Action LF.Module
-readDalfFromFile dalfFile = do
-    lfVersion <- getDamlLfVersion
-    liftIO $ do
-            bytes <- BS.readFile $ fromNormalizedFilePath dalfFile
-            protoPkg <- case Proto.fromByteString bytes of
-                Left err -> fail (show err)
-                Right a -> pure a
-            case decodeScenarioModule (TL.pack $ LF.renderMinorVersion $ LF.versionMinor lfVersion) protoPkg of
-                Left err -> fail (show err)
-                Right mod -> pure mod
+readDalfFromFile dalfFile = liftIO $ readFileDeserialise $ fromNormalizedFilePath dalfFile
 
 writeDalfFile :: NormalizedFilePath -> LF.Module -> Action ()
 writeDalfFile dalfFile mod = do
-    lfVersion <- getDamlLfVersion
     liftIO $ createDirectoryIfMissing True (takeDirectory $ fromNormalizedFilePath dalfFile)
-    liftIO $ BSL.writeFile (fromNormalizedFilePath dalfFile) $ Proto.toLazyByteString $ encodeScenarioModule lfVersion mod
+    liftIO $ writeFileSerialise (fromNormalizedFilePath dalfFile) mod
 
 -- Generates a DAML-LF archive without adding serializability information
 -- or type checking it. This must only be used for debugging/testing.

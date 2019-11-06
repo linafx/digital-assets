@@ -53,6 +53,7 @@ module Data.NameMap
 import Prelude hiding (lookup, map, traverse)
 import qualified Prelude
 
+import Codec.Serialise
 import           Control.DeepSeq
 import           Control.Lens.MonoTraversal
 import           Control.Monad (void)
@@ -85,9 +86,10 @@ data NameMap a = NameMap
   { _revAssocs :: ![(Name a, a)]
   , _index :: !(HMS.HashMap (Name a) a)
   }
-  deriving (Generic)
+  deriving Generic
 
 instance (NFData a, NFData (Name a)) => NFData (NameMap a)
+instance (Hashable (Name a), Eq (Name a), Serialise (Name a), Serialise a) => Serialise (NameMap a)
 
 -- PRIMITIVES
 
