@@ -14,7 +14,8 @@ module DA.Daml.LF.Ast.Numeric
     , numericFromDecimal
     ) where
 
-import Codec.Serialise
+import Data.Functor.Contravariant
+import Data.Store
 import Control.DeepSeq
 import Control.Monad
 import Data.Data
@@ -45,9 +46,10 @@ import Numeric.Natural
 newtype Numeric = Numeric { numericDecimal :: Decimal }
   deriving (Eq, Ord, Generic)
 
-instance Serialise Numeric where
-    encode (Numeric (Decimal a b)) = encode (a, b)
-    decode = fmap (\(a,b) -> Numeric (Decimal a b)) decode
+instance Store Numeric where
+    size = contramap (\(Numeric (Decimal a b)) -> (a,b)) size
+    poke (Numeric (Decimal a b)) = poke (a, b)
+    peek = fmap (\(a,b) -> Numeric (Decimal a b)) peek
 
 data NumericError
     = NEScaleTooLarge

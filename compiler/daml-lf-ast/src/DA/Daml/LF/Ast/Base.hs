@@ -11,7 +11,7 @@ module DA.Daml.LF.Ast.Base(
     module DA.Daml.LF.Ast.Base
     ) where
 
-import Codec.Serialise
+import Data.Store
 import Data.Hashable
 import Data.Data
 import GHC.Generics(Generic)
@@ -36,49 +36,49 @@ infixr 1 `KArrow`
 -- > [a-zA-Z0-9]+
 newtype PackageId = PackageId{unPackageId :: T.Text}
     deriving stock (Eq, Data, Generic, Ord, Show)
-    deriving newtype (Hashable, NFData, Serialise)
+    deriving newtype (Hashable, NFData, Store)
 
 -- | Name for a module. Must match the regex
 --
 -- > ([A-Z][a-zA-Z0-9_]*)(\.[A-Z][a-zA-Z0-9_]*)*
 newtype ModuleName = ModuleName{unModuleName :: [T.Text]}
     deriving stock (Eq, Data, Generic, Ord, Show)
-    deriving newtype (Hashable, NFData, Serialise)
+    deriving newtype (Hashable, NFData, Store)
 
 -- | Name for a type constructor. Must match the regex
 --
 -- > ([A-Z][a-zA-Z0-9_]*)(\.[A-Z][a-zA-Z0-9_]*)*
 newtype TypeConName = TypeConName{unTypeConName :: [T.Text]}
     deriving stock (Eq, Data, Generic, Ord, Show)
-    deriving newtype (Hashable, NFData, Serialise)
+    deriving newtype (Hashable, NFData, Store)
 
 -- | Name for a record field. Must match the regex
 --
 -- > [a-z][a-zA-Z0-9_]*
 newtype FieldName = FieldName{unFieldName :: T.Text}
     deriving stock (Eq, Data, Generic, Ord, Show)
-    deriving newtype (Hashable, NFData, Serialise)
+    deriving newtype (Hashable, NFData, Store)
 
 -- | Name for a variant constructor. Must match the regex
 --
 -- > [A-Z][a-zA-Z0-9_]*
 newtype VariantConName = VariantConName{unVariantConName :: T.Text}
     deriving stock (Eq, Data, Generic, Ord, Show)
-    deriving newtype (Hashable, NFData, Serialise)
+    deriving newtype (Hashable, NFData, Store)
 
 -- | Name for the choice of a contract. Must match the regex
 --
 -- > [A-Z][a-zA-Z0-9_]*
 newtype ChoiceName = ChoiceName{unChoiceName :: T.Text}
     deriving stock (Eq, Data, Generic, Ord, Show)
-    deriving newtype (Hashable, NFData, Serialise)
+    deriving newtype (Hashable, NFData, Store)
 
 -- | Name for a type variable. Must match the regex
 --
 -- > [a-z_][a-zA-Z0-9_]*
 newtype TypeVarName = TypeVarName{unTypeVarName :: T.Text}
     deriving stock (Eq, Data, Generic, Ord, Show)
-    deriving newtype (Hashable, NFData, Serialise)
+    deriving newtype (Hashable, NFData, Store)
 
 -- | Name for a local expression variable, bound in an expression,
 --   and used locally. Must match the regex
@@ -86,7 +86,7 @@ newtype TypeVarName = TypeVarName{unTypeVarName :: T.Text}
 -- > [a-z_][a-zA-Z0-9_]*
 newtype ExprVarName = ExprVarName{unExprVarName :: T.Text}
     deriving stock (Eq, Data, Generic, Ord, Show)
-    deriving newtype (Hashable, NFData, Serialise)
+    deriving newtype (Hashable, NFData, Store)
 
 -- | Name for an global expression variable, bound at the declaration level,
 --   and used in this and other modules. Must match the regex
@@ -94,12 +94,12 @@ newtype ExprVarName = ExprVarName{unExprVarName :: T.Text}
 -- > [a-z_][a-zA-Z0-9_]*
 newtype ExprValName = ExprValName{unExprValName :: T.Text}
     deriving stock (Eq, Data, Generic, Ord, Show)
-    deriving newtype (Hashable, NFData, Serialise)
+    deriving newtype (Hashable, NFData, Store)
 
 -- | Literal representing a party.
 newtype PartyLiteral = PartyLiteral{unPartyLiteral :: T.Text}
     deriving stock (Eq, Data, Generic, Ord, Show)
-    deriving newtype (Hashable, NFData, Serialise)
+    deriving newtype (Hashable, NFData, Store)
 
 -- | Reference to a package.
 data PackageRef
@@ -107,7 +107,7 @@ data PackageRef
     -- ^ Reference to the package being currently handled.
   | PRImport !PackageId
     -- ^ Reference to the package with the given id.
-  deriving (Eq, Data, Generic, NFData, Ord, Show, Serialise)
+  deriving (Eq, Data, Generic, NFData, Ord, Show, Store)
 
 -- | Something qualified by a package and a module within that package.
 data Qualified a = Qualified
@@ -115,7 +115,7 @@ data Qualified a = Qualified
   , qualModule  :: !ModuleName
   , qualObject  :: !a
   }
-  deriving (Eq, Data, Generic, NFData, Ord, Show, Serialise)
+  deriving (Eq, Data, Generic, NFData, Ord, Show, Store)
 
 -- | Source location annotation.
 data SourceLoc = SourceLoc
@@ -128,14 +128,14 @@ data SourceLoc = SourceLoc
   , slocEndLine :: !Int
   , slocEndCol :: !Int
   }
-  deriving (Eq, Data, Generic, NFData, Ord, Show, Serialise)
+  deriving (Eq, Data, Generic, NFData, Ord, Show, Store)
 
 -- | Kinds.
 data Kind
   = KStar
   | KNat
   | KArrow Kind Kind
-  deriving (Eq, Data, Generic, NFData, Ord, Show, Serialise)
+  deriving (Eq, Data, Generic, NFData, Ord, Show, Store)
 
 -- | Builtin type.
 data BuiltinType
@@ -157,7 +157,7 @@ data BuiltinType
   | BTArrow
   | BTAny
   | BTTypeRep
-  deriving (Eq, Data, Generic, NFData, Ord, Show, Serialise)
+  deriving (Eq, Data, Generic, NFData, Ord, Show, Store)
 
 -- | Type as used in typed binders.
 data Type
@@ -182,7 +182,7 @@ data Type
   | TTuple      ![(FieldName, Type)]
   -- | Type-level natural numbers
   | TNat !TypeLevelNat
-  deriving (Eq, Data, Generic, NFData, Ord, Show, Serialise)
+  deriving (Eq, Data, Generic, NFData, Ord, Show, Store)
 
 -- | Fully applied qualified type constructor.
 data TypeConApp = TypeConApp
@@ -191,7 +191,7 @@ data TypeConApp = TypeConApp
   , tcaArgs    :: ![Type]
     -- ^ Type arguments which are applied to the type constructor.
   }
-  deriving (Eq, Data, Generic, NFData, Ord, Show, Serialise)
+  deriving (Eq, Data, Generic, NFData, Ord, Show, Store)
 
 -- | Builtin operation or literal.
 data BuiltinExpr
@@ -286,14 +286,14 @@ data BuiltinExpr
   | BETrace                      -- :: forall a. Text -> a -> a
   | BEEqualContractId            -- :: forall a. ContractId a -> ContractId a -> Bool
   | BECoerceContractId           -- :: forall a b. ContractId a -> ContractId b
-  deriving (Eq, Data, Generic, NFData, Ord, Show, Serialise)
+  deriving (Eq, Data, Generic, NFData, Ord, Show, Store)
 
 
 data Binding = Binding
   { bindingBinder :: !(ExprVarName, Type)
   , bindingBound  :: !Expr
   }
-  deriving (Eq, Data, Generic, NFData, Ord, Show, Serialise)
+  deriving (Eq, Data, Generic, NFData, Ord, Show, Store)
 
 -- | Expression.
 data Expr
@@ -457,7 +457,7 @@ data Expr
   | EScenario !Scenario
   -- | An expression annotated with a source location.
   | ELocation !SourceLoc !Expr
-  deriving (Eq, Data, Generic, NFData, Ord, Show, Serialise)
+  deriving (Eq, Data, Generic, NFData, Ord, Show, Store)
 
 -- | Pattern matching alternative.
 data CaseAlternative = CaseAlternative
@@ -466,7 +466,7 @@ data CaseAlternative = CaseAlternative
   , altExpr    :: !Expr
     -- ^ Expression to evaluate in case of a match.
   }
-  deriving (Eq, Data, Generic, NFData, Ord, Show, Serialise)
+  deriving (Eq, Data, Generic, NFData, Ord, Show, Store)
 
 data CasePattern
   -- | Match on a constructor of a variant type.
@@ -505,7 +505,7 @@ data CasePattern
   -- | Match on anything. Should be the last alternative. Also note that 'ECase'
   -- bind the value of the scrutinee to a variable.
   | CPDefault
-  deriving (Eq, Data, Generic, NFData, Ord, Show, Serialise)
+  deriving (Eq, Data, Generic, NFData, Ord, Show, Store)
 
 -- | Expression in the update monad.
 data Update
@@ -561,7 +561,7 @@ data Update
     }
   | ULookupByKey !RetrieveByKey
   | UFetchByKey !RetrieveByKey
-  deriving (Eq, Data, Generic, NFData, Ord, Show, Serialise)
+  deriving (Eq, Data, Generic, NFData, Ord, Show, Store)
 
 -- | Expression in the scenario monad
 data Scenario
@@ -624,18 +624,18 @@ data Scenario
     { scenarioEmbedType :: !Type
     , scenarioEmbedExpr :: !Expr
     }
-  deriving (Eq, Data, Generic, NFData, Ord, Show, Serialise)
+  deriving (Eq, Data, Generic, NFData, Ord, Show, Store)
 
 data RetrieveByKey = RetrieveByKey
   { retrieveByKeyTemplate :: !(Qualified TypeConName)
   , retrieveByKeyKey :: !Expr
   }
-  deriving (Eq, Data, Generic, NFData, Ord, Show, Serialise)
+  deriving (Eq, Data, Generic, NFData, Ord, Show, Store)
 
 newtype IsSerializable = IsSerializable{getIsSerializable :: Bool}
   deriving stock (Eq, Data, Generic, Ord, Show)
   deriving anyclass (NFData)
-  deriving newtype Serialise
+  deriving newtype Store
 
 -- | Definition of a data type.
 data DefDataType = DefDataType
@@ -651,7 +651,7 @@ data DefDataType = DefDataType
   , dataCons    :: !DataCons
     -- ^ Data constructor of the type.
   }
-  deriving (Eq, Data, Generic, NFData, Ord, Show, Serialise)
+  deriving (Eq, Data, Generic, NFData, Ord, Show, Store)
 
 -- | Data constructors for a data type definition.
 data DataCons
@@ -661,17 +661,17 @@ data DataCons
   | DataVariant ![(VariantConName, Type)]
   -- | An enum type given by the name of its constructors.
   | DataEnum ![VariantConName]
-  deriving (Eq, Data, Generic, NFData, Ord, Show, Serialise)
+  deriving (Eq, Data, Generic, NFData, Ord, Show, Store)
 
 newtype HasNoPartyLiterals = HasNoPartyLiterals{getHasNoPartyLiterals :: Bool}
   deriving stock (Eq, Data, Generic, Ord, Show)
-  deriving newtype (Serialise)
+  deriving newtype (Store)
   deriving anyclass (NFData)
 
 newtype IsTest = IsTest{getIsTest :: Bool}
   deriving stock (Eq, Data, Generic, Ord, Show)
   deriving anyclass (NFData)
-  deriving newtype Serialise
+  deriving newtype Store
 
 -- | Definition of a value.
 data DefValue = DefValue
@@ -687,7 +687,7 @@ data DefValue = DefValue
   , dvalBody   :: !Expr
     -- ^ Expression whose value to bind to the name.
   }
-  deriving (Eq, Data, Generic, NFData, Ord, Show, Serialise)
+  deriving (Eq, Data, Generic, NFData, Ord, Show, Store)
 
 data TemplateKey = TemplateKey
   { tplKeyType :: !Type
@@ -698,7 +698,7 @@ data TemplateKey = TemplateKey
   -- of that fragment in DAML-LF directly.
   , tplKeyMaintainers :: !Expr
   }
-  deriving (Eq, Data, Generic, NFData, Ord, Show, Serialise)
+  deriving (Eq, Data, Generic, NFData, Ord, Show, Store)
 
 -- | Definition of a contract template.
 data Template = Template
@@ -725,7 +725,7 @@ data Template = Template
   , tplKey             :: !(Maybe TemplateKey)
     -- ^ Template key definition, if any.
   }
-  deriving (Eq, Data, Generic, NFData, Show, Serialise)
+  deriving (Eq, Data, Generic, NFData, Show, Store)
 
 -- | Single choice of a contract template.
 data TemplateChoice = TemplateChoice
@@ -750,7 +750,7 @@ data TemplateChoice = TemplateChoice
     -- ^ Follow-up update of the choice. It has type @Update <ret_type>@ and
     -- both the template parameter and the choice parameter in scope.
   }
-  deriving (Eq, Data, Generic, NFData, Ord, Show, Serialise)
+  deriving (Eq, Data, Generic, NFData, Ord, Show, Store)
 
 -- | Feature flags for a module.
 data FeatureFlags = FeatureFlags
@@ -766,7 +766,7 @@ data FeatureFlags = FeatureFlags
   -- and controllers of the target contract/choice and not to the observers of the target contract.
   -}
   }
-  deriving (Eq, Data, Generic, NFData, Ord, Show, Serialise)
+  deriving (Eq, Data, Generic, NFData, Ord, Show, Store)
 
 defaultFeatureFlags :: FeatureFlags
 defaultFeatureFlags = FeatureFlags
@@ -795,7 +795,7 @@ data Module = Module
   , moduleTemplates :: !(NM.NameMap Template)
     -- ^ Template definitions.
   }
-  deriving (Eq, Data, Generic, NFData, Show, Serialise)
+  deriving (Eq, Data, Generic, NFData, Show, Store)
 
 -- | A package.
 data Package = Package

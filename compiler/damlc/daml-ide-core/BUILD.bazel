@@ -35,7 +35,7 @@ da_haskell_library(
         "network-uri",
         "pretty",
         "safe",
-        "serialise",
+        "store",
         "shake",
         "stm",
         "temporary",

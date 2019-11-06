@@ -5,7 +5,7 @@ module Development.IDE.Core.Rules.Daml
     , module Development.IDE.Core.Rules.Daml
     ) where
 
-import Codec.Serialise
+import qualified Data.Store as Store
 import TcIface (typecheckIface)
 import LoadIface (readIface)
 import TidyPgm
@@ -429,12 +429,14 @@ dalfFileName file =
     toNormalizedFilePath $ ".daml/build" </> fromNormalizedFilePath file -<.> "dalf"
 
 readDalfFromFile :: NormalizedFilePath -> Action LF.Module
-readDalfFromFile dalfFile = liftIO $ readFileDeserialise $ fromNormalizedFilePath dalfFile
+readDalfFromFile dalfFile = liftIO $ do
+    bytes <- BS.readFile $ fromNormalizedFilePath dalfFile
+    Store.decodeIO bytes
 
 writeDalfFile :: NormalizedFilePath -> LF.Module -> Action ()
-writeDalfFile dalfFile mod = do
-    liftIO $ createDirectoryIfMissing True (takeDirectory $ fromNormalizedFilePath dalfFile)
-    liftIO $ writeFileSerialise (fromNormalizedFilePath dalfFile) mod
+writeDalfFile dalfFile mod = liftIO $ do
+    createDirectoryIfMissing True (takeDirectory $ fromNormalizedFilePath dalfFile)
+    BS.writeFile (fromNormalizedFilePath dalfFile) $ Store.encode mod
 
 -- Generates a DAML-LF archive without adding serializability information
 -- or type checking it. This must only be used for debugging/testing.
