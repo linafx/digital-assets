@@ -1,5 +1,21 @@
+diff --git a/haskell/BUILD.bazel b/haskell/BUILD.bazel
+index 0c0fbebe..2688b37a 100644
+--- a/haskell/BUILD.bazel
++++ b/haskell/BUILD.bazel
+@@ -36,6 +36,11 @@ cc_wrapper(
+     visibility = ["//visibility:public"],
+ )
+ 
++cc_wrapper(
++    name = "cc_wrapper_proto",
++    visibility = ["//visibility:public"],
++)
++
+ cabal_wrapper(
+     name = "cabal_wrapper",
+     visibility = ["//visibility:public"],
 diff --git a/haskell/cabal.bzl b/haskell/cabal.bzl
-index b8b68074..aac1435c 100644
+index b8b68074..8d5c73b8 100644
 --- a/haskell/cabal.bzl
 +++ b/haskell/cabal.bzl
 @@ -100,7 +100,12 @@ def _prepare_cabal_inputs(hs, cc, posix, dep_info, cc_info, component, package_i
@@ -16,22 +32,23 @@ index b8b68074..aac1435c 100644
      if hs.toolchain.is_darwin:
          env["SDKROOT"] = "macosx"  # See haskell/private/actions/link.bzl
  
-@@ -122,6 +127,28 @@ def _prepare_cabal_inputs(hs, cc, posix, dep_info, cc_info, component, package_i
+@@ -122,6 +127,29 @@ def _prepare_cabal_inputs(hs, cc, posix, dep_info, cc_info, component, package_i
      ]
      args.add_all([component, package_id, setup, cabal.dirname, package_database.dirname])
      args.add("--flags=" + " ".join(flags))
 +    if hs.label.workspace_name == "proto3_suite":
 +        execroot = "C:/users/admin/_bazel_admin/oaoes6io/execroot/com_github_digital_asset_daml/"
++        cc_wrapper_proto = hs.toolchain.cc_wrapper_proto
 +        args.add_all([
 +            # GHC uses C compiler for assemly, linking and preprocessing as well.
 +            "-pgma",
-+            execroot + cc.tools.cc,
++            execroot + cc_wrapper_proto.executable.path,
 +            "-pgmc",
-+            execroot + cc.tools.cc,
++            execroot + cc_wrapper_proto.executable.path,
 +            "-pgml",
-+            execroot + cc.tools.cc,
++            execroot + cc_wrapper_proto.executable.path,
 +            "-pgmP",
-+            execroot + cc.tools.cc,
++            execroot + cc_wrapper_proto.executable.path,
 +            # Setting -pgm* flags explicitly has the unfortunate side effect
 +            # of resetting any program flags in the GHC settings file. So we
 +            # restore them here. See
@@ -45,3 +62,281 @@ index b8b68074..aac1435c 100644
      args.add("--")
      args.add_all(package_databases, map_each = _dirname, format_each = "--package-db=%s")
      args.add_all(extra_include_dirs, map_each = _skip_ghc_bindist, format_each = "--extra-include-dirs=%s")
+@@ -144,7 +172,9 @@ def _prepare_cabal_inputs(hs, cc, posix, dep_info, cc_info, component, package_i
+             dep_info.static_libraries,
+             dep_info.dynamic_libraries,
+             tool_inputs,
+-        ],
++        ] + ([
++            hs.toolchain.cc_wrapper_proto.inputs
++        ] if hs.label.workspace_name == "proto3_suite" else []),
+     )
+     input_manifests = tool_input_manifests
+ 
+diff --git a/haskell/private/cc_wrapper.bzl b/haskell/private/cc_wrapper.bzl
+index f39c6b5f..4541993e 100644
+--- a/haskell/private/cc_wrapper.bzl
++++ b/haskell/private/cc_wrapper.bzl
+@@ -50,7 +50,7 @@ _cc_wrapper = rule(
+ def cc_wrapper(name, **kwargs):
+     _cc_wrapper(
+         name = name + ".py",
+-        template = "@rules_haskell//haskell:private/cc_wrapper.py.tpl",
++        template = "@rules_haskell//haskell:private/%s.py.tpl" % name,
+         platform = select({
+             "@rules_haskell//haskell/platforms:darwin": "darwin",
+             "@rules_haskell//haskell/platforms:mingw32": "windows",
+@@ -59,7 +59,7 @@ def cc_wrapper(name, **kwargs):
+     )
+     _cc_wrapper(
+         name = name + ".sh",
+-        template = "@rules_haskell//haskell:private/cc_wrapper_windows.sh.tpl",
++        template = "@rules_haskell//haskell:private/%s_windows.sh.tpl" % name,
+         platform = select({
+             "@rules_haskell//haskell/platforms:darwin": "darwin",
+             "@rules_haskell//haskell/platforms:mingw32": "windows",
+diff --git a/haskell/private/cc_wrapper_proto_windows.sh.tpl b/haskell/private/cc_wrapper_proto_windows.sh.tpl
+new file mode 100644
+index 00000000..b47cd647
+--- /dev/null
++++ b/haskell/private/cc_wrapper_proto_windows.sh.tpl
+@@ -0,0 +1,198 @@
++# CC toolchain wrapper
++#
++# Usage: cc_wrapper [ARG]...
++#
++# Wraps the C compiler of the Bazel CC toolchain. Transforms arguments to work
++# around limitations of Bazel and GHC and passes those via response file to the C
++# compiler.
++#
++# - Shortens library search paths to stay below maximum path length on Windows.
++#
++#     GHC generates library search paths that contain redundant up-level
++#     references (..). This can exceed the maximum path length on Windows, which
++#     will cause linking failures. This wrapper shortens library search paths to
++#     avoid that issue.
++#
++# - Shortens include paths to stay below maximum path length.
++#
++#     GHC generates include paths that contain redundant up-level
++#     references (..). This can exceed the maximum path length, which
++#     will cause compiler failures. This wrapper shortens include paths
++#     to avoid that issue.
++
++# The runfiles.bash initialization triggers "Can't follow non-constant source".
++# Disabling the warning locally is insufficient, so we disable it globally.
++# shellcheck disable=SC1090
++
++set -euo pipefail
++
++echo "FOOOOOOOOOBAAAAAAAAAAR" >&2
++exit 1
++
++# ----------------------------------------------------------
++# Find compiler
++
++find_exe() {
++    local -n location="$1"
++    local exe="$2"
++
++    location="$exe"
++    if [[ -f "$location" ]]; then
++        return
++    fi
++
++    location="${exe}.exe"
++    if [[ -f "$location" ]]; then
++        return
++    fi
++
++    # --- begin runfiles.bash initialization v2 ---
++    # Copy-pasted from the Bazel Bash runfiles library v2.
++    set -uo pipefail; f=bazel_tools/tools/bash/runfiles/runfiles.bash
++    source "${RUNFILES_DIR:-/dev/null}/$f" 2>/dev/null || \
++      source "$(grep -sm1 "^$f " "${RUNFILES_MANIFEST_FILE:-/dev/null}" | cut -f2- -d' ')" 2>/dev/null || \
++      source "$0.runfiles/$f" 2>/dev/null || \
++      source "$(grep -sm1 "^$f " "$0.runfiles_manifest" | cut -f2- -d' ')" 2>/dev/null || \
++      source "$(grep -sm1 "^$f " "$0.exe.runfiles_manifest" | cut -f2- -d' ')" 2>/dev/null || \
++      { echo>&2 "ERROR: cannot find $f"; exit 1; }; f=; set -e
++    # --- end runfiles.bash initialization v2 ---
++
++    location="$(rlocation "{:workspace:}/$exe")"
++    if [[ -f "$location" ]]; then
++        return
++    fi
++
++    location="$(rlocation "{:workspace:}/${exe}.exe")"
++    if [[ -f "$location" ]]; then
++        return
++    fi
++}
++
++declare CC
++find_exe CC "{:cc:}"
++
++# ----------------------------------------------------------
++# Handle response file
++
++RESPONSE_FILE="$(mktemp rspXXXX)"
++rm_response_file() {
++    rm -f "$RESPONSE_FILE"
++}
++trap rm_response_file EXIT
++
++quote_arg() {
++    # Gcc expects one argument per line, surrounded by double quotes, with
++    # inner double quotes escaped with backslash, and backslashes themselves
++    # escaped.
++    local arg="$1"
++    arg="${arg//\\/\\\\}"
++    arg="${arg//\"/\\\"}"
++    printf '"%s"\n' "$arg"
++}
++
++unquote_arg() {
++    local -n output="$1"
++    local input="$2"
++    if [[ "$input" =~ ^\"(.*)\"[[:space:]]*$ ]]; then
++        input="${BASH_REMATCH[1]}"
++        input="${input//\\\"/\"}"
++        input="${input//\\\\/\\}"
++    fi
++    # shellcheck disable=SC2034
++    # nameref assignment is a "variable use"
++    # https://github.com/koalaman/shellcheck/issues/1543
++    output="$input"
++}
++
++add_arg() {
++    quote_arg "$1" >> "$RESPONSE_FILE"
++}
++
++# ----------------------------------------------------------
++# Parse arguments
++
++IN_RESPONSE_FILE=
++INCLUDE_DIR_COMING=
++INCLUDE_FLAG=
++LIB_DIR_COMING=
++
++shorten_path() {
++    local -n shortest="$1"
++    local input="$2"
++
++    shortest="$input"
++    if [[ ! -e "$shortest" ]]; then
++        # realpath fails if the file does not exist.
++        return
++    fi
++
++    local normalized
++    normalized="$(realpath "$shortest")"
++    if [[ ${#normalized} -lt ${#shortest} ]]; then
++        shortest="$normalized"
++    fi
++
++    local relative
++    relative="$(realpath --relative-to="$PWD" "$shortest")"
++    if [[ ${#relative} -lt ${#shortest} ]]; then
++        shortest="$relative"
++    fi
++}
++
++handle_include_dir() {
++    local flag="$1"
++    local include_dir="$2"
++    local shortened
++    shorten_path shortened "$include_dir"
++    add_arg "$flag$shortened"
++}
++
++handle_lib_dir() {
++    local lib_dir="$1"
++    local shortened
++    shorten_path shortened "$lib_dir"
++    add_arg "-L$shortened"
++}
++
++handle_arg() {
++    local arg="$1"
++    if [[ $IN_RESPONSE_FILE = 1 ]]; then
++        unquote_arg arg "$arg"
++    fi
++    if [[ $INCLUDE_DIR_COMING = 1 ]]; then
++        INCLUDE_DIR_COMING=
++        INCLUDE_FLAG=
++        handle_include_dir "$INCLUDE_FLAG" "$arg"
++    elif [[ $LIB_DIR_COMING = 1 ]]; then
++        LIB_DIR_COMING=
++        handle_lib_dir "$arg"
++    elif [[ "$arg" =~ ^@(.*)$ ]]; then
++        IN_RESPONSE_FILE=1
++        while read -r line; do
++            handle_arg "$line"
++        done < "${BASH_REMATCH[1]}"
++        IN_RESPONSE_FILE=
++    elif [[ "$arg" =~ ^(-I|-iquote|-isystem|-idirafter)(.*)$ ]]; then
++        handle_include_dir "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
++    elif [[ "$arg" = -I || "$arg" = -iquote || "$arg" = -isystem || "$arg" = -idirafter ]]; then
++        INCLUDE_DIR_COMING=1
++        INCLUDE_FLAG="$arg"
++    elif [[ "$arg" =~ ^-L(.*)$ || "$arg" =~ ^--library-path=(.*)$ ]]; then
++        handle_lib_dir "${BASH_REMATCH[1]}"
++    elif [[ "$arg" = -L || "$arg" = --library-path ]]; then
++        LIB_DIR_COMING=1
++    else
++        add_arg "$arg"
++    fi
++}
++
++for arg in "$@"; do
++    handle_arg "$arg"
++done
++
++# ----------------------------------------------------------
++# Call compiler
++
++"$CC" "@$RESPONSE_FILE"
++
++# vim: ft=sh
+diff --git a/haskell/toolchain.bzl b/haskell/toolchain.bzl
+index 8482beef..9d115ea8 100644
+--- a/haskell/toolchain.bzl
++++ b/haskell/toolchain.bzl
+@@ -155,6 +155,11 @@ def _haskell_toolchain_impl(ctx):
+     cc_wrapper_runfiles = cc_wrapper_info.default_runfiles.merge(
+         cc_wrapper_info.data_runfiles,
+     )
++    (cc_wrapper_proto_inputs, cc_wrapper_proto_manifest) = ctx.resolve_tools(tools = [ctx.attr._cc_wrapper_proto])
++    cc_wrapper_proto_info = ctx.attr._cc_wrapper_proto[DefaultInfo]
++    cc_wrapper_proto_runfiles = cc_wrapper_proto_info.default_runfiles.merge(
++        cc_wrapper_proto_info.data_runfiles,
++    )
+ 
+     return [
+         platform_common.ToolchainInfo(
+@@ -171,6 +176,12 @@ def _haskell_toolchain_impl(ctx):
+                 manifests = cc_wrapper_manifest,
+                 runfiles = cc_wrapper_runfiles,
+             ),
++            cc_wrapper_proto = struct(
++                executable = ctx.executable._cc_wrapper_proto,
++                inputs = cc_wrapper_proto_inputs,
++                manifests = cc_wrapper_proto_manifest,
++                runfiles = cc_wrapper_proto_runfiles,
++            ),
+             mode = ctx.var["COMPILATION_MODE"],
+             actions = struct(
+                 compile_binary = compile_binary,
+@@ -240,6 +251,11 @@ Label pointing to the locale archive file to use. Mostly useful on NixOS.
+             default = Label("@rules_haskell//haskell:cc_wrapper"),
+             executable = True,
+         ),
++        "_cc_wrapper_proto": attr.label(
++            cfg = "host",
++            default = Label("@rules_haskell//haskell:cc_wrapper_proto"),
++            executable = True,
++        ),
+     },
+ )
+ 
