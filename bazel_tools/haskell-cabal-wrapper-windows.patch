@@ -97,7 +97,7 @@ index f39c6b5f..4541993e 100644
              "@rules_haskell//haskell/platforms:mingw32": "windows",
 diff --git a/haskell/private/cc_wrapper_proto_windows.sh.tpl b/haskell/private/cc_wrapper_proto_windows.sh.tpl
 new file mode 100644
-index 00000000..8fc8517f
+index 00000000..a0b095e5
 --- /dev/null
 +++ b/haskell/private/cc_wrapper_proto_windows.sh.tpl
 @@ -0,0 +1,202 @@
@@ -300,7 +300,7 @@ index 00000000..8fc8517f
 +# Call compiler
 +
 +export PATH="$PATH;/c/Users/Admin/_bazel_Admin/oaoes6io/external/rules_haskell_ghc_windows_amd64/mingw/lib/gcc/x86_64-w64-mingw32/7.2.0"
-+"$CC" "@$RESPONSE_FILE"
++"$(/c/users/admin/dadew/scoop/shims/cygpath.exe -u "$CC")" "@$RESPONSE_FILE"
 +
 +# vim: ft=sh
 diff --git a/haskell/toolchain.bzl b/haskell/toolchain.bzl
