@@ -97,10 +97,10 @@ index f39c6b5f..4541993e 100644
              "@rules_haskell//haskell/platforms:mingw32": "windows",
 diff --git a/haskell/private/cc_wrapper_proto_windows.sh.tpl b/haskell/private/cc_wrapper_proto_windows.sh.tpl
 new file mode 100644
-index 00000000..c67f7c56
+index 00000000..b05788dd
 --- /dev/null
 +++ b/haskell/private/cc_wrapper_proto_windows.sh.tpl
-@@ -0,0 +1,196 @@
+@@ -0,0 +1,201 @@
 +# CC toolchain wrapper
 +#
 +# Usage: cc_wrapper [ARG]...
@@ -128,6 +128,10 @@ index 00000000..c67f7c56
 +# shellcheck disable=SC1090
 +
 +set -euo pipefail
++
++debug() {
++    echo "$*" >> "/c/users/admin/cc_wrapper_proto.log"
++}
 +
 +# ----------------------------------------------------------
 +# Find compiler
@@ -206,6 +210,7 @@ index 00000000..c67f7c56
 +
 +add_arg() {
 +    quote_arg "$1" >> "$RESPONSE_FILE"
++    debug "> '$(quote_arg "$1")'"
 +}
 +
 +# ----------------------------------------------------------
@@ -287,14 +292,14 @@ index 00000000..c67f7c56
 +}
 +
 +for arg in "$@"; do
++    debug "< '$arg'"
 +    handle_arg "$arg"
 +done
 +
 +# ----------------------------------------------------------
 +# Call compiler
 +
-+export USERPROFILE="C:/Users/Admin"
-+"/c/Program Files (x86)/Windows Kits/10/Debuggers/x64/logger.exe" "$CC" "@$RESPONSE_FILE"
++"$CC" "@$RESPONSE_FILE"
 +
 +# vim: ft=sh
 diff --git a/haskell/toolchain.bzl b/haskell/toolchain.bzl
