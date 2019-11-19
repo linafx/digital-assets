@@ -1,5 +1,5 @@
 diff --git a/haskell/cabal.bzl b/haskell/cabal.bzl
-index b8b68074..896e6d67 100644
+index b8b68074..51fca592 100644
 --- a/haskell/cabal.bzl
 +++ b/haskell/cabal.bzl
 @@ -100,7 +100,12 @@ def _prepare_cabal_inputs(hs, cc, posix, dep_info, cc_info, component, package_i
@@ -16,21 +16,22 @@ index b8b68074..896e6d67 100644
      if hs.toolchain.is_darwin:
          env["SDKROOT"] = "macosx"  # See haskell/private/actions/link.bzl
  
-@@ -122,6 +127,27 @@ def _prepare_cabal_inputs(hs, cc, posix, dep_info, cc_info, component, package_i
+@@ -122,6 +127,28 @@ def _prepare_cabal_inputs(hs, cc, posix, dep_info, cc_info, component, package_i
      ]
      args.add_all([component, package_id, setup, cabal.dirname, package_database.dirname])
      args.add("--flags=" + " ".join(flags))
 +    if hs.label.workspace_name == "proto3_suite":
++        execroot = "C:/users/admin/_bazel_admin/oaoes6io/execroot/com_github_digital_asset_daml"
 +        args.add_all([
 +            # GHC uses C compiler for assemly, linking and preprocessing as well.
 +            "-pgma",
-+            cc.tools.cc,
++            execroot + cc.tools.cc,
 +            "-pgmc",
-+            cc.tools.cc,
++            execroot + cc.tools.cc,
 +            "-pgml",
-+            cc.tools.cc,
++            execroot + cc.tools.cc,
 +            "-pgmP",
-+            cc.tools.cc,
++            execroot + cc.tools.cc,
 +            # Setting -pgm* flags explicitly has the unfortunate side effect
 +            # of resetting any program flags in the GHC settings file. So we
 +            # restore them here. See
