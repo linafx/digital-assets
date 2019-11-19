@@ -97,10 +97,10 @@ index f39c6b5f..4541993e 100644
              "@rules_haskell//haskell/platforms:mingw32": "windows",
 diff --git a/haskell/private/cc_wrapper_proto_windows.sh.tpl b/haskell/private/cc_wrapper_proto_windows.sh.tpl
 new file mode 100644
-index 00000000..c2f3ef6d
+index 00000000..c67f7c56
 --- /dev/null
 +++ b/haskell/private/cc_wrapper_proto_windows.sh.tpl
-@@ -0,0 +1,195 @@
+@@ -0,0 +1,196 @@
 +# CC toolchain wrapper
 +#
 +# Usage: cc_wrapper [ARG]...
@@ -293,6 +293,7 @@ index 00000000..c2f3ef6d
 +# ----------------------------------------------------------
 +# Call compiler
 +
++export USERPROFILE="C:/Users/Admin"
 +"/c/Program Files (x86)/Windows Kits/10/Debuggers/x64/logger.exe" "$CC" "@$RESPONSE_FILE"
 +
 +# vim: ft=sh
