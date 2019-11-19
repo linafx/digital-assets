@@ -20,6 +20,33 @@ GHCIDE_REV = "78aa9745798cfd730861e8c037cc481aa6b0dd43"
 GHCIDE_SHA256 = "9156ee7a6e75cfb5e2d38262a077513f20a31c4c3bc5d4ff79fa08ef600fc99c"
 GHCIDE_VERSION = "0.0.4"
 
+# Bazel builds are not sandboxed on Windows, so that outputs of a previous
+# build will be picked up by `glob(["**"])` as inputs on the next build. This
+# completely defeats Bazel's caching and targets are rebuilt on every
+# invocation. To avoid this we apply more targeted globbing.
+HASKELL_EXTS = [
+    "cabal",
+    "hs",
+    "hs.boot",
+    "lhs",
+    "lhs.boot",
+    "x",
+    "x.boot",
+    "y",
+    "y.boot",
+]
+HASKELL_FILES = [
+    "CHANGELOG",
+    "CHANGELOG.md",
+    "LICENSE",
+    "README",
+    "README.md",
+]
+HASKELL_GLOB = 'glob(["**/*.%s" % ext for ext in {exts}] + ["**/%s" % file for file in {files}])'.format(
+    exts = repr(HASKELL_EXTS),
+    files = repr(HASKELL_FILES),
+)
+
 def daml_haskell_deps():
     """Load all Haskell dependencies of the DAML repository."""
 
@@ -37,10 +64,10 @@ def daml_haskell_deps():
 load("@rules_haskell//haskell:cabal.bzl", "haskell_cabal_binary")
 haskell_cabal_binary(
     name = "alex",
-    srcs = glob(["**"]),
+    srcs = {glob} + glob(["data/**"]),
     visibility = ["//visibility:public"],
 )
-""",
+""".format(glob = HASKELL_GLOB),
         sha256 = "d58e4d708b14ff332a8a8edad4fa8989cb6a9f518a7c6834e96281ac5f8ff232",
         strip_prefix = "alex-3.2.4",
         urls = ["http://hackage.haskell.org/package/alex-3.2.4/alex-3.2.4.tar.gz"],
@@ -52,7 +79,7 @@ haskell_cabal_binary(
 load("@rules_haskell//haskell:cabal.bzl", "haskell_cabal_binary")
 haskell_cabal_binary(
     name = "c2hs",
-    srcs = glob(["**"]),
+    srcs = {glob},
     deps = [
         "@c2hs_deps//:base",
         "@c2hs_deps//:bytestring",
@@ -62,7 +89,7 @@ haskell_cabal_binary(
     ],
     visibility = ["//visibility:public"],
 )
-""",
+""".format(glob = HASKELL_GLOB),
         sha256 = "91dd121ac565009f2fc215c50f3365ed66705071a698a545e869041b5d7ff4da",
         strip_prefix = "c2hs-0.28.6",
         urls = ["http://hackage.haskell.org/package/c2hs-0.28.6/c2hs-0.28.6.tar.gz"],
@@ -74,10 +101,10 @@ haskell_cabal_binary(
 load("@rules_haskell//haskell:cabal.bzl", "haskell_cabal_binary")
 haskell_cabal_binary(
     name = "happy",
-    srcs = glob(["**"]),
+    srcs = {glob},
     visibility = ["//visibility:public"],
 )
-""",
+""".format(glob = HASKELL_GLOB),
         sha256 = "9094d19ed0db980a34f1ffd58e64c7df9b4ecb3beed22fd9b9739044a8d45f77",
         strip_prefix = "happy-1.19.11",
         urls = ["http://hackage.haskell.org/package/happy-1.19.11/happy-1.19.11.tar.gz"],
@@ -126,13 +153,13 @@ haskell_cabal_library(
     name = "ghcide-lib",
     package_name = "ghcide",
     version = "{version}",
-    srcs = glob(["**"]),
+    srcs = {glob},
     deps = deps,
     visibility = ["//visibility:public"],
 )
 haskell_cabal_binary(
     name = "ghcide",
-    srcs = glob(["**"]),
+    srcs = {glob},
     deps = deps + [
         ":ghcide-lib",
         "@stackage//:ghc-paths",
@@ -141,7 +168,7 @@ haskell_cabal_binary(
     ],
     visibility = ["//visibility:public"],
 )
-""".format(version = GHCIDE_VERSION),
+""".format(glob = HASKELL_GLOB, version = GHCIDE_VERSION),
         sha256 = GHCIDE_SHA256,
         strip_prefix = "ghcide-%s" % GHCIDE_REV,
         urls = ["https://github.com/digital-asset/ghcide/archive/%s.tar.gz" % GHCIDE_REV],
@@ -153,7 +180,7 @@ haskell_cabal_binary(
 load("@rules_haskell//haskell:cabal.bzl", "haskell_cabal_binary")
 haskell_cabal_binary(
     name = "hpp",
-    srcs = glob(["**"]),
+    srcs = {glob},
     deps = [
         "@stackage//:base",
         "@stackage//:directory",
@@ -163,7 +190,7 @@ haskell_cabal_binary(
     ],
     visibility = ["//visibility:public"],
 )
-""",
+""".format(glob = HASKELL_GLOB),
         sha256 = "d1a843f4383223f85de4d91759545966f33a139d0019ab30a2f766bf9a7d62bf",
         strip_prefix = "hpp-0.6.1",
         urls = ["http://hackage.haskell.org/package/hpp-0.6.1/hpp-0.6.1.tar.gz"],
@@ -175,7 +202,7 @@ haskell_cabal_binary(
 load("@rules_haskell//haskell:cabal.bzl", "haskell_cabal_binary", "haskell_cabal_library")
 haskell_cabal_binary(
     name = "compile-proto-file",
-    srcs = glob(["**"]),
+    srcs = {glob},
     deps = [
         "@stackage//:base",
         "@stackage//:optparse-applicative",
@@ -186,7 +213,7 @@ haskell_cabal_binary(
     ],
     visibility = ["//visibility:public"],
 )
-""",
+""".format(glob = HASKELL_GLOB),
         sha256 = "216fb8b5d92afc9df70512da2331e098e926239efd55e770802079c2a13bad5e",
         strip_prefix = "proto3-suite-0.4.0.0",
         urls = ["http://hackage.haskell.org/package/proto3-suite-0.4.0.0/proto3-suite-0.4.0.0.tar.gz"],
@@ -206,7 +233,7 @@ load("@stackage//:packages.bzl", "packages")
 haskell_cabal_library(
     name = "ghcide",
     version = "{version}",
-    srcs = glob(["**"]),
+    srcs = {glob},
     flags = packages["ghcide"].flags,
     deps = packages["ghcide"].deps,
     visibility = ["//visibility:public"],
@@ -243,7 +270,7 @@ haskell_library(
     ],
     visibility = ["//visibility:public"],
 )
-""".format(version = GHCIDE_VERSION),
+""".format(glob = HASKELL_GLOB, version = GHCIDE_VERSION),
         patch_args = ["-p1"],
         patches = ["@com_github_digital_asset_daml//bazel_tools:haskell-ghcide-expose-compat.patch"],
         sha256 = GHCIDE_SHA256,
@@ -260,7 +287,7 @@ load("@stackage//:packages.bzl", "packages")
 haskell_cabal_library(
     name = "grpc-haskell-core",
     version = "0.0.0.0",
-    srcs = glob(["**"]),
+    srcs = {glob},
     deps = packages["grpc-haskell-core"].deps + [
         ":grpc",
         ":libgpr",
@@ -278,7 +305,7 @@ fat_cc_library(
 genrule(name = "gpr-source", outs = ["gpr.c"], cmd = "touch $(OUTS)")
 cc_library(name = "gpr", srcs = [":gpr-source"])
 cc_library(name = "libgpr", linkstatic = 1, srcs = [":gpr"])
-""",
+""".format(glob = HASKELL_GLOB),
         patch_args = ["-p1"],
         patches = [
             "@com_github_digital_asset_daml//bazel_tools:grpc-haskell-core-cpp-options.patch",
