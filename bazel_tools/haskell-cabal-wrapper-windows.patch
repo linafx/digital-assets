@@ -97,10 +97,10 @@ index f39c6b5f..4541993e 100644
              "@rules_haskell//haskell/platforms:mingw32": "windows",
 diff --git a/haskell/private/cc_wrapper_proto_windows.sh.tpl b/haskell/private/cc_wrapper_proto_windows.sh.tpl
 new file mode 100644
-index 00000000..b47cd647
+index 00000000..c2f3ef6d
 --- /dev/null
 +++ b/haskell/private/cc_wrapper_proto_windows.sh.tpl
-@@ -0,0 +1,198 @@
+@@ -0,0 +1,195 @@
 +# CC toolchain wrapper
 +#
 +# Usage: cc_wrapper [ARG]...
@@ -128,9 +128,6 @@ index 00000000..b47cd647
 +# shellcheck disable=SC1090
 +
 +set -euo pipefail
-+
-+echo "FOOOOOOOOOBAAAAAAAAAAR" >&2
-+exit 1
 +
 +# ----------------------------------------------------------
 +# Find compiler
@@ -296,7 +293,7 @@ index 00000000..b47cd647
 +# ----------------------------------------------------------
 +# Call compiler
 +
-+"$CC" "@$RESPONSE_FILE"
++"/c/Program Files (x86)/Windows Kits/10/Debuggers/x64/logger.exe" "$CC" "@$RESPONSE_FILE"
 +
 +# vim: ft=sh
 diff --git a/haskell/toolchain.bzl b/haskell/toolchain.bzl
