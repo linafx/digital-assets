@@ -9,6 +9,8 @@
 -- checker and functions to manipulate it.
 module DA.Daml.LF.TypeChecker.Env(
     MonadGamma,
+    -- Only exposed for SPECIALIZE pragmas
+    Gamma,
     throwWithContext,
     inWorld,
     match,
@@ -46,9 +48,11 @@ data Gamma = Gamma
 
 makeLenses ''Gamma
 
+{-# INLINABLE getLfVersion #-}
 getLfVersion :: MonadGamma m => m Version
 getLfVersion = view lfVersion
 
+{-# INLINABLE getWorld #-}
 getWorld :: MonadGamma m => m World
 getWorld = view world
 
@@ -63,6 +67,7 @@ runGamma
   -> Either Error a
 runGamma world0 version act = runReaderT act (emptyGamma world0 version)
 
+{-# INLINABLE match #-}
 -- | Helper function which tries to match on a prism and fails with a provided
 -- error in case is does not match.
 match :: MonadGamma m => Prism' a b -> Error -> a -> m b
@@ -73,29 +78,34 @@ match p e x = either (const (throwWithContext e)) pure (matching p x)
 emptyGamma :: World -> Version -> Gamma
 emptyGamma = Gamma ContextNone mempty mempty
 
+{-# INLINABLE introTypeVar #-}
 -- | Run a computation in the current environment extended by a new type
 -- variable. Fails if the type variable would shadow some existing type
 -- variable.
 introTypeVar :: MonadGamma m => TypeVarName -> Kind -> m a -> m a
 introTypeVar v k = local (tvars . at v ?~ k)
 
+{-# INLINABLE introExprVar #-}
 -- | Run a computation in the current enviroment extended by a new term
 -- variable/type binding. Does not fail on shadowing.
 introExprVar :: MonadGamma m => ExprVarName -> Type -> m a -> m a
 introExprVar x t = local (evars . at x ?~ t)
 
+{-# INLINABLE lookupTypeVar #-}
 -- | Check whether a type variable exists in the current environment. Fails with
 -- 'EUnknownTypeVar' if it does not exist.
 lookupTypeVar :: MonadGamma m => TypeVarName -> m Kind
 lookupTypeVar v =
   view (tvars . at v) >>= match _Just (EUnknownTypeVar v)
 
+{-# INLINABLE lookupExprVar #-}
 -- | Lookup a term variable in the current environment and return its type. Fails
 -- with 'EUnknownExprVar' if the variables does not exist.
 lookupExprVar :: MonadGamma m => ExprVarName -> m Type
 lookupExprVar x =
   view (evars . at x) >>= match _Just (EUnknownExprVar x)
 
+{-# INLINABLE inWorld #-}
 inWorld  :: MonadGamma m => (World -> Either LookupError a) -> m a
 inWorld look = do
   w <- view world
@@ -103,10 +113,12 @@ inWorld look = do
     Left e -> throwWithContext (EUnknownDefinition e)
     Right x -> pure x
 
+{-# INLINABLE throwWithContext #-}
 throwWithContext :: MonadGamma m => Error -> m a
 throwWithContext err = do
   ctx <- view locCtx
   throwError $ EContext ctx err
 
+{-# INLINABLE withContext #-}
 withContext :: MonadGamma m => Context -> m b -> m b
 withContext ctx = local (set locCtx ctx)

@@ -34,6 +34,7 @@ module DA.Daml.LF.TypeChecker.Check(
 import Data.Hashable
 import           Control.Lens hiding (Context, para)
 import           Control.Monad.Extra
+import Control.Monad.Reader
 import           Data.Foldable
 import           Data.Functor
 import Data.Generics.Uniplate.Data (para)
@@ -79,7 +80,7 @@ checkTypeConApp tapp@(TypeConApp tcon targs) = do
   -- contain all type variables which are free in @dataCons@. Thus, it is safe
   -- to call 'substitute'.
   DefDataType _loc _tcon _serializable tparams dataCons <- inWorld (lookupDataType tcon)
-  subst0 <- match _Just (ETypeConAppWrongArity tapp) (zipExactMay tparams targs)
+  subst0 <- maybe (throwWithContext $ ETypeConAppWrongArity tapp) pure $ zipExactMay tparams targs
   for_ subst0 $ \((_, kind), typ) -> checkType typ kind
   let subst1 = map (\((v, _kind), typ) -> (v, typ)) subst0
   pure (over dataConsType (substitute (Map.fromList subst1)) dataCons)
@@ -136,7 +137,9 @@ kindOf = \case
     throwWithContext (EImpredicativePolymorphism t)
   TApp tfun targ -> do
     kind <- kindOf tfun
-    (argKind, resKind) <- match _KArrow (EExpectedHigherKind kind) kind
+    (argKind, resKind) <- case kind of
+      KArrow a b -> pure (a, b)
+      _ -> throwWithContext (EExpectedHigherKind kind)
     checkType targ argKind
     pure resKind
   TBuiltin btype -> pure (kindOfBuiltin btype)
@@ -240,7 +243,9 @@ typeOfBuiltin = \case
 checkRecCon :: MonadGamma m => TypeConApp -> [(FieldName, Expr)] -> m ()
 checkRecCon typ recordExpr = do
   dataCons <- checkTypeConApp typ
-  recordType <- match _DataRecord (EExpectedRecordType typ) dataCons
+  recordType <- case dataCons of
+    DataRecord r -> pure r
+    _ -> throwWithContext (EExpectedRecordType typ)
   let (exprFieldNames, fieldExprs) = unzip recordExpr
   let (typeFieldNames, fieldTypes) = unzip recordType
   unless (exprFieldNames == typeFieldNames) $
@@ -250,29 +255,37 @@ checkRecCon typ recordExpr = do
 checkVariantCon :: MonadGamma m => TypeConApp -> VariantConName -> Expr -> m ()
 checkVariantCon typ@(TypeConApp tcon _) con conArg = do
   dataCons <- checkTypeConApp typ
-  variantType <- match _DataVariant (EExpectedVariantType tcon) dataCons
-  conArgType <- match _Just (EUnknownDataCon con) (con `lookup` variantType)
+  variantType <- case dataCons of
+    DataVariant var -> pure var
+    _ -> throwWithContext (EExpectedVariantType tcon)
+  conArgType <- maybe (throwWithContext $ EUnknownDataCon con) pure (con `lookup` variantType)
   checkExpr conArg conArgType
 
 checkEnumCon :: MonadGamma m => Qualified TypeConName -> VariantConName -> m ()
 checkEnumCon tcon con = do
     defDataType <- inWorld (lookupDataType tcon)
-    enumCons <- match _DataEnum (EExpectedEnumType tcon) (dataCons defDataType)
+    enumCons <- case dataCons defDataType of
+      DataEnum e -> pure e
+      _ -> throwWithContext (EExpectedEnumType tcon)
     unless (con `elem` enumCons) $ throwWithContext (EUnknownDataCon con)
 
 typeOfRecProj :: MonadGamma m => TypeConApp -> FieldName -> Expr -> m Type
 typeOfRecProj typ0 field record = do
   dataCons <- checkTypeConApp typ0
-  recordType <- match _DataRecord (EExpectedRecordType typ0) dataCons
-  fieldType <- match _Just (EUnknownField field) (lookup field recordType)
+  recordType <- case dataCons of
+    DataRecord r -> pure r
+    _ -> throwWithContext (EExpectedRecordType typ0)
+  fieldType <- maybe (throwWithContext $ EUnknownField field) pure (lookup field recordType)
   checkExpr record (typeConAppToType typ0)
   pure fieldType
 
 typeOfRecUpd :: MonadGamma m => TypeConApp -> FieldName -> Expr -> Expr -> m Type
 typeOfRecUpd typ0 field record update = do
   dataCons <- checkTypeConApp typ0
-  recordType <- match _DataRecord (EExpectedRecordType typ0) dataCons
-  fieldType <- match _Just (EUnknownField field) (lookup field recordType)
+  recordType <- case dataCons of
+    DataRecord r -> pure r
+    _ -> throwWithContext (EExpectedRecordType typ0)
+  fieldType <- maybe (throwWithContext $ EUnknownField field) pure (lookup field recordType)
   let typ1 = typeConAppToType typ0
   checkExpr record typ1
   checkExpr update fieldType
@@ -286,14 +299,18 @@ typeOfTupleCon recordExpr = do
 typeOfTupleProj :: MonadGamma m => FieldName -> Expr -> m Type
 typeOfTupleProj field expr = do
   typ <- typeOf expr
-  tupleType <- match _TTuple (EExpectedTupleType typ) typ
-  match _Just (EUnknownField field) (lookup field tupleType)
+  tupleType <- case typ of
+    TTuple r -> pure r
+    _ -> throwWithContext (EExpectedTupleType typ)
+  maybe (throwWithContext $ EUnknownField field) pure (lookup field tupleType)
 
 typeOfTupleUpd :: MonadGamma m => FieldName -> Expr -> Expr -> m Type
 typeOfTupleUpd field tuple update = do
   typ <- typeOf tuple
-  tupleType <- match _TTuple (EExpectedTupleType typ) typ
-  fieldType <- match _Just (EUnknownField field) (lookup field tupleType)
+  tupleType <- case typ of
+    TTuple t -> pure t
+    _ -> throwWithContext (EExpectedTupleType typ)
+  fieldType <- maybe (throwWithContext $ EUnknownField field) pure (lookup field tupleType)
   checkExpr update fieldType
   pure typ
 
@@ -309,7 +326,9 @@ typeOfTmApp fun arg = do
 typeOfTyApp :: MonadGamma m => Expr -> Type -> m Type
 typeOfTyApp expr typ = do
   exprType <- typeOf expr
-  ((tvar, kind), typeBody) <- match _TForall (EExpectedUniversalType exprType) exprType
+  ((tvar, kind), typeBody) <- case exprType of
+    TForall a b -> pure (a, b)
+    _ -> throwWithContext (EExpectedUniversalType exprType)
   checkType typ kind
   -- NOTE(MH): Calling 'substitute' is safe since @typ@ and @typeBody@ live in
   -- the same context.
@@ -328,26 +347,34 @@ introCasePattern :: MonadGamma m => Type -> CasePattern -> m a -> m a
 introCasePattern scrutType patn cont = case patn of
   CPVariant patnTCon con var -> do
     DefDataType _loc _name _serializable tparams dataCons <- inWorld (lookupDataType patnTCon)
-    variantCons <- match _DataVariant (EExpectedVariantType patnTCon) dataCons
+    variantCons <- case dataCons of
+      DataVariant t -> pure t
+      _ -> throwWithContext (EExpectedVariantType patnTCon)
     conArgType <-
-      match _Just (EUnknownDataCon con) (con `lookup` variantCons)
+      maybe (throwWithContext $ EUnknownDataCon con) pure (con `lookup` variantCons)
     (scrutTCon, scrutTArgs) <-
-      match _TConApp (EExpectedDataType scrutType) scrutType
+      case scrutType of
+        TConApp a b -> pure (a, b)
+        _ -> throwWithContext (EExpectedDataType scrutType)
     unless (scrutTCon == patnTCon) $
       throwWithContext (ETypeConMismatch patnTCon scrutTCon)
     -- NOTE(MH): The next line should never throw since @scrutTApp@ has passed
     -- 'checkTypeConApp'. The call to 'substitute' is hence safe for the same
     -- reason as in 'checkTypeConApp'.
     subst0 <-
-      match _Just (ETypeConAppWrongArity (TypeConApp scrutTCon scrutTArgs)) (zipExactMay tparams scrutTArgs)
+      maybe (throwWithContext $ ETypeConAppWrongArity (TypeConApp scrutTCon scrutTArgs)) pure (zipExactMay tparams scrutTArgs)
     let subst1 = map (\((v, _k), t) -> (v, t)) subst0
     let varType = substitute (Map.fromList subst1) conArgType
     introExprVar var varType cont
   CPEnum patnTCon con -> do
     defDataType <- inWorld (lookupDataType patnTCon)
-    enumCons <- match _DataEnum (EExpectedEnumType patnTCon) (dataCons defDataType)
+    enumCons <- case dataCons defDataType of
+      DataEnum d -> pure d
+      _ -> throwWithContext (EExpectedEnumType patnTCon)
     unless (con `elem` enumCons) $ throwWithContext (EUnknownDataCon con)
-    scrutTCon <- match _TCon (EExpectedDataType scrutType) scrutType
+    scrutTCon <- case scrutType of
+      TCon t -> pure t
+      _ -> throwWithContext (EExpectedDataType scrutType)
     unless (scrutTCon == patnTCon) $
       throwWithContext (ETypeConMismatch patnTCon scrutTCon)
     cont
@@ -360,19 +387,27 @@ introCasePattern scrutType patn cont = case patn of
     | otherwise ->
         throwWithContext ETypeMismatch{foundType = scrutType, expectedType = TBool, expr = Nothing}
   CPNil -> do
-    _ :: Type <- match _TList (EExpectedListType scrutType) scrutType
+    _ :: Type <- case scrutType of
+      TList t -> pure t
+      _ -> throwWithContext (EExpectedListType scrutType)
     cont
   CPCons headVar tailVar -> do
-    elemType <- match _TList (EExpectedListType scrutType) scrutType
+    elemType <- case scrutType of
+      TList t -> pure t
+      _ -> throwWithContext (EExpectedListType scrutType)
     -- NOTE(MH): The second 'introExprVar' will catch the bad case @headVar ==
     -- tailVar@.
     introExprVar headVar elemType $ introExprVar tailVar (TList elemType) cont
   CPDefault -> cont
   CPSome bodyVar -> do
-    bodyType <- match _TOptional (EExpectedOptionalType scrutType) scrutType
+    bodyType <- case scrutType of
+      TOptional t -> pure t
+      _ -> throwWithContext (EExpectedOptionalType scrutType)
     introExprVar bodyVar bodyType cont
   CPNone -> do
-    _ :: Type <- match _TOptional (EExpectedOptionalType scrutType) scrutType
+    _ :: Type <- case scrutType of
+      TOptional t -> pure t
+      _ -> throwWithContext (EExpectedOptionalType scrutType)
     cont
 
 typeOfCase :: MonadGamma m => Expr -> [CaseAlternative] -> m Type
@@ -411,7 +446,9 @@ typeOfBind (Binding (var, typ) bound) body = do
   checkType typ KStar
   checkExpr bound (TUpdate typ)
   bodyType <- introExprVar var typ (typeOf body)
-  _ :: Type <- match _TUpdate (EExpectedUpdateType bodyType) bodyType
+  _ :: Type <- case bodyType of
+    TUpdate t -> pure t
+    _ -> throwWithContext (EExpectedUpdateType bodyType)
   pure bodyType
 
 checkCreate :: MonadGamma m => Qualified TypeConName -> Expr -> m ()
@@ -468,7 +505,9 @@ typeOfScenario = \case
     checkType typ KStar
     checkExpr bound (TScenario typ)
     bodyType <- introExprVar var typ (typeOf body)
-    _ :: Type <- match _TScenario (EExpectedScenarioType bodyType) bodyType
+    _ :: Type <- case bodyType of
+      TScenario t -> pure t
+      _ -> throwWithContext (EExpectedScenarioType bodyType)
     pure bodyType
   SCommit typ party update -> do
     checkType typ KStar
@@ -586,7 +625,9 @@ checkTemplate m t@(Template _loc tpl param precond signatories observers text ch
   let tcon = Qualified PRSelf (moduleName m) tpl
   DefDataType _loc _naem _serializable tparams dataCons <- inWorld (lookupDataType tcon)
   unless (null tparams) $ throwWithContext (EExpectedTemplatableType tpl)
-  _ <- match _DataRecord (EExpectedTemplatableType tpl) dataCons
+  _ <- case dataCons of
+    DataRecord r -> pure r
+    _ -> throwWithContext (EExpectedTemplatableType tpl)
   introExprVar param (TCon tcon) $ do
     withPart TPPrecondition $ checkExpr precond TBool
     withPart TPSignatories $ checkExpr signatories (TList TParty)
@@ -610,6 +651,7 @@ checkTemplateKey param tcon TemplateKey{..} = do
       checkExpr tplKeyBody tplKeyType
     checkExpr tplKeyMaintainers (tplKeyType :-> TList TParty)
 
+{-# SPECIALIZE checkModule :: Module -> ReaderT Gamma (Either Error) () #-}
 -- NOTE(MH): It is important that the data type definitions are checked first.
 -- The type checker for expressions relies on the fact that data type
 -- definitions do _not_ contain free variables.
