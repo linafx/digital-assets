@@ -1,5 +1,5 @@
 diff --git a/haskell/cabal.bzl b/haskell/cabal.bzl
-index 48a4067a..5b0a96e1 100644
+index 48a4067a..3665bf77 100644
 --- a/haskell/cabal.bzl
 +++ b/haskell/cabal.bzl
 @@ -94,7 +94,12 @@ def _prepare_cabal_inputs(hs, cc, posix, dep_info, cc_info, component, package_i
@@ -16,3 +16,12 @@ index 48a4067a..5b0a96e1 100644
      if hs.toolchain.is_darwin:
          env["SDKROOT"] = "macosx"  # See haskell/private/actions/link.bzl
  
+@@ -116,6 +121,8 @@ def _prepare_cabal_inputs(hs, cc, posix, dep_info, cc_info, component, package_i
+     ]
+     args.add_all([component, package_id, setup, cabal.dirname, package_database.dirname])
+     args.add("--flags=" + " ".join(flags))
++    if hs.label.workspace_name == "proto3_suite":
++        args.add_all(["-v"], format_each = "--ghc-option=%s")
+     args.add("--")
+     args.add_all(package_databases, map_each = _dirname, format_each = "--package-db=%s")
+     args.add_all(extra_include_dirs, format_each = "--extra-include-dirs=%s")
