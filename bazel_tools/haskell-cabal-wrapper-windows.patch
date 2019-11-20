@@ -194,14 +194,15 @@ index 584ca8af..c5840806 100644
              version = version,
              compiler_flags = compiler_flags,
 diff --git a/haskell/private/cabal_wrapper.py.tpl b/haskell/private/cabal_wrapper.py.tpl
-index 88c36e3e..391c0688 100755
+index 88c36e3e..d47fbeb3 100755
 --- a/haskell/private/cabal_wrapper.py.tpl
 +++ b/haskell/private/cabal_wrapper.py.tpl
-@@ -96,12 +96,14 @@ def recache_db():
+@@ -96,12 +96,15 @@ def recache_db():
  
  recache_db()
  
 +tmp_path = os.path.join(pkgroot, "_tmp")
++os.mkdirs(tmp_path, exist_ok=True)
 +
  @contextmanager
  def tmpdir():
@@ -213,7 +214,7 @@ index 88c36e3e..391c0688 100755
      try:
          yield distdir
      finally:
-@@ -131,6 +133,7 @@ with tmpdir() as distdir:
+@@ -131,6 +134,7 @@ with tmpdir() as distdir:
          ] +
          enable_relocatable_flags + \
          [ \
