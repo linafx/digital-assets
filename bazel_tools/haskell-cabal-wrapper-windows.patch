@@ -259,10 +259,10 @@ index f39c6b5f..4541993e 100644
              "@rules_haskell//haskell/platforms:mingw32": "windows",
 diff --git a/haskell/private/cc_wrapper_proto_windows.sh.tpl b/haskell/private/cc_wrapper_proto_windows.sh.tpl
 new file mode 100644
-index 00000000..b1524cd9
+index 00000000..b02e6e0d
 --- /dev/null
 +++ b/haskell/private/cc_wrapper_proto_windows.sh.tpl
-@@ -0,0 +1,202 @@
+@@ -0,0 +1,204 @@
 +# CC toolchain wrapper
 +#
 +# Usage: cc_wrapper [ARG]...
@@ -404,6 +404,8 @@ index 00000000..b1524cd9
 +    if [[ ${#relative} -lt ${#shortest} ]]; then
 +        shortest="$relative"
 +    fi
++
++    shortest="$(cygpath -d "$shortest")"
 +}
 +
 +handle_include_dir() {
