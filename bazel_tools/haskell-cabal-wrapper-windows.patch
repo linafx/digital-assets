@@ -15,7 +15,7 @@ index 0c0fbebe..2688b37a 100644
      name = "cabal_wrapper",
      visibility = ["//visibility:public"],
 diff --git a/haskell/cabal.bzl b/haskell/cabal.bzl
-index b8b68074..e5443a35 100644
+index b8b68074..489da23c 100644
 --- a/haskell/cabal.bzl
 +++ b/haskell/cabal.bzl
 @@ -89,43 +89,68 @@ def _binary_paths(binaries):
@@ -96,7 +96,7 @@ index b8b68074..e5443a35 100644
 +            "-optP-undef",
 +            "-optP-traditional",
 +        ], format_each = "--ghc-option=%s")
-+        args.add_all(["-v", "-keep-tmp-files"], format_each = "--ghc-option=%s")
++        args.add_all(["-v", "-keep-tmp-files", "-tmpdir=./tmp"], format_each = "--ghc-option=%s")
      args.add("--")
      args.add_all(package_databases, map_each = _dirname, format_each = "--package-db=%s")
 -    args.add_all(extra_include_dirs, map_each = _skip_ghc_bindist, format_each = "--extra-include-dirs=%s")
