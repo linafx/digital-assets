@@ -15,10 +15,10 @@ index 0c0fbebe..2688b37a 100644
      name = "cabal_wrapper",
      visibility = ["//visibility:public"],
 diff --git a/haskell/cabal.bzl b/haskell/cabal.bzl
-index b8b68074..489da23c 100644
+index b8b68074..43d9668f 100644
 --- a/haskell/cabal.bzl
 +++ b/haskell/cabal.bzl
-@@ -89,43 +89,68 @@ def _binary_paths(binaries):
+@@ -89,43 +89,65 @@ def _binary_paths(binaries):
      return [binary.dirname for binary in binaries.to_list()]
  
  def _skip_ghc_bindist(path):
@@ -42,9 +42,6 @@ index b8b68074..489da23c 100644
 +        cc_path = paths.dirname(cc.tools.cpp)
 +        print("cc_path", cc_path)
 +        env["PATH"] = join_path_list(hs, _binary_paths(tool_inputs) + posix.paths + [cc_path])
-+        env["TMPDIR"] = "./_tmp"
-+        env["TMP"] = "./_tmp"
-+        env["TEMP"] = "./_tmp"
 +    else:
 +        env["PATH"] = join_path_list(hs, _binary_paths(tool_inputs) + posix.paths)
      if hs.toolchain.is_darwin:
@@ -96,7 +93,7 @@ index b8b68074..489da23c 100644
 +            "-optP-undef",
 +            "-optP-traditional",
 +        ], format_each = "--ghc-option=%s")
-+        args.add_all(["-v", "-keep-tmp-files", "-tmpdir=./tmp"], format_each = "--ghc-option=%s")
++        args.add_all(["-v", "-keep-tmp-files"], format_each = "--ghc-option=%s")
      args.add("--")
      args.add_all(package_databases, map_each = _dirname, format_each = "--package-db=%s")
 -    args.add_all(extra_include_dirs, map_each = _skip_ghc_bindist, format_each = "--extra-include-dirs=%s")
@@ -106,7 +103,7 @@ index b8b68074..489da23c 100644
      if with_profiling:
          args.add("--enable-profiling")
  
-@@ -138,13 +163,15 @@ def _prepare_cabal_inputs(hs, cc, posix, dep_info, cc_info, component, package_i
+@@ -138,13 +160,15 @@ def _prepare_cabal_inputs(hs, cc, posix, dep_info, cc_info, component, package_i
              depset(srcs),
              depset(cc.files),
              package_databases,
@@ -125,7 +122,7 @@ index b8b68074..489da23c 100644
      )
      input_manifests = tool_input_manifests
  
-@@ -160,8 +187,19 @@ def _haskell_cabal_library_impl(ctx):
+@@ -160,8 +184,19 @@ def _haskell_cabal_library_impl(ctx):
      hs = haskell_context(ctx)
      dep_info = gather_dep_info(ctx, ctx.attr.deps)
      cc = cc_interop_info(ctx)
@@ -146,7 +143,7 @@ index b8b68074..489da23c 100644
      )
      posix = ctx.toolchains["@rules_sh//sh/posix:toolchain_type"]
      package_id = "{}-{}".format(
-@@ -208,6 +246,7 @@ def _haskell_cabal_library_impl(ctx):
+@@ -208,6 +243,7 @@ def _haskell_cabal_library_impl(ctx):
          cc,
          posix,
          dep_info,
@@ -154,7 +151,7 @@ index b8b68074..489da23c 100644
          cc_info,
          component = "lib:{}".format(
              ctx.attr.package_name if ctx.attr.package_name else hs.label.name,
-@@ -363,8 +402,19 @@ def _haskell_cabal_binary_impl(ctx):
+@@ -363,8 +399,19 @@ def _haskell_cabal_binary_impl(ctx):
      hs = haskell_context(ctx)
      dep_info = gather_dep_info(ctx, ctx.attr.deps)
      cc = cc_interop_info(ctx)
@@ -175,7 +172,7 @@ index b8b68074..489da23c 100644
      )
      posix = ctx.toolchains["@rules_sh//sh/posix:toolchain_type"]
  
-@@ -391,6 +441,7 @@ def _haskell_cabal_binary_impl(ctx):
+@@ -391,6 +438,7 @@ def _haskell_cabal_binary_impl(ctx):
          cc,
          posix,
          dep_info,
@@ -196,6 +193,34 @@ index 584ca8af..c5840806 100644
              target = target,
              version = version,
              compiler_flags = compiler_flags,
+diff --git a/haskell/private/cabal_wrapper.py.tpl b/haskell/private/cabal_wrapper.py.tpl
+index 88c36e3e..391c0688 100755
+--- a/haskell/private/cabal_wrapper.py.tpl
++++ b/haskell/private/cabal_wrapper.py.tpl
+@@ -96,12 +96,14 @@ def recache_db():
+ 
+ recache_db()
+ 
++tmp_path = os.path.join(pkgroot, "_tmp")
++
+ @contextmanager
+ def tmpdir():
+     """This is a reimplementation of `tempfile.TemporaryDirectory` because
+     the latter isn't available in python2
+     """
+-    distdir = tempfile.mkdtemp()
++    distdir = tempfile.mkdtemp(dir = tmp_path)
+     try:
+         yield distdir
+     finally:
+@@ -131,6 +133,7 @@ with tmpdir() as distdir:
+         ] +
+         enable_relocatable_flags + \
+         [ \
++        "--ghc-option=-tmpdir=" + tmp_path, \
+         "--builddir=" + distdir, \
+         "--prefix=" + pkgroot, \
+         "--libdir=" + libdir, \
 diff --git a/haskell/private/cc_wrapper.bzl b/haskell/private/cc_wrapper.bzl
 index f39c6b5f..4541993e 100644
 --- a/haskell/private/cc_wrapper.bzl
