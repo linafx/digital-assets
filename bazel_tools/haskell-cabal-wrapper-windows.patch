@@ -194,7 +194,7 @@ index 584ca8af..c5840806 100644
              version = version,
              compiler_flags = compiler_flags,
 diff --git a/haskell/private/cabal_wrapper.py.tpl b/haskell/private/cabal_wrapper.py.tpl
-index 88c36e3e..94116999 100755
+index 88c36e3e..0604fb58 100755
 --- a/haskell/private/cabal_wrapper.py.tpl
 +++ b/haskell/private/cabal_wrapper.py.tpl
 @@ -96,12 +96,15 @@ def recache_db():
@@ -214,14 +214,27 @@ index 88c36e3e..94116999 100755
      try:
          yield distdir
      finally:
-@@ -131,6 +134,7 @@ with tmpdir() as distdir:
+@@ -131,7 +134,8 @@ with tmpdir() as distdir:
          ] +
          enable_relocatable_flags + \
          [ \
+-        "--builddir=" + distdir, \
 +        "--ghc-option=-tmpdir=" + os.path.relpath(tmp_path), \
-         "--builddir=" + distdir, \
++        "--builddir=" + os.path.relpath(distdir), \
          "--prefix=" + pkgroot, \
          "--libdir=" + libdir, \
+         "--dynlibdir=" + dynlibdir, \
+@@ -148,8 +152,8 @@ with tmpdir() as distdir:
+         [ arg.replace("=", "=" + execroot + "/") for arg in path_args ] + \
+         [ "--package-db=" + package_database ], # This arg must come last.
+         )
+-    run([runghc, setup, "build", "--verbose=0", "--builddir=" + distdir])
+-    run([runghc, setup, "install", "--verbose=0", "--builddir=" + distdir])
++    run([runghc, setup, "build", "--verbose=0", "--builddir=" + os.path.relpath(distdir)])
++    run([runghc, setup, "install", "--verbose=0", "--builddir=" + os.path.relpath(distdir)])
+     os.chdir(old_cwd)
+ 
+ # XXX Cabal has a bizarre layout that we can't control directly. It
 diff --git a/haskell/private/cc_wrapper.bzl b/haskell/private/cc_wrapper.bzl
 index f39c6b5f..4541993e 100644
 --- a/haskell/private/cc_wrapper.bzl
