@@ -194,7 +194,7 @@ index 584ca8af..c5840806 100644
              version = version,
              compiler_flags = compiler_flags,
 diff --git a/haskell/private/cabal_wrapper.py.tpl b/haskell/private/cabal_wrapper.py.tpl
-index 88c36e3e..d47fbeb3 100755
+index 88c36e3e..0345133f 100755
 --- a/haskell/private/cabal_wrapper.py.tpl
 +++ b/haskell/private/cabal_wrapper.py.tpl
 @@ -96,12 +96,15 @@ def recache_db():
@@ -202,7 +202,7 @@ index 88c36e3e..d47fbeb3 100755
  recache_db()
  
 +tmp_path = os.path.join(pkgroot, "_tmp")
-+os.mkdirs(tmp_path, exist_ok=True)
++os.makedirs(tmp_path, exist_ok=True)
 +
  @contextmanager
  def tmpdir():
