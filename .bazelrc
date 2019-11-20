@@ -65,7 +65,7 @@ build:windows --action_env=JAVA_HOME
 build:linux --host_platform=@rules_haskell//haskell/platforms:linux_x86_64_nixpkgs
 build:darwin --host_platform=@rules_haskell//haskell/platforms:darwin_x86_64_nixpkgs
 # and GHC's gcc on Windows
-build:windows --crosstool_top=@rules_haskell_ghc_windows_amd64//:cc_toolchain
+build:windows --crosstool_top=@ghc_windows_amd64//:cc_toolchain
 
 # Bazel 1.0 disabled the bash test-runner on Windows. However, some of our
 # test-cases are implemented as bash scripts and rely on the bash test-runner.
