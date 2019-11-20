@@ -194,7 +194,7 @@ index 584ca8af..c5840806 100644
              version = version,
              compiler_flags = compiler_flags,
 diff --git a/haskell/private/cabal_wrapper.py.tpl b/haskell/private/cabal_wrapper.py.tpl
-index 88c36e3e..0345133f 100755
+index 88c36e3e..94116999 100755
 --- a/haskell/private/cabal_wrapper.py.tpl
 +++ b/haskell/private/cabal_wrapper.py.tpl
 @@ -96,12 +96,15 @@ def recache_db():
@@ -218,7 +218,7 @@ index 88c36e3e..0345133f 100755
          ] +
          enable_relocatable_flags + \
          [ \
-+        "--ghc-option=-tmpdir=" + tmp_path, \
++        "--ghc-option=-tmpdir=" + os.path.relpath(tmp_path), \
          "--builddir=" + distdir, \
          "--prefix=" + pkgroot, \
          "--libdir=" + libdir, \
