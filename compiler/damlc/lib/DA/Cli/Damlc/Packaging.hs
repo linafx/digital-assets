@@ -421,7 +421,7 @@ writeSrc (fp, content) = do
 getGhcPkgPath :: IO FilePath
 getGhcPkgPath =
     if isWindows
-        then locateRunfiles "rules_haskell_ghc_windows_amd64/bin"
+        then locateRunfiles "ghc_windows_amd64/bin"
         else locateRunfiles "ghc_nix/lib/ghc-8.6.5/bin"
 
 -- | Fail with an exit failure and errror message when Nothing is returned.
