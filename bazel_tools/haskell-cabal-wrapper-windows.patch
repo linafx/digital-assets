@@ -15,7 +15,7 @@ index 0c0fbebe..2688b37a 100644
      name = "cabal_wrapper",
      visibility = ["//visibility:public"],
 diff --git a/haskell/cabal.bzl b/haskell/cabal.bzl
-index b8b68074..020c1bb6 100644
+index b8b68074..6a65ad1d 100644
 --- a/haskell/cabal.bzl
 +++ b/haskell/cabal.bzl
 @@ -89,7 +89,7 @@ def _binary_paths(binaries):
@@ -41,7 +41,7 @@ index b8b68074..020c1bb6 100644
      if hs.toolchain.is_darwin:
          env["SDKROOT"] = "macosx"  # See haskell/private/actions/link.bzl
  
-@@ -122,6 +127,29 @@ def _prepare_cabal_inputs(hs, cc, posix, dep_info, cc_info, component, package_i
+@@ -122,10 +127,36 @@ def _prepare_cabal_inputs(hs, cc, posix, dep_info, cc_info, component, package_i
      ]
      args.add_all([component, package_id, setup, cabal.dirname, package_database.dirname])
      args.add("--flags=" + " ".join(flags))
@@ -71,7 +71,15 @@ index b8b68074..020c1bb6 100644
      args.add("--")
      args.add_all(package_databases, map_each = _dirname, format_each = "--package-db=%s")
      args.add_all(extra_include_dirs, map_each = _skip_ghc_bindist, format_each = "--extra-include-dirs=%s")
-@@ -144,7 +172,9 @@ def _prepare_cabal_inputs(hs, cc, posix, dep_info, cc_info, component, package_i
+-    args.add_all(extra_lib_dirs, format_each = "--extra-lib-dirs=%s", uniquify = True)
++    if hs.label.workspace_name == "proto3_suite":
++        args.add_all(extra_lib_dirs, map_each = _skip_ghc_bindist, format_each = "--extra-lib-dirs=%s", uniquify = True)
++    else:
++        args.add_all(extra_lib_dirs, format_each = "--extra-lib-dirs=%s", uniquify = True)
+     if with_profiling:
+         args.add("--enable-profiling")
+ 
+@@ -144,7 +175,9 @@ def _prepare_cabal_inputs(hs, cc, posix, dep_info, cc_info, component, package_i
              dep_info.static_libraries,
              dep_info.dynamic_libraries,
              tool_inputs,
