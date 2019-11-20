@@ -15,9 +15,18 @@ index 0c0fbebe..2688b37a 100644
      name = "cabal_wrapper",
      visibility = ["//visibility:public"],
 diff --git a/haskell/cabal.bzl b/haskell/cabal.bzl
-index b8b68074..8d5c73b8 100644
+index b8b68074..b414a03a 100644
 --- a/haskell/cabal.bzl
 +++ b/haskell/cabal.bzl
+@@ -89,7 +89,7 @@ def _binary_paths(binaries):
+     return [binary.dirname for binary in binaries.to_list()]
+ 
+ def _skip_ghc_bindist(path):
+-    if path.find("rules_haskell_ghc_windows_amd64") != -1:
++    if path.find("ghc_windows_amd64") != -1:
+         return None
+     else:
+         return path
 @@ -100,7 +100,12 @@ def _prepare_cabal_inputs(hs, cc, posix, dep_info, cc_info, component, package_i
  
      (ghci_extra_libs, env) = get_ghci_extra_libs(hs, posix, cc_info)
@@ -73,6 +82,19 @@ index b8b68074..8d5c73b8 100644
      )
      input_manifests = tool_input_manifests
  
+diff --git a/haskell/ghc_bindist.bzl b/haskell/ghc_bindist.bzl
+index 584ca8af..c5840806 100644
+--- a/haskell/ghc_bindist.bzl
++++ b/haskell/ghc_bindist.bzl
+@@ -442,7 +442,7 @@ def haskell_register_ghc_bindists(
+         fail("Binary distribution of GHC {} not available.".format(version))
+     for target in GHC_BINDIST[version]:
+         ghc_bindist(
+-            name = "rules_haskell_ghc_{}".format(target),
++            name = "ghc_{}".format(target),
+             target = target,
+             version = version,
+             compiler_flags = compiler_flags,
 diff --git a/haskell/private/cc_wrapper.bzl b/haskell/private/cc_wrapper.bzl
 index f39c6b5f..4541993e 100644
 --- a/haskell/private/cc_wrapper.bzl
@@ -344,3 +366,16 @@ index 8482beef..9d115ea8 100644
      },
  )
  
+diff --git a/hazel/tools/ghc.bzl b/hazel/tools/ghc.bzl
+index e359021b..50552b2d 100644
+--- a/hazel/tools/ghc.bzl
++++ b/hazel/tools/ghc.bzl
+@@ -3,7 +3,7 @@ load("@bazel_tools//tools/cpp:lib_cc_configure.bzl", "get_cpu_value")
+ default_ghc_workspaces = {
+     "k8": "@ghc",
+     "darwin": "@ghc",
+-    "x64_windows": "@rules_haskell_ghc_windows_amd64",
++    "x64_windows": "@ghc_windows_amd64",
+ }
+ 
+ def get_ghc_workspace(ghc_workspaces, repository_ctx):
