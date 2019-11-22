@@ -1,0 +1,20 @@
+load("//bazel_tools:haskell.bzl", "da_haskell_binary", "da_haskell_library", "da_haskell_test")
+
+da_haskell_binary(
+    name = "analyzer",
+    srcs = ["Main.hs"],
+    hackage_deps = [
+        "base",
+        "bytestring",
+        "lens",
+        "text",
+        "zip-archive",
+    ],
+    src_strip_prefix = "exe",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//compiler/daml-lf-ast",
+        "//compiler/daml-lf-proto",
+        "//compiler/daml-lf-reader",
+    ],
+)
