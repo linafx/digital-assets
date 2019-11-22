@@ -90,6 +90,7 @@ genrule(
         "README.md",
         "yarn.lock",
         "src/*",
+        ".vscodeignore",
     ]) + [
         ":node_deps_cache",
         "//:VERSION",

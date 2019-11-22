@@ -17,6 +17,7 @@ import * as util from 'util';
 import fetch, { Response } from 'node-fetch';
 import { getOrd } from 'fp-ts/lib/Array';
 import { ordNumber } from 'fp-ts/lib/Ord';
+import { JSDOM } from 'jsdom';
 
 let damlRoot: string = path.join(os.homedir(), '.daml');
 
@@ -35,6 +36,9 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // Check extension version to display release notes on updates
     showReleaseNotesIfNewVersion(context);
+
+    // FIXME: Just playing with rss reader for now
+    showNewBlog();
 
     damlLanguageClient = createLanguageClient(config, await consent);
     damlLanguageClient.registerProposedFeatures();
@@ -143,6 +147,22 @@ async function showReleaseNotes(version: string) {
                 {} // No webview options for now
             );
             panel.webview.html = await result.text();
+        }
+    });
+}
+
+async function showNewBlog() {
+    const feedUrl = 'https://blog.daml.com/daml-driven/rss.xml';
+    fetch(feedUrl).then(async (res: Response) => {
+        if (res.ok) {
+            const rssXml = await res.text();
+            const dom = new JSDOM(rssXml, { contentType: 'text/xml' });
+            const doc = dom.window.document;
+            const latestBlog = doc.querySelector('item');
+            if (latestBlog) {
+                const title = latestBlog.querySelector('title')!.textContent;
+                console.log(`Latest blog post: ${title}`);
+            }
         }
     });
 }
