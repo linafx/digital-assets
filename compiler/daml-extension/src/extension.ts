@@ -17,6 +17,7 @@ import * as util from 'util';
 import fetch, { Response } from 'node-fetch';
 import { getOrd } from 'fp-ts/lib/Array';
 import { ordNumber } from 'fp-ts/lib/Ord';
+import { JSDOM } from 'jsdom';
 
 let damlRoot: string = path.join(os.homedir(), '.daml');
 
@@ -116,6 +117,16 @@ async function showReleaseNotesIfNewVersion(context: ExtensionContext) {
         showReleaseNotes(extensionVersion);
         await context.globalState.update(versionContextKey, extensionVersion);
     }
+}
+
+async function showNewBlog() {
+    const feedUrl = 'https://blog.daml.com/daml-driven/rss.xml';
+    fetch(feedUrl).then(async (res: Response) => {
+        if (res.ok) {
+            const rssXml = await res.text();
+            const dom = new JSDOM(rssXml, { contentType: 'text/xml' });
+        }
+    });
 }
 
 // Check that `version2` is an upgrade from `version1`,
