@@ -6,6 +6,7 @@
 }:
 let shared = rec {
   inherit (pkgs)
+    cmake
     coreutils
     curl
     docker
@@ -18,6 +19,7 @@ let shared = rec {
     jdk8
     jq
     netcat-gnu
+    ninja
     nodejs
     patchelf
     postgresql_9_6

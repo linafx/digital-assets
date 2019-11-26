@@ -1,6 +1,7 @@
 package(default_visibility = ["//:__subpackages__"])
 
 load("@bazel_tools//tools/python:toolchain.bzl", "py_runtime_pair")
+load("@rules_foreign_cc//tools/build_defs/native_tools:native_tools_toolchain.bzl", "native_tool_toolchain")
 load(
     "@rules_haskell//haskell:defs.bzl",
     "haskell_toolchain",
@@ -236,4 +237,36 @@ da_haskell_repl(
         "//daml-assistant/daml-helper",
         "//daml-assistant/integration-tests",
     ],
+)
+
+# toolchain(
+#     name = "_cmake_toolchain",
+#     toolchain = "@rules_foreign_cc//tools/build_defs/native_tools:built_cmake",
+#     toolchain_type = "@rules_foreign_cc//tools/build_defs:cmake_toolchain",
+# )
+
+native_tool_toolchain(
+  name = "dev-env-cmake",
+  path = "bin/cmake",
+  target = "@cmake_nix//:bin",
+  visibility = ["//visibility:public"],
+)
+
+toolchain(
+    name = "my_cmake_toolchain",
+    toolchain = ":dev-env-cmake",
+    toolchain_type = "@rules_foreign_cc//tools/build_defs:cmake_toolchain",
+)
+
+native_tool_toolchain(
+  name = "dev-env-ninja",
+  path = "ninja",
+  target = "@ninja_nix//:bin",
+  visibility = ["//visibility:public"],
+)
+
+toolchain(
+    name = "my_ninja_toolchain",
+    toolchain = ":dev-env-ninja",
+    toolchain_type = "@rules_foreign_cc//tools/build_defs:ninja_toolchain",
 )

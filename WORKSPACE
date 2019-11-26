@@ -520,6 +520,27 @@ java_home_runtime(name = "java_home")
 # rules_go used here to compile a wrapper around the protoc-gen-scala plugin
 load("@io_bazel_rules_go//go:deps.bzl", "go_register_toolchains", "go_rules_dependencies")
 
+load("@rules_foreign_cc//:workspace_definitions.bzl", "rules_foreign_cc_dependencies")
+rules_foreign_cc_dependencies(["//:my_cmake_toolchain", "//:my_ninja_toolchain"])
+
+http_archive(
+   name = "grpc-src",
+   build_file_content = """filegroup(name = "all", srcs = glob(["**"]), visibility = ["//visibility:public"])""",
+   strip_prefix = "grpc-1.23.0",
+   urls = ["https://github.com/grpc/grpc/archive/v1.23.0.tar.gz"],
+   sha256 = "f56ced18740895b943418fa29575a65cc2396ccfa3159fa40d318ef5f59471f9",
+    patches = ["@com_github_digital_asset_daml//bazel_tools:grpc-cares-cmake.patch"],
+    patch_args = ["-p1"],
+)
+
+http_archive(
+   name = "ares-src",
+   build_file_content = """filegroup(name = "all", srcs = glob(["**"]), visibility = ["//visibility:public"])""",
+   strip_prefix = "c-ares-d7e070e7283f822b1d2787903cce3615536c5610",
+   urls = ["https://github.com/c-ares/c-ares/archive/d7e070e7283f822b1d2787903cce3615536c5610.tar.gz"],
+   sha256 = "bbaab13d6ad399a278d476f533e4d88a7ec7d729507348bb9c2e3b207ba4c606",
+)
+
 nixpkgs_package(
     name = "go_nix",
     attribute_path = "go",
@@ -711,6 +732,23 @@ nixpkgs_package(
     nix_file_deps = common_nix_file_deps,
     repositories = dev_env_nix_repos,
 )
+
+nixpkgs_package(
+    name = "cmake_nix",
+    attribute_path = "cmake",
+    nix_file = "//nix:bazel.nix",
+    nix_file_deps = common_nix_file_deps,
+    repositories = dev_env_nix_repos,
+)
+
+nixpkgs_package(
+    name = "ninja_nix",
+    attribute_path = "ninja",
+    nix_file = "//nix:bazel.nix",
+    nix_file_deps = common_nix_file_deps,
+    repositories = dev_env_nix_repos,
+)
+
 
 register_toolchains("//:nix_python_toolchain") if not is_windows else None
 

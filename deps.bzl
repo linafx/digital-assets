@@ -257,3 +257,10 @@ java_import(
             strip_prefix = "bazel-common-9e3880428c1837db9fb13335ed390b7e33e346a7",
             urls = ["https://github.com/google/bazel-common/archive/9e3880428c1837db9fb13335ed390b7e33e346a7.zip"],
         )
+
+    if "rules_foreign_cc" not in native.existing_rules():
+        http_archive(
+            name = "rules_foreign_cc",
+            strip_prefix = "rules_foreign_cc-master",
+            url = "https://github.com/bazelbuild/rules_foreign_cc/archive/master.zip",
+        )
