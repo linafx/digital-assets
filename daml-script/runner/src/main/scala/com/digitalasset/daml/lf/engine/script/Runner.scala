@@ -45,6 +45,7 @@ import com.digitalasset.ledger.client.LedgerClient
 import com.digitalasset.ledger.client.LedgerClient
 import com.digitalasset.ledger.client.configuration.LedgerClientConfiguration
 
+import com.digitalasset.ledger.client.services.admin.PartyManagementClient
 import com.digitalasset.ledger.client.services.commands.CommandUpdater
 
 object LfValueCodec extends ApiCodecCompressed[AbsoluteContractId](false, false) {
@@ -59,7 +60,8 @@ object LfValueCodec extends ApiCodecCompressed[AbsoluteContractId](false, false)
 
 case class Participant(participant: String)
 case class Party(party: String)
-case class ApiParameters(host: String, port: Int)
+case class EndpointParameters(host: String, port: Int)
+case class ApiParameters(ledger: EndpointParameters, admin: EndpointParameters)
 case class Participants[T](
     default_participant: Option[T],
     participants: Map[Participant, T],
@@ -86,6 +88,8 @@ case class Participants[T](
     }
 }
 
+case class ParticipantClient(ledger: LedgerClient, party: PartyManagementClient)
+
 object ParticipantsJsonProtocol extends DefaultJsonProtocol {
   implicit object ParticipantFormat extends JsonFormat[Participant] {
     def read(value: JsValue) = value match {
@@ -101,22 +105,37 @@ object ParticipantsJsonProtocol extends DefaultJsonProtocol {
     }
     def write(p: Party) = JsString(p.party)
   }
-  implicit val apiParametersFormat = jsonFormat2(ApiParameters)
+  implicit val endpointParametersFormat = jsonFormat2(EndpointParameters)
+  implicit object ApiParametersFormat extends JsonFormat[ApiParameters] {
+    def read(value: JsValue) =
+      value.convertTo(safeReader[EndpointParameters]) match {
+        case Left(_) => value.convertTo(jsonFormat2(ApiParameters.apply))
+        case Right(ep) => ApiParameters(ep, ep)
+      }
+    def write(params: ApiParameters) =
+      jsonFormat2(ApiParameters).write(params)
+  }
   implicit val participantsFormat = jsonFormat3(Participants[ApiParameters])
 }
 
 object Runner {
   private def connectApiParameters(params: ApiParameters, clientConfig: LedgerClientConfiguration)(
-      implicit ec: ExecutionContext,
-      seq: ExecutionSequencerFactory): Future[LedgerClient] = {
-    LedgerClient.singleHost(params.host, params.port, clientConfig)
-  }
+    implicit ec: ExecutionContext,
+    seq: ExecutionSequencerFactory): Future[ParticipantClient] =
+    for {
+      ledgerClient <- LedgerClient.singleHost(params.ledger.host, params.ledger.port, clientConfig)
+      partyClient <- if (params.ledger == params.admin) {
+        Future { ledgerClient.partyManagementClient }
+      } else {
+        Future { ledgerClient.partyManagementClient }
+      }
+    } yield (ParticipantClient(ledgerClient, partyClient))
   // We might want to have one config per participant at some point but for now this should be sufficient.
   def connect(
       participantParams: Participants[ApiParameters],
       clientConfig: LedgerClientConfiguration)(
       implicit ec: ExecutionContext,
-      seq: ExecutionSequencerFactory): Future[Participants[LedgerClient]] = {
+      seq: ExecutionSequencerFactory): Future[Participants[ParticipantClient]] = {
     for {
       // The standard library is incredibly weird. Option is not Traversable so we have to convert to a list and back.
       // Map is but it doesn’t return a Map so we have to call toMap afterwards.
@@ -223,7 +242,7 @@ class Runner(
   }
 
   def run(
-      initialClients: Participants[LedgerClient],
+      initialClients: Participants[ParticipantClient],
       scriptId: Identifier,
       inputValue: Option[JsValue])(
       implicit ec: ExecutionContext,
@@ -321,11 +340,11 @@ class Runner(
                     party <- Converter.toParty(vals.get(0))
                     commands <- Converter.toCommands(compiledPackages, freeAp)
                     client <- clients.getPartyParticipant(Party(party.value))
-                  } yield (client, toSubmitRequest(client.ledgerId, party, commands))
+                  } yield (client, toSubmitRequest(client.ledger.ledgerId, party, commands))
                   val (client, request) =
                     requestOrErr.fold(s => throw new ConverterException(s), identity)
                   val f =
-                    client.commandServiceClient
+                    client.ledger.commandServiceClient
                       .submitAndWaitForTransactionTree(request)
                       .map(Right(_))
                       .recover({ case s: StatusRuntimeException => Left(s) })
@@ -375,7 +394,7 @@ class Runner(
                         List((party.value, Filters(Some(InclusiveFilters(Seq(tplId)))))).toMap))
                   val (client, filter) =
                     filterOrErr.fold(s => throw new ConverterException(s), identity)
-                  val acsResponses = client.activeContractSetClient
+                  val acsResponses = client.ledger.activeContractSetClient
                     .getActiveContracts(filter, verbose = true)
                     .runWith(Sink.seq)
                   acsResponses.flatMap(acsPages => {
@@ -410,7 +429,7 @@ class Runner(
                   }
                   val continue = vals.get(2)
                   val f =
-                    client.partyManagementClient.allocateParty(None, Some(displayName))
+                    client.party.allocateParty(None, Some(displayName))
                   f.flatMap(allocRes => {
                     val party = allocRes.party
                     participantName match {

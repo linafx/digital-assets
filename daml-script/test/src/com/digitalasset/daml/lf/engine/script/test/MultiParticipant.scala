@@ -70,12 +70,14 @@ object MultiParticipant {
         val dar: Dar[(PackageId, Package)] = encodedDar.map {
           case (pkgId, pkgArchive) => Decode.readArchivePayload(pkgId, pkgArchive)
         }
+        val endpoint1 = EndpointParameters("localhost", config.ledgerPort)
+        val endpoint2 = EndpointParameters("localhost", config.extraParticipantPort)
 
         val participantParams = Participants(
           None,
           Seq(
-            (Participant("one"), ApiParameters("localhost", config.ledgerPort)),
-            (Participant("two"), ApiParameters("localhost", config.extraParticipantPort))).toMap,
+            (Participant("one"), ApiParameters(endpoint1, endpoint1)),
+            (Participant("two"), ApiParameters(endpoint2, endpoint2))).toMap,
           Map.empty
         )
 

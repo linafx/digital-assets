@@ -92,9 +92,10 @@ object RunnerMain {
             jsVal.convertTo[Participants[ApiParameters]]
           }
           case None =>
+            val endpointParameters = EndpointParameters(config.ledgerHost.get, config.ledgerPort.get)
             Participants(
               default_participant =
-                Some(ApiParameters(config.ledgerHost.get, config.ledgerPort.get)),
+                Some(ApiParameters(endpointParameters, endpointParameters)),
               participants = Map.empty,
               party_participants = Map.empty)
         }

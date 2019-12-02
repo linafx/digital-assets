@@ -220,8 +220,9 @@ object SingleParticipant {
           case (pkgId, pkgArchive) => Decode.readArchivePayload(pkgId, pkgArchive)
         }
 
+        val endpoint = EndpointParameters("localhost", config.ledgerPort)
         val participantParams =
-          Participants(Some(ApiParameters("localhost", config.ledgerPort)), Map.empty, Map.empty)
+          Participants(Some(ApiParameters(endpoint, endpoint)), Map.empty, Map.empty)
 
         val runner = new TestRunner(participantParams, dar, config.wallclockTime)
         Test0(dar, runner).runTests()
