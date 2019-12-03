@@ -1201,6 +1201,11 @@ types are the types whose values can be persisted on the ledger. ::
     ———————————————————————————————————————————————————————————————— STyEnumCon
       ⊢ₛ  Mod:T
 
+     'synonym' T α₁ … αₙ ↦  σ₁  ∈  〚Ξ〛Mod
+      ⊢ₛ  σ₁[α₁ ↦ τ₁, …, αₙ ↦ τₙ]
+    ———————————————————————————————————————————————————————————————— STyTypeSynonym
+      ⊢ₛ  Mod:T τ₁ … τₙ
+
 Note that
 
 1. Structs are *not* serializable.
