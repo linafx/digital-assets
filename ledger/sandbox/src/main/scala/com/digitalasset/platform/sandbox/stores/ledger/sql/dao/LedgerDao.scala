@@ -237,7 +237,10 @@ trait LedgerWriteDao extends AutoCloseable with ReportsHealth {
   def uploadLfPackages(
       uploadId: String,
       packages: List[(Archive, PackageDetails)],
-      externalOffset: Option[ExternalOffset]
+      externalOffset: Option[ExternalOffset],
+      offset: LedgerOffset,
+      newLedgerEnd: LedgerOffset,
+      entry: PackageUploadLedgerEntry
   ): Future[Map[PersistenceResponse, Int]]
 
   /**

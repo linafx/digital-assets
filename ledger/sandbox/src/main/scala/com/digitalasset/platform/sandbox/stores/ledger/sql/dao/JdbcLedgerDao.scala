@@ -1512,7 +1512,10 @@ private class JdbcLedgerDao(
   override def uploadLfPackages(
       uploadId: String,
       packages: List[(Archive, PackageDetails)],
-      externalOffset: Option[ExternalOffset]): Future[Map[PersistenceResponse, Int]] = {
+      externalOffset: Option[ExternalOffset],
+      offset: LedgerOffset,
+      newLedgerEnd: LedgerOffset,
+      entry: PackageUploadLedgerEntry): Future[Map[PersistenceResponse, Int]] = {
     val requirements = Try {
       require(uploadId.nonEmpty, "The upload identifier cannot be the empty string")
       require(packages.nonEmpty, "The list of packages to upload cannot be empty")
@@ -1523,62 +1526,57 @@ private class JdbcLedgerDao(
         dbDispatcher.executeSql(
           "store_packages",
           Some(s"packages: ${packages.map(_._1.getHash).mkString(", ")}")) { implicit conn =>
-          externalOffset.foreach(updateExternalLedgerEnd)
-          val params = packages
-            .map(
-              p =>
-                Seq[NamedParameter](
-                  "package_id" -> p._1.getHash,
-                  "upload_id" -> uploadId,
-                  "source_description" -> p._2.sourceDescription,
-                  "size" -> p._2.size,
-                  "known_since" -> p._2.knownSince,
-                  "package" -> p._1.toByteArray
-              )
-            )
-          val updated =
-            executeBatchSql(queries.SQL_INSERT_PACKAGE, params).map(math.max(0, _)).sum
-          val duplicates = packages.length - updated
 
-          Map(
-            PersistenceResponse.Ok -> updated,
-            PersistenceResponse.Duplicate -> duplicates
-          ).filter(_._2 > 0)
+
+          val typ = entry match {
+            case PackageUploadLedgerEntry.Accepted(_, _, _) => entryAcceptType
+            case _ => entryRejectType
+          }
+          Try({
+            SQL(queries.SQL_INSERT_PACKAGE_UPLOAD_ENTRY)
+              .on(
+                "ledger_offset" -> offset,
+                "recorded_at" -> entry.recordTime,
+                "submission_id" -> entry.submissionId,
+                "participant_id" -> entry.participantId,
+                "typ" -> typ,
+                "rejection_reason" -> packageUploadReasonOrNull(entry)
+              )
+              .execute()
+            PersistenceResponse.Ok
+          }).recover {
+            case NonFatal(e) if e.getMessage.contains(queries.DUPLICATE_KEY_ERROR) =>
+              logger.warn(
+                s"Ignoring duplicate package upload entry submission for submissionId ${entry.submissionId} participantId ${entry.participantId}")
+              conn.rollback()
+              PersistenceResponse.Duplicate
+          }.map {
+            case PersistenceResponse.Ok => {
+              externalOffset.foreach(updateExternalLedgerEnd)
+              val params = packages
+                .map(
+                  p =>
+                    Seq[NamedParameter](
+                      "package_id" -> p._1.getHash,
+                      "upload_id" -> uploadId,
+                      "source_description" -> p._2.sourceDescription,
+                      "size" -> p._2.size,
+                      "known_since" -> p._2.knownSince,
+                      "package" -> p._1.toByteArray
+                    )
+                )
+              val updated =
+                executeBatchSql(queries.SQL_INSERT_PACKAGE, params).map(math.max(0, _)).sum
+              val duplicates = packages.length - updated
+
+              Map(
+                PersistenceResponse.Ok -> updated,
+                PersistenceResponse.Duplicate -> duplicates
+              ).filter(_._2 > 0)
+            }
+          }.get
       }
     )
-  }
-
-  override def storePackageUploadEntry(
-      offset: LedgerOffset,
-      newLedgerEnd: LedgerOffset,
-      externalOffset: Option[ExternalOffset],
-      entry: PackageUploadLedgerEntry): Future[PersistenceResponse] = {
-    val typ = entry match {
-      case PackageUploadLedgerEntry.Accepted(_, _, _) => entryAcceptType
-      case _ => entryRejectType
-    }
-    dbDispatcher.executeSql("store_package_upload_entry") { implicit conn =>
-      updateLedgerEnd(newLedgerEnd, externalOffset)
-      Try({
-        SQL(queries.SQL_INSERT_PACKAGE_UPLOAD_ENTRY)
-          .on(
-            "ledger_offset" -> offset,
-            "recorded_at" -> entry.recordTime,
-            "submission_id" -> entry.submissionId,
-            "participant_id" -> entry.participantId,
-            "typ" -> typ,
-            "rejection_reason" -> packageUploadReasonOrNull(entry)
-          )
-          .execute()
-        PersistenceResponse.Ok
-      }).recover {
-        case NonFatal(e) if e.getMessage.contains(queries.DUPLICATE_KEY_ERROR) =>
-          logger.warn(
-            s"Ignoring duplicate package upload entry submission for submissionId ${entry.submissionId} participantId ${entry.participantId}")
-          conn.rollback()
-          PersistenceResponse.Duplicate
-      }.get
-    }
   }
 
   override def lookupPartyAllocationEntry(

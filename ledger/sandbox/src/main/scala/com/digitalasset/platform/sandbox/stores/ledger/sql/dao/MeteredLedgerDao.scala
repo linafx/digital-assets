@@ -194,10 +194,13 @@ private class MeteredLedgerDao(ledgerDao: LedgerDao, metrics: MetricRegistry)
   override def uploadLfPackages(
       uploadId: String,
       packages: List[(Archive, PackageDetails)],
-      externalOffset: Option[ExternalOffset]): Future[Map[PersistenceResponse, Int]] =
+      externalOffset: Option[ExternalOffset],
+      offset: LedgerOffset,
+      newLedgerEnd: LedgerOffset,
+      entry: PackageUploadLedgerEntry): Future[Map[PersistenceResponse, Int]] =
     timedFuture(
       Metrics.uploadLfPackages,
-      ledgerDao.uploadLfPackages(uploadId, packages, externalOffset))
+      ledgerDao.uploadLfPackages(uploadId, packages, externalOffset, offset, newLedgerEnd, entry))
 
   override def close(): Unit = {
     ledgerDao.close()

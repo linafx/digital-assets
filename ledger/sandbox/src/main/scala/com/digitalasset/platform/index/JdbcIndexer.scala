@@ -295,7 +295,7 @@ class JdbcIndexer private[index] (
                 rejectionReason))
           .map(_ => headRef = headRef + 1)(DEC)
 
-      case PublicPackageUploaded(archive, sourceDescription, _, recordTime, _) =>
+      case PublicPackageUploaded(archive, sourceDescription, participantId, recordTime, submissionId) =>
         val uploadId = UUID.randomUUID().toString
         val uploadInstant = recordTime.toInstant
         val packages: List[(DamlLf.Archive, v2.PackageDetails)] = List(
@@ -305,7 +305,7 @@ class JdbcIndexer private[index] (
             sourceDescription = sourceDescription
           )
         )
-        ledgerDao.uploadLfPackages(uploadId, packages, externalOffset).map(_ => ())(DEC)
+        ledgerDao.uploadLfPackages(uploadId, packages, externalOffset, headRef, headRef+1, ).map(_ => ())(DEC)
 
       case PackageUploadAccepted(participantId, recordTime, submissionId) =>
         ledgerDao
