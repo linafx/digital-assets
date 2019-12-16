@@ -405,7 +405,7 @@ def _create_scaladoc_jar(**kwargs):
             generated_srcs = kwargs.get("generated_srcs", []),
         )
 
-def da_scala_library(name, **kwargs):
+def da_scala_library(name, unused_dependency_checker_mode = "error", **kwargs):
     """
     Define a Scala library.
 
@@ -415,7 +415,7 @@ def da_scala_library(name, **kwargs):
 
     [rules_scala_library_docs]: https://github.com/bazelbuild/rules_scala/blob/master/docs/scala_library.md
     """
-    _wrap_rule(scala_library, name, **kwargs)
+    _wrap_rule(scala_library, name, unused_dependency_checker_mode = unused_dependency_checker_mode, **kwargs)
     _create_scala_source_jar(name = name, **kwargs)
     _create_scaladoc_jar(name = name, **kwargs)
 
@@ -448,7 +448,7 @@ def da_scala_library_suite(name, **kwargs):
                 fail("Usage of maven_coordinates in da_scala_library_suite is NOT supported", "tags")
                 break
 
-def da_scala_macro_library(**kwargs):
+def da_scala_macro_library(unused_dependency_checker_mode = "error", **kwargs):
     """
     Define a Scala library that contains macros.
 
@@ -458,10 +458,10 @@ def da_scala_macro_library(**kwargs):
 
     [rules_scala_docs]: https://github.com/bazelbuild/rules_scala#scala_library
     """
-    _wrap_rule(scala_macro_library, **kwargs)
+    _wrap_rule(scala_macro_library, unused_dependency_checker_mode = unused_dependency_checker_mode, **kwargs)
     _create_scala_source_jar(**kwargs)
 
-def da_scala_binary(name, **kwargs):
+def da_scala_binary(name, unused_dependency_checker_mode = "error", **kwargs):
     """
     Define a Scala executable.
 
@@ -471,7 +471,7 @@ def da_scala_binary(name, **kwargs):
 
     [rules_scala_docs]: https://github.com/bazelbuild/rules_scala#scala_binary
     """
-    _wrap_rule(scala_binary, name, **kwargs)
+    _wrap_rule(scala_binary, name, unused_dependency_checker_mode = unused_dependency_checker_mode, **kwargs)
 
     if "tags" in kwargs:
         for tag in kwargs["tags"]:
@@ -494,7 +494,7 @@ def da_scala_binary(name, **kwargs):
                 )
                 break
 
-def da_scala_test(**kwargs):
+def da_scala_test(unused_dependency_checker_mode = "error", **kwargs):
     """
     Define a Scala executable that runs the unit tests in the given source files.
 
@@ -504,7 +504,7 @@ def da_scala_test(**kwargs):
 
     [rules_scala_docs]: https://github.com/bazelbuild/rules_scala#scala_test
     """
-    _wrap_rule(scala_test, **kwargs)
+    _wrap_rule(scala_test, unused_dependency_checker_mode = unused_dependency_checker_mode, **kwargs)
 
 def da_scala_test_suite(**kwargs):
     """
