@@ -44,7 +44,6 @@ da_scala_library(
     deps = [
         ":ledger-api-scala-logging-base",
         "//ledger-api/grpc-definitions:ledger-api-scalapb",
-        "//scala-protoc-plugins/scala-logging:scala-logging-lib",
         "@maven//:org_slf4j_slf4j_api",
     ],
 )

@@ -13,10 +13,8 @@ da_scala_library(
     deps = [
         "//ledger-api/rs-grpc-bridge",
         "@maven//:com_typesafe_akka_akka_actor_2_12",
-        "@maven//:com_typesafe_akka_akka_slf4j_2_12",
         "@maven//:com_typesafe_akka_akka_stream_2_12",
         "@maven//:io_grpc_grpc_api",
-        "@maven//:io_grpc_grpc_core",
         "@maven//:io_grpc_grpc_stub",
         "@maven//:org_reactivestreams_reactive_streams",
         "@maven//:org_slf4j_slf4j_api",
@@ -25,8 +23,6 @@ da_scala_library(
 
 testDependencies = [
     "@maven//:io_grpc_grpc_api",
-    "@maven//:io_grpc_grpc_core",
-    "@maven//:io_grpc_grpc_netty",
     "@maven//:io_grpc_grpc_stub",
     ":rs-grpc-akka",
     "//ledger-api/testing-utils:testing-utils",
@@ -35,10 +31,8 @@ testDependencies = [
     "//ledger-api/rs-grpc-bridge:rs-grpc-bridge-test",
     "@maven//:org_scalactic_scalactic_2_12",
     "@maven//:org_scalatest_scalatest_2_12",
-    "@maven//:ch_qos_logback_logback_classic",
     "@maven//:com_typesafe_akka_akka_actor_2_12",
     "@maven//:com_typesafe_akka_akka_stream_2_12",
-    "@maven//:com_typesafe_akka_akka_stream_testkit_2_12",
     "@maven//:com_google_protobuf_protobuf_java",
     "@maven//:org_awaitility_awaitility",
     "@maven//:com_thesamet_scalapb_lenses_2_12",
@@ -66,6 +60,7 @@ da_scala_test_suite(
     ]),
     deps = [
         ":rs-grpc-akka-tests-lib",
+        "@maven//:io_grpc_grpc_core",
     ] + testDependencies,
 )
 
@@ -89,7 +84,6 @@ da_scala_binary(
         "@maven//:com_typesafe_akka_akka_actor_2_12",
         "@maven//:com_typesafe_akka_akka_stream_2_12",
         "@maven//:io_grpc_grpc_api",
-        "@maven//:io_grpc_grpc_core",
         "@maven//:io_grpc_grpc_stub",
     ],
 )
