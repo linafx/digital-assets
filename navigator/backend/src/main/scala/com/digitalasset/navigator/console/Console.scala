@@ -4,7 +4,6 @@
 package com.digitalasset.navigator.console
 
 import java.nio.file.Paths
-
 import akka.actor.ActorRef
 import com.digitalasset.navigator.{ApplicationInfo, GraphQLHandler}
 import com.digitalasset.navigator.console.{commands => Cmd}

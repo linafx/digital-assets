@@ -6,6 +6,7 @@ package com.digitalasset.navigator
 import akka.actor.ActorRef
 import akka.http.scaladsl.model.StatusCode
 import akka.http.scaladsl.model.StatusCodes._
+import com.digitalasset.navigator.config._
 import com.digitalasset.navigator.graphql._
 import com.digitalasset.navigator.graphql.SprayMarshallers._
 import com.digitalasset.navigator.model.PartyState
@@ -30,13 +31,13 @@ trait GraphQLHandler {
   def schema: Schema[GraphQLContext, Unit]
   def parse(request: String): Try[ParseResult]
   def parse(request: JsValue): Try[ParseResult]
-  def executeQuery(parsed: ParseResult, party: PartyState): Future[(StatusCode, JsValue)]
+  def executeQuery(parsed: ParseResult, party: PartyState, config: Config): Future[(StatusCode, JsValue)]
   def renderSchema: String
 }
 
 object GraphQLHandler {
   type ParseQuery = JsValue => Try[ParseResult]
-  type ExecuteQuery = (ParseResult, PartyState) => Future[(StatusCode, JsValue)]
+  type ExecuteQuery = (ParseResult, PartyState, Config) => Future[(StatusCode, JsValue)]
   type CustomEndpoints = Set[CustomEndpoint[_]]
 }
 
@@ -67,11 +68,11 @@ case class DefaultGraphQLHandler(
       ast <- QueryParser.parse(query)
     } yield ParseResult(ast, operationName, vars)
 
-  def executeQuery(parsed: ParseResult, party: PartyState): Future[(StatusCode, JsValue)] = {
+  def executeQuery(parsed: ParseResult, party: PartyState, config: Config): Future[(StatusCode, JsValue)] = {
     platformStore.fold[Future[(StatusCode, JsValue)]](
       Future.successful(InternalServerError -> JsString("Platform store not available"))
     )(store => {
-      val context = GraphQLContext(party, store)
+      val context = GraphQLContext(party, store, config)
       Executor
         .execute(
           schema,

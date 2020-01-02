@@ -34,7 +34,7 @@ case object GraphQL extends SimpleCommand {
     for {
       ps <- state.getPartyState ~> s"Unknown party ${state.party}"
       parsed <- state.graphQL.parse(createQuery(query)) ~> "Failed to parse query"
-      future <- Try(state.graphQL.executeQuery(parsed, ps)) ~> "Failed to execute query"
+      future <- Try(state.graphQL.executeQuery(parsed, ps, state.config)) ~> "Failed to execute query"
       result <- Try(Await.result(future, 30.seconds)) ~> "Failed to execute query"
     } yield {
       (state, result._2.prettyPrint)

@@ -11,6 +11,7 @@ import akka.actor.ActorRef
 import akka.pattern.ask
 import akka.util.Timeout
 import com.digitalasset.ledger.api.refinements.ApiTypes
+import com.digitalasset.navigator.config.Config
 import com.digitalasset.navigator.CustomEndpoint
 import com.digitalasset.navigator.model._
 import com.digitalasset.navigator.query._
@@ -27,7 +28,7 @@ import scalaz.Tag
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
 
-case class GraphQLContext(party: PartyState, store: ActorRef) {
+case class GraphQLContext(party: PartyState, store: ActorRef, config: Config) {
   def ledger: Ledger = party.ledger
   def templates: PackageRegistry = party.packageRegistry
 }
@@ -122,7 +123,8 @@ final class GraphQLSchema(customEndpoints: Set[CustomEndpoint[_]]) {
         ExerciseCommandType,
         CreatedEventType,
         ExercisedEventType,
-        DamlLfDefDataTypeType
+        DamlLfDefDataTypeType,
+        PartyNameType,
     ))
 
   //noinspection ForwardReference
@@ -197,6 +199,18 @@ final class GraphQLSchema(customEndpoints: Set[CustomEndpoint[_]]) {
       Field("sortings", OptionType(ListType(SortingType)), resolve = _.value.sortedLike),
       Field("edges", ListType(TemplateEdgeType), resolve = _.value.rows)
     )
+  )
+
+  //noinspection ForwardReference
+  val PartyNameType: ObjectType[GraphQLContext, PartyName] = ObjectType(
+    "PartyName",
+    interfaces[GraphQLContext, PartyName](NodeType),
+    () =>
+      fields[GraphQLContext, PartyName](
+        Field("id", IDType, resolve = _.value.id),
+        Field("displayName", OptionType(StringType), resolve = _.value.displayName),
+        Field("isUnique", BooleanType, resolve = _.value.isUnique),
+      )
   )
 
   //noinspection ForwardReference
@@ -566,6 +580,15 @@ final class GraphQLSchema(customEndpoints: Set[CustomEndpoint[_]]) {
                 id <- parseOpaqueIdentifier(context.arg(IDArg))
                 ddt <- context.ctx.templates.damlLfDefDataType(id)
               } yield DamlLfDefDataTypeBoxed(id, ddt)
+            case PartyNameType.name => {
+              val partyId = context.arg(IDArg)
+              val cfg = context.ctx.config
+              if (cfg.partyExists(partyId)) {
+                Some(PartyName(partyId, cfg.partyName(partyId), cfg.partyHasUniqueName(partyId)))
+              } else {
+                None
+              }
+            }
             case _ => None
         }
       ),

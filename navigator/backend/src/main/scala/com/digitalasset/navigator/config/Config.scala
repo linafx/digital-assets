@@ -25,10 +25,20 @@ final case class UserConfig(password: Option[String], party: PartyState, role: O
 @SuppressWarnings(Array("org.wartremover.warts.Option2Iterable"))
 final case class Config(users: Map[String, UserConfig] = Map.empty[String, UserConfig]) {
 
-  def userIds: Set[String] = users.keySet
+  def userIds: Set[String] = users.keySet // Warning: set of userNames
+  // TODO rename userIds here and in Session/SignInSelect, Session/LoginRequest
 
   def roles: Set[String] = users.values.flatMap(_.role)(collection.breakOut)
   def parties: Set[PartyState] = users.values.map(_.party)(collection.breakOut)
+
+  // maps partyId to partyName
+  def userNames: Map[String, String] = (for ((k,v) <- users) yield (ApiTypes.Party.unwrap(v.party.name).toString, k))
+
+  def partyName(partyId: String): Option[String] = userNames.get(partyId)
+
+  def partyHasUniqueName(partyId: String): Boolean = true // Map[] implies
+
+  def partyExists(partyId: String): Boolean = parties.map(_.name).contains(ApiTypes.Party(partyId))
 }
 
 sealed abstract class ConfigReadError extends Product with Serializable {

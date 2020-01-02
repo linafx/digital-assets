@@ -203,3 +203,17 @@ case class Choice(
     returnType: DamlLfType,
     consuming: Boolean
 )
+
+// ------------------------------------------------------------------------------------------------
+// Party id-displayname map
+// ------------------------------------------------------------------------------------------------
+
+/** Map for displaying parties. */
+final case class PartyName(
+                            id: String,
+                            displayName: Option[String],
+                            isUnique: Boolean
+                          ) extends Node[String] {
+  def idString: String = id
+}
+

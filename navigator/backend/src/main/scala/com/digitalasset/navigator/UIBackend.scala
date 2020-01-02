@@ -172,7 +172,7 @@ abstract class UIBackend extends LazyLogging with ApplicationInfoJsonSupport {
                         logger.debug(s"Handling GraphQL query: $request")
                         graphQL.parse(request) match {
                           case Success(parsed) =>
-                            complete(graphQL.executeQuery(parsed, session.get._2.user.party))
+                            complete(graphQL.executeQuery(parsed, session.get._2.user.party, config))
                           case Failure(error) =>
                             logger.debug("Cannot execute query: " + error.getMessage)
                             complete((BadRequest, JsObject("error" -> JsString(error.getMessage))))
