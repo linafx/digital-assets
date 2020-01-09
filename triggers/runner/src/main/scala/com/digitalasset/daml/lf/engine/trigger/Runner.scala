@@ -260,6 +260,7 @@ class Runner(
     Flow[TriggerMsg]
       .mapConcat[TriggerMsg]({
         case CompletionMsg(c) =>
+          println(s"completion: $c")
           try {
             commandIdMap.get(UUID.fromString(c.commandId)) match {
               case None => List()
@@ -271,6 +272,7 @@ class Runner(
             case e: IllegalArgumentException => List()
           }
         case TransactionMsg(t) =>
+          println(s"transaction: $t")
           try {
             commandIdMap.get(UUID.fromString(t.commandId)) match {
               case None => List(TransactionMsg(t.copy(commandId = "")))
