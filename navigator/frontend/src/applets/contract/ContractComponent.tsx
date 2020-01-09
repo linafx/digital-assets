@@ -9,7 +9,11 @@ import {
   Truncate,
 } from '@da/ui-core';
 import { DamlLfValue } from '@da/ui-core/lib/api/DamlLfValue';
+import {
+  default as ParameterDataProvider,
+} from '@da/ui-core/lib/ParameterForm/ApolloDataProvider';
 import * as React from 'react';
+import { ApolloClient, withApollo } from 'react-apollo';
 import Link, {OwnProps} from '../../components/Link';
 import * as Routes from '../../routes';
 import { Contract } from './';

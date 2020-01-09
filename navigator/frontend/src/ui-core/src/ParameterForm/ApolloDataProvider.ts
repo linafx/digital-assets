@@ -9,8 +9,10 @@ import {
   ParameterFormContractIdQueryVariables,
   ParameterFormTypeQuery,
   ParameterFormTypeQueryVariables,
+  PartyDetailsById,
+  PartyDetailsByIdVariables,
 } from '../api/Queries';
-import { ContractIdProvider, ParameterFormContract, TypeProvider } from './';
+import { ContractIdProvider, ParameterFormContract, TypeProvider, PartyNameProvider } from './';
 
 const MAX_CONTRACTS = 30;
 
@@ -57,7 +59,21 @@ query ParameterFormTypeQuery($id: ID!) {
 }
 `;
 
-export default class ApolloDataProvider implements ContractIdProvider, TypeProvider {
+const partyQuery = gql`
+query PartyDetailsById($id: ID!) {
+  node(id: $id, typename: "PartyName") {
+    ... on PartyName {
+      id
+      displayName
+      isUnique
+    }
+  }
+}
+`;
+
+console.log(partyQuery);
+
+export default class ApolloDataProvider implements ContractIdProvider, TypeProvider, PartyNameProvider {
 
   readonly client: ApolloClient;
 
@@ -104,6 +120,26 @@ export default class ApolloDataProvider implements ContractIdProvider, TypeProvi
       }
     }).catch((err) => {
       console.error('Error fetching contract archiving updates:', err);
+      onResult(id, undefined);
+    });
+  }
+
+  fetchPartyName(id: DamlLfIdentifier, onResult: (id: DamlLfIdentifier, result: PartyDetailsById | undefined) => void) {
+    this.client.query<PartyDetailsById>({
+      query: partyQuery,
+      variables: {
+        id: DamlLfTypeF.opaqueIdentifier(id),
+      } as PartyDetailsByIdVariables,
+      fetchPolicy: 'cache-first',
+    }).then(({ data }) => {
+      console.log("fetchPartyName ", data); // TODO typecheck + node
+      if (data.node) {
+        onResult(id, data);
+      } else {
+        onResult(id, undefined);
+      }
+    }).catch((err) => {
+      console.error('Error fetching party details:', err);
       onResult(id, undefined);
     });
   }

@@ -35,6 +35,9 @@ import {
   genMapEntry,
   textMapEntry,
 } from '../api/DamlLfValue';
+import {
+  PartyDetailsById,
+} from '../api/Queries';
 import Button from '../Button';
 import {StyledTextInput} from '../Input';
 import {LabeledElement} from '../Label';
@@ -945,6 +948,13 @@ export interface TypeProvider {
   fetchType(
     id: DamlLfIdentifier,
     onResult: (id: DamlLfIdentifier, result: DamlLfDefDataType | undefined) => void,
+  ): void;
+}
+
+export interface PartyNameProvider {
+  fetchPartyName(
+    id: DamlLfIdentifier,
+    onResult: (id: DamlLfIdentifier, result: PartyDetailsById | undefined) => void, // TODO
   ): void;
 }
 

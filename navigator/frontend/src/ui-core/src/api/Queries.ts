@@ -31,7 +31,7 @@ export interface advanceTimeVariables {
 // ====================================================
 
 export interface ContractsByIdQuery_nodes_Transaction {
-  __typename: "Transaction" | "Template" | "DamlLfDefDataType" | "CreatedEvent" | "ExercisedEvent" | "CreateCommand" | "ExerciseCommand";
+  __typename: "Transaction" | "Template" | "DamlLfDefDataType" | "CreatedEvent" | "ExercisedEvent" | "CreateCommand" | "ExerciseCommand" | "PartyName";
   id: string;
 }
 
@@ -65,7 +65,7 @@ export interface ContractsByIdQueryVariables {
 // ====================================================
 
 export interface CommandResultsQuery_nodes_Transaction {
-  __typename: "Transaction" | "Template" | "DamlLfDefDataType" | "Contract" | "CreatedEvent" | "ExercisedEvent";
+  __typename: "Transaction" | "Template" | "DamlLfDefDataType" | "Contract" | "CreatedEvent" | "ExercisedEvent" | "PartyName";
   id: string;
 }
 
@@ -170,7 +170,7 @@ export interface ParameterFormContractIdQueryVariables {
 // ====================================================
 
 export interface ParameterFormTypeQuery_node_Transaction {
-  __typename: "Transaction" | "Template" | "Contract" | "CreatedEvent" | "ExercisedEvent" | "CreateCommand" | "ExerciseCommand";
+  __typename: "Transaction" | "Template" | "Contract" | "CreatedEvent" | "ExercisedEvent" | "CreateCommand" | "ExerciseCommand" | "PartyName";
 }
 
 export interface ParameterFormTypeQuery_node_DamlLfDefDataType {
@@ -186,6 +186,35 @@ export interface ParameterFormTypeQuery {
 }
 
 export interface ParameterFormTypeQueryVariables {
+  id: string;
+}
+
+/* tslint:disable */
+/* eslint-disable */
+// This file was automatically generated and should not be edited.
+
+// ====================================================
+// GraphQL query operation: PartyDetailsById
+// ====================================================
+
+export interface PartyDetailsById_node_Transaction {
+  __typename: "Transaction" | "Template" | "DamlLfDefDataType" | "Contract" | "CreatedEvent" | "ExercisedEvent" | "CreateCommand" | "ExerciseCommand";
+}
+
+export interface PartyDetailsById_node_PartyName {
+  __typename: "PartyName";
+  id: string;
+  displayName: string | null;
+  isUnique: boolean;
+}
+
+export type PartyDetailsById_node = PartyDetailsById_node_Transaction | PartyDetailsById_node_PartyName;
+
+export interface PartyDetailsById {
+  node: PartyDetailsById_node | null;
+}
+
+export interface PartyDetailsByIdVariables {
   id: string;
 }
 

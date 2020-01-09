@@ -19,6 +19,7 @@ export interface Props {
 }
 
 const ArgumentDisplay = (props: Props): JSX.Element => {
+  { console.log("ArgumentDisplay", props, props.argument.type) }
   const { argument, className, level = 0 } = props;
   switch (argument.type) {
     case 'record': {
@@ -86,7 +87,7 @@ const ArgumentDisplay = (props: Props): JSX.Element => {
       }
     }
     case 'text': return <span>{argument.value}</span>;
-    case 'party': return <span>{argument.value}</span>;
+    case 'party': return <span>{argument.value} (TODO)</span>;
     case 'contractid': return <span>{argument.value}</span>;
     case 'numeric': return <span>{argument.value}</span>;
     case 'int64': return <span>{argument.value}</span>;

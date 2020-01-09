@@ -169,6 +169,12 @@ interface Node {
 
 scalar Party
 
+type PartyName implements Node {
+  id: ID!
+  displayName: String
+  isUnique: Boolean!
+}
+
 type Query {
   ledgerTime: LedgerTime!
   latestTransaction: Transaction
