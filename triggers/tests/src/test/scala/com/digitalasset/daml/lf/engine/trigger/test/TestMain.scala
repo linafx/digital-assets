@@ -1026,14 +1026,14 @@ object TestMain {
         }
         val runner = new TestRunner(config)
         AcsTests(dar, runner).runTests()
-        CopyTests(dar, runner).runTests()
-        RetryTests(dar, runner).runTests()
-        ExerciseByKeyTests(dar, runner).runTests()
-        NumericTests(dar, runner).runTests()
-        CommandIdTests(dar, runner).runTests()
-        PendingTests(dar, runner).runTests()
-        TemplateFilterTests(dar, runner).runTests()
-        TimeTests(dar, runner).runTests()
+        // CopyTests(dar, runner).runTests()
+        // RetryTests(dar, runner).runTests()
+        // ExerciseByKeyTests(dar, runner).runTests()
+        // NumericTests(dar, runner).runTests()
+        // CommandIdTests(dar, runner).runTests()
+        // PendingTests(dar, runner).runTests()
+        // TemplateFilterTests(dar, runner).runTests()
+        // TimeTests(dar, runner).runTests()
     }
   }
 }
