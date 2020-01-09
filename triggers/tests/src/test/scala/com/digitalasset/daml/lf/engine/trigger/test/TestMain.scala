@@ -946,7 +946,7 @@ case class TimeTests(dar: Dar[(PackageId, Package)], runner: TestRunner) {
                       TestRunner.assertEqual(timeA, timeB, "static times")
                     case _ =>
                       if (timeA <= timeB) {
-                        Left(s"Second create should have happened after first")
+                        Left(s"Second create should have happened after first: $timeA, $timeB")
                       } else {
                         Right(())
                       }

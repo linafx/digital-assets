@@ -18,7 +18,7 @@ test = Trigger
           _ -> []
         newState = (True, time :: ts)
       in
-      (newState, cmds)
+      trace (showMessage msg) $ (newState, cmds)
   , registeredTemplates = AllInDar
   }
 
@@ -27,3 +27,7 @@ template T
     p : Party
   where
     signatory p
+
+showMessage : Message -> String
+showMessage MTransaction{} = "Transaction"
+showMessage MCompletion{} = "Completion"
