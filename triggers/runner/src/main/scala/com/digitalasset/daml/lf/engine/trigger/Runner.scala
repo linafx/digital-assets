@@ -97,6 +97,7 @@ class Runner(
                   }
                   usedCommandIds += commandId
                   val commandUUID = UUID.randomUUID
+                  println(s"Adding mapping: $commandUUID, $commandId")
                   commandIdMap += (commandUUID -> commandId)
                   val commandsArg = Commands(
                     ledgerId = client.ledgerId.unwrap,
@@ -263,7 +264,9 @@ class Runner(
           println(s"completion: $c")
           try {
             commandIdMap.get(UUID.fromString(c.commandId)) match {
-              case None => List()
+              case None =>
+                println(s"Discarding completion, available completions ${commandIdMap.keys}")
+                List()
               case Some(internalCommandId) =>
                 List(CompletionMsg(c.copy(commandId = internalCommandId)))
             }
@@ -336,6 +339,7 @@ class Runner(
   )(implicit materializer: Materializer, executionContext: ExecutionContext): Future[SExpr] = {
     val (source, postFailure) = msgSource(client, offset, party, filter)
     def submit(req: SubmitRequest) = {
+      println(s"submit: $req")
       val f = client.commandClient
         .withTimeProvider(Some(Runner.getTimeProvider(timeProviderType)))
         .submitSingleCommand(req)
