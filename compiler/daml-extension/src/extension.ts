@@ -39,7 +39,7 @@ export async function activate(context: vscode.ExtensionContext) {
     const consent = getTelemetryConsent(config, context);
 
     // Display release notes on updates
-    showReleaseNotesIfNewVersion(context);
+    await showReleaseNotesIfNewVersion(context);
 
     damlLanguageClient = createLanguageClient(config, await consent);
     damlLanguageClient.registerProposedFeatures();

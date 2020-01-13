@@ -3,6 +3,42 @@
 
 package(default_visibility = ["//visibility:public"])
 
+load("@build_bazel_rules_nodejs//:defs.bzl", "npm_package")
+load("@npm_bazel_typescript//:defs.bzl", "ts_library")
+
+# See https://www.npmjs.com/package/@bazel/typescript#ts_library
+ts_library(
+    name = "daml_extension_lib",
+    tsconfig = "tsconfig.json",
+    srcs = ["src/extension.ts"],
+    node_modules = "@daml_extension_deps//:node_modules",
+    deps = [
+        # These are defined in package.json and imported into Bazel in
+        # yarn_install(name = "daml_extension_deps", ...) in WORKSPACE.
+        "@daml_extension_deps//@types",
+        "@daml_extension_deps//@types/vscode",
+        "@daml_extension_deps//fp-ts",
+        "@daml_extension_deps//vscode-languageclient",
+    ],
+)
+
+# $ bazel build //compiler/daml-extension:daml_extension_pkg
+# $ tree bazel-bin/compiler/daml-extension/daml_extension_pkg
+# bazel-bin/compiler/daml-extension/daml_extension_pkg
+# ├── package.json
+# ├── README.md
+# └── src
+#     ├── extension.d.ts
+#     └── extension.js
+npm_package(
+    name = "daml_extension_pkg",
+    srcs = [
+        "README.md",
+        "package.json",
+    ],
+    deps = [":daml_extension_lib"],
+)
+
 filegroup(
     name = "json-files",
     srcs = glob([
