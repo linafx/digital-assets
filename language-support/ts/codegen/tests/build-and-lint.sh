@@ -2,7 +2,7 @@
 # Copyright (c) 2020 The DAML Authors. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-set -euo pipefail
+set -xeuo pipefail
 
 # --- begin runfiles.bash initialization v2 ---
 # Copy-pasted from the Bazel Bash runfiles library v2.
@@ -23,6 +23,8 @@ JSON_API=$(rlocation "$TEST_WORKSPACE/$5")
 DAR=$(rlocation "$TEST_WORKSPACE/$6")
 PACKAGE_JSON=$(rlocation "$TEST_WORKSPACE/$7")
 TS_DIR=$(dirname $PACKAGE_JSON)
+DAML_JSON_TYPES=$(rlocation "$TEST_WORKSPACE/$8")
+DAML_LEDGER_FETCH=$(rlocation "$TEST_WORKSPACE/$9")
 
 TMP_DIR=$(mktemp -d)
 cleanup() {
@@ -33,6 +35,10 @@ trap cleanup EXIT
 echo "TMP_DIR = $TMP_DIR"
 
 cp -rL $TS_DIR/* $TMP_DIR
+mkdir -p $TMP_DIR/daml-json-types/
+cp -rL $DAML_JSON_TYPES/* $TMP_DIR/daml-json-types/
+mkdir -p $TMP_DIR/daml-ledger-fetch/
+cp -rL $DAML_LEDGER_FETCH/* $TMP_DIR/daml-ledger-fetch/
 cd $TMP_DIR
 
 $DAML2TS -o generated/src/daml --main-package-name daml-tests $DAR

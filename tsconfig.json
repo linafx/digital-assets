@@ -1,5 +1,9 @@
 {
   "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@digitalasset/*": ["*", "bazel-bin/*", "bazel-genfiles/*"]
+    },
     "noImplicitAny": true,
     "strictNullChecks": true,
     "noImplicitThis": true,
@@ -8,5 +12,6 @@
     "noUnusedParameters": true,
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true
-  }
+  },
+  "exlude": ["bazel-*", "node_modules"]
 }

@@ -1,0 +1,26 @@
+load("@build_bazel_rules_nodejs//:index.bzl", "pkg_npm")
+load ("@npm_bazel_typescript//:index.bzl", "ts_library")
+load("@bazel_tools//tools/build_defs/pkg:pkg.bzl", "pkg_tar")
+
+ts_library(
+    name = "daml-json-types",
+    tsconfig = "//:tsconfig.json",
+    srcs = glob(["**/*.ts"]),
+    data = [":package.json"],
+    module_name = "@digitalasset/daml-json-types",
+    node_modules = "@daml_ts_deps//:node_modules",
+    deps = [
+        "@daml_ts_deps//@mojotech/json-type-validation",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+pkg_npm(
+    name = "npm_package",
+    srcs = [
+        "package.json",
+        "tsconfig.json"
+    ],
+    deps = ["daml-json-types"],
+    visibility = ["//visibility:public"],
+)

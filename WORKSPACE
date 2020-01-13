@@ -4,6 +4,7 @@ workspace(
         "@npm": ["node_modules"],
         "@daml_extension_deps": ["compiler/daml-extension/node_modules"],
         "@navigator_frontend_deps": ["navigator/frontend/node_modules"],
+        "@daml_ts_deps": ["language-support/ts/node_modules"],
     },
 )
 
@@ -670,6 +671,13 @@ yarn_install(
     name = "navigator_frontend_deps",
     package_json = "//navigator/frontend:package.json",
     yarn_lock = "//navigator/frontend:yarn.lock",
+)
+
+yarn_install(
+    name = "daml_ts_deps",
+    package_json = "//language-support/ts:package.json",
+    yarn_lock = "//language-support/ts:yarn.lock",
+    symlink_node_modules = True,
 )
 
 # Bazel Skydoc - Build rule documentation generator

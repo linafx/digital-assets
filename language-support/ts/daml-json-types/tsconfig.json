@@ -1,4 +1,3 @@
-
 {
   "compilerOptions": {
     "target": "es5",
@@ -17,5 +16,5 @@
     "declaration": true,
     "sourceMap": true
     },
-  "include": ["src/**/*.ts"],
+  "include": ["**/*.ts"]
 }
