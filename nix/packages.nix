@@ -145,9 +145,9 @@ in rec {
     sphinx-build      = sphinx;
     sphinx-quickstart = sphinx;
 
-    sphinx-autobuild = import ./tools/sphinx-autobuild {
-      inherit pkgs;
-      python37Packages = pkgs.python37Packages;
+    sphinx-autobuild = pkgs.poetry2nix.mkPoetryEnv {
+      python = python;
+      poetrylock = ../docs/scripts/poetry.lock;
     };
 
     sphinx183 = bazel_dependencies.sphinx183;
