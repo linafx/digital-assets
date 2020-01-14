@@ -148,6 +148,15 @@ in rec {
     sphinx-autobuild = pkgs.poetry2nix.mkPoetryEnv {
       python = python;
       poetrylock = ../docs/scripts/poetry.lock;
+      overrides = [
+        pkgs.poetry2nix.defaultPoetryOverrides (self: super: {
+          watchdog = super.watchdog.overrideAttrs (attrs: {
+            buildInputs = attrs.buildInputs ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
+              pkgs.darwin.apple_sdk.frameworks.CoreServices
+            ];
+          });
+        })
+      ];
     };
 
     sphinx183 = bazel_dependencies.sphinx183;
