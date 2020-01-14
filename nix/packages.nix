@@ -133,6 +133,8 @@ in rec {
     flake8 = pkgs.python37Packages.flake8;
     yapf = pkgs.python37Packages.yapf;
 
+    poetry = pkgs.poetry;
+    poetry2nix = pkgs.poetry2nix;
     pex = pkgs.python37Packages.pex;
     pipenv = import ./tools/pipenv {
       lib = pkgs.stdenv.lib;
