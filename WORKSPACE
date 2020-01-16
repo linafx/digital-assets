@@ -676,8 +676,8 @@ yarn_install(
 yarn_install(
     name = "daml_ts_deps",
     package_json = "//language-support/ts:package.json",
-    yarn_lock = "//language-support/ts:yarn.lock",
     symlink_node_modules = True,
+    yarn_lock = "//language-support/ts:yarn.lock",
 )
 
 # Bazel Skydoc - Build rule documentation generator

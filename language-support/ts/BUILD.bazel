@@ -1,1 +1,8 @@
-exports_files(["package.json", "yarn.lock", "tsconfig.json"])
+# Copyright (c) 2020 The DAML Authors. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+exports_files([
+    "package.json",
+    "yarn.lock",
+    "tsconfig.json",
+])
