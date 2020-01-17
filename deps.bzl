@@ -74,6 +74,8 @@ def daml_deps():
             strip_prefix = "rules_nixpkgs-%s" % rules_nixpkgs_version,
             urls = ["https://github.com/tweag/rules_nixpkgs/archive/%s.tar.gz" % rules_nixpkgs_version],
             sha256 = rules_nixpkgs_sha256,
+            patches = ["@com_github_digital_asset_daml//bazel_tools:nixpkgs_posix_toolchain.patch"],
+            patch_args = ["-p1"],
         )
 
     if "com_github_madler_zlib" not in native.existing_rules():

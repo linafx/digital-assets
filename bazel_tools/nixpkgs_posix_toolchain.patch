@@ -1,0 +1,99 @@
+From 4b0c5ea85d28315e3f3a844d0293c0caf0f7b7ba Mon Sep 17 00:00:00 2001
+From: Andreas Herrmann <andreas.herrmann@tweag.io>
+Date: Fri, 17 Jan 2020 13:43:12 +0100
+Subject: [PATCH] posix toolchain: Fix missing attribute path
+
+The lack of the `attribute_path` attribute caused a `nix-build` call
+with an empty `-A` argument. This causes build failures on NixOS.
+---
+ nixpkgs/nixpkgs.bzl | 66 +++++++++++++++++++++++----------------------
+ 1 file changed, 34 insertions(+), 32 deletions(-)
+
+diff --git a/nixpkgs/nixpkgs.bzl b/nixpkgs/nixpkgs.bzl
+index 263bb37..3cd1972 100644
+--- a/nixpkgs/nixpkgs.bzl
++++ b/nixpkgs/nixpkgs.bzl
+@@ -442,6 +442,7 @@ def nixpkgs_python_configure(
+ def nixpkgs_sh_posix_config(name, packages, **kwargs):
+     nixpkgs_package(
+         name = name,
++        attribute_path = "toolchain",
+         nix_file_content = """
+ with import <nixpkgs> {{ config = {{}}; overlays = []; }};
+ 
+@@ -456,39 +457,40 @@ let
+   cmd_glob = "${{env}}/bin/*";
+   os = if stdenv.isDarwin then "osx" else "linux";
+ in
+-
+-runCommand "bazel-nixpkgs-posix-toolchain"
+-  {{ executable = false;
+-    # Pointless to do this on a remote machine.
+-    preferLocalBuild = true;
+-    allowSubstitutes = false;
+-  }}
+-  ''
+-    n=$out/nixpkgs_sh_posix.bzl
+-    mkdir -p "$(dirname "$n")"
+-
+-    cat >>$n <<EOF
+-    load("@rules_sh//sh:posix.bzl", "posix", "sh_posix_toolchain")
+-    discovered = {{
+-    EOF
+-    for cmd in ${{cmd_glob}}; do
+-        if [[ -x $cmd ]]; then
+-            echo "    '$(basename $cmd)': '$cmd'," >>$n
+-        fi
+-    done
+-    cat >>$n <<EOF
++{{
++  toolchain = runCommand "bazel-nixpkgs-posix-toolchain"
++    {{ executable = false;
++      # Pointless to do this on a remote machine.
++      preferLocalBuild = true;
++      allowSubstitutes = false;
+     }}
+-    def create_posix_toolchain():
+-        sh_posix_toolchain(
+-            name = "nixpkgs_sh_posix",
+-            **{{
+-                cmd: discovered[cmd]
+-                for cmd in posix.commands
+-                if cmd in discovered
+-            }}
+-        )
+-    EOF
+-  ''
++    ''
++      n=$out/nixpkgs_sh_posix.bzl
++      mkdir -p "$(dirname "$n")"
++  
++      cat >>$n <<EOF
++      load("@rules_sh//sh:posix.bzl", "posix", "sh_posix_toolchain")
++      discovered = {{
++      EOF
++      for cmd in ${{cmd_glob}}; do
++          if [[ -x $cmd ]]; then
++              echo "    '$(basename $cmd)': '$cmd'," >>$n
++          fi
++      done
++      cat >>$n <<EOF
++      }}
++      def create_posix_toolchain():
++          sh_posix_toolchain(
++              name = "nixpkgs_sh_posix",
++              **{{
++                  cmd: discovered[cmd]
++                  for cmd in posix.commands
++                  if cmd in discovered
++              }}
++          )
++      EOF
++    '';
++}}
+ """.format(" ".join(packages)),
+         build_file_content = """
+ load("//:nixpkgs_sh_posix.bzl", "create_posix_toolchain")
+-- 
+2.21.0
+
