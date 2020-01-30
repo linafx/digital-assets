@@ -4,6 +4,7 @@
 package com.daml.ledger.api.testtool
 
 import java.io.File
+import java.nio.file.Paths
 
 import com.digitalasset.ledger.api.tls.TlsConfiguration
 import scopt.Read
@@ -79,6 +80,12 @@ object Cli {
       .optional()
       .text("TLS: The crt file to be used as the the trusted root CA. Applied to all endpoints.")
       .action(cacrtConfig)
+
+    opt[String]("access-token-file")
+      .text(
+        s"provide the path from which the access token will be read, required to interact with an authenticated ledger, no default")
+      .action((path, config) => config.copy(accessTokenFile = Some(Paths.get(path))))
+      .optional()
 
     opt[Double](name = "command-submission-ttl-scale-factor")
       .optional()

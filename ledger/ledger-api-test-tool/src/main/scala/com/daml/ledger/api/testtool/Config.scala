@@ -4,6 +4,7 @@
 package com.daml.ledger.api.testtool
 
 import java.io.File
+import java.nio.file.Path
 
 import com.digitalasset.ledger.api.tls.TlsConfiguration
 
@@ -22,6 +23,7 @@ final case class Config(
     included: Set[String],
     listTests: Boolean,
     allTests: Boolean,
+    accessTokenFile: Option[Path]
 )
 
 object Config {
@@ -40,5 +42,6 @@ object Config {
     included = Set.empty,
     listTests = false,
     allTests = false,
+    accessTokenFile = None
   )
 }

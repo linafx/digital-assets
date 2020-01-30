@@ -59,6 +59,7 @@ object LedgerApiTestTool {
 
     val config = Cli.parse(args).getOrElse(sys.exit(1))
 
+config.commandSubmissionTtlScaleFactor
     if (config.listTests) {
       printAvailableTests()
       sys.exit(0)
