@@ -48,7 +48,7 @@ export function useQuery<T extends object, K>(template: Template<T, K>, queryFac
     // eslint-disable-next-line @typescript-eslint/no-floating-promises
     load();
   // NOTE(MH): See note at the top of the file regarding "useEffect dependencies".
-  }, [state.ledger, state.reloadToken, template, ...(queryDeps ?? [])]);
+  }, [state.ledger, state.reloadToken, template, queryFactory, ...(queryDeps ?? [])]);
   return result;
 }
 
@@ -71,7 +71,7 @@ export function useFetchByKey<T extends object, K>(template: Template<T, K>, key
     // eslint-disable-next-line @typescript-eslint/no-floating-promises
     load();
   // NOTE(MH): See note at the top of the file regarding "useEffect dependencies".
-  }, [state.ledger, state.reloadToken, template, ...(keyDeps ?? [])]);
+  }, [state.ledger, state.reloadToken, template, keyFactory, ...(keyDeps ?? [])]);
   return result;
 }
 
@@ -127,7 +127,7 @@ export function useStreamQuery<T extends object, K>(template: Template<T, K>, qu
       stream.close();
     };
   // NOTE(MH): See note at the top of the file regarding "useEffect dependencies".
-  }, [state.ledger, template, ...(queryDeps ?? [])]);
+  }, [state.ledger, template, queryFactory, ...(queryDeps ?? [])]);
   return result;
 }
 
@@ -151,7 +151,7 @@ export function useStreamFetchByKey<T extends object, K>(template: Template<T, K
       stream.close();
     };
   // NOTE(MH): See note at the top of the file regarding "useEffect dependencies".
-  }, [state.ledger, template, ...keyDeps]);
+  }, [state.ledger, template, keyFactory, ...keyDeps]);
   return result;
 }
 
