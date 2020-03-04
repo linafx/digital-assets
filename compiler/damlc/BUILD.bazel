@@ -14,6 +14,32 @@ load("//bazel_tools/packaging:packaging.bzl", "package_app")
 ghc_pkg = "@rules_haskell_ghc_windows_amd64//:bin/ghc-pkg.exe" if is_windows else "@ghc_nix//:lib/ghc-8.6.5/bin/ghc-pkg"
 
 da_haskell_binary(
+    name = "debug-main",
+    srcs = ["exe/DebugMain.hs"],
+
+    # We need to tell the linker to statically link pthread on Windows
+    # otherwise the library is not found at runtime.
+    compiler_flags = [
+        "-optl-static",
+        "-optl-pthread",
+    ] if is_windows else [],
+    data = [
+    ],
+    hackage_deps = [
+        "base",
+        "bytestring",
+        "extra",
+        "proto3-suite",
+    ],
+    src_strip_prefix = "exe",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//compiler/daml-lf-ast",
+        "//compiler/daml-lf-proto",
+    ],
+)
+
+da_haskell_binary(
     name = "damlc",
     srcs = ["exe/Main.hs"],
 
