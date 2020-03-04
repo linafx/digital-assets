@@ -5,6 +5,8 @@ module Development.IDE.Core.Rules.Daml
     , module Development.IDE.Core.Rules.Daml
     ) where
 
+import qualified DA.Daml.LF.Proto3.Decode as Decode
+import Com.Digitalasset.DamlLfDev.DamlLf (ArchivePayload)
 import Outputable (showSDoc)
 import TcIface (typecheckIface)
 import LoadIface (readIface)
@@ -66,6 +68,7 @@ import System.IO
 import System.IO.Error
 import System.Directory.Extra as Dir
 import System.FilePath
+import System.Time.Extra
 
 import qualified Network.HTTP.Types as HTTP.Types
 import qualified Network.URI as URI
@@ -452,26 +455,55 @@ generateDocTestModuleRule =
 generatePackageMap ::
      LF.Version -> Maybe FilePath -> [FilePath] -> IO ([FileDiagnostic], Map.Map UnitId LF.DalfPackage)
 generatePackageMap version mbProjRoot userPkgDbs = do
-    versionedPackageDbs <- getPackageDbs version mbProjRoot userPkgDbs
-    (diags, pkgs) <-
+  (time, r) <- duration $ do
+    (timePkgdb, versionedPackageDbs) <- duration $ getPackageDbs version mbProjRoot userPkgDbs
+    putStrLn ("getPackageDbs: " <> showDuration timePkgdb)
+    (timeDecode, (diags, pkgs)) <- duration $
+        (evaluate =<<) $
         fmap (partitionEithers . concat) $
         forM versionedPackageDbs $ \pkgDb -> do
             allFiles <- listFilesRecursive pkgDb
             let dalfs = filter ((== ".dalf") . takeExtension) allFiles
             forM dalfs $ \dalf -> do
+                file <- BS.readFile dalf
+                (time, bs) <- duration $ do
+                    Right (pkgId, bs) <- pure $ Archive.decodeArchivePayload file
+                    _ <- evaluate pkgId
+                    pure bs
+                putStrLn $ ("decodeArchivePayload: " <> showDuration time)
+                (time, payload) <- duration $ do
+                    Right payload <- pure $ Proto.fromByteString bs
+                    _ <- evaluate (payload :: ArchivePayload)
+                    pure payload
+                putStrLn $ ("payload read: " <> showDuration time)
+                (time, _package) <- duration $ do
+                    Right package <- pure $ Decode.decodePayload LF.PRSelf payload
+                    _ <- evaluate package
+                    pure package
+                putStrLn $ ("decodePayload: " <> showDuration time)
                 dalfPkgOrErr <- readDalfPackage dalf
-                pure (fmap (\dalfPkg -> (getUnitId dalf dalfPkg, dalfPkg)) dalfPkgOrErr)
+                case dalfPkgOrErr of
+                    Left err -> pure $ Left err
+                    Right dalfPkg -> do
+                        unitId <- evaluate $ getUnitId dalf dalfPkg
+                        pure $ Right (unitId, dalfPkg)
+    putStrLn ("decoding: " <> showDuration timeDecode)
 
-    let unitIdConflicts = Map.filter ((>=2) . Set.size) . Map.fromListWith Set.union $
+    (timeConflict, ()) <- duration $ do
+      let unitIdConflicts = Map.filter ((>=2) . Set.size) . Map.fromListWith Set.union $
             [ (unitId, Set.singleton (LF.dalfPackageId dalfPkg))
             | (unitId, dalfPkg) <- pkgs ]
-    when (not $ Map.null unitIdConflicts) $ do
+      when (not $ Map.null unitIdConflicts) $ do
         fail $ "Transitive dependencies with same unit id but conflicting package ids: "
             ++ intercalate ", "
                 [ show k <> " [" <> intercalate "," (map show (Set.toList v)) <> "]"
                 | (k,v) <- Map.toList unitIdConflicts ]
-
-    return (diags, Map.fromList pkgs)
+    putStrLn ("conflicts: " <> showDuration timeConflict)
+    (timeForce, r) <- duration $ evaluate (diags, Map.fromList pkgs)
+    putStrLn ("foobar: " <> showDuration timeForce)
+    pure r
+  putStrLn ("total: " <> showDuration time)
+  pure r
   where
     -- If we use data-dependencies we can end up with multiple DALFs for daml-prim/daml-stdlib
     -- one per version. The one shipped with the SDK is called daml-prim.dalf and daml-stdlib-$VERSION.dalf

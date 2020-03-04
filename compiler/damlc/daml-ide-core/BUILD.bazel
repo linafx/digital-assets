@@ -50,6 +50,8 @@ da_haskell_library(
     src_strip_prefix = "src",
     visibility = ["//visibility:public"],
     deps = [
+        "//daml-lf/archive:daml_lf_dev_archive_haskell_proto",
+
         "//:sdk-version-hs-lib",
         "//compiler/daml-lf-ast",
         "//compiler/daml-lf-proto",

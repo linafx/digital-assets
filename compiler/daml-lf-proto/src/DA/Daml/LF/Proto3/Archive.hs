@@ -18,7 +18,7 @@ module DA.Daml.LF.Proto3.Archive
 import           Control.Lens             (over, _Left)
 import qualified "cryptonite" Crypto.Hash as Crypto
 import qualified Com.Digitalasset.DamlLfDev.DamlLf as ProtoLF
-import Control.Monad
+-- import Control.Monad
 import Data.List
 import           DA.Pretty
 import qualified DA.Daml.LF.Ast           as LF
@@ -68,14 +68,14 @@ decodeArchivePayload bytes = do
     let payloadBytes = ProtoLF.archivePayload archive
     let archiveHash = TL.toStrict (ProtoLF.archiveHash archive)
 
-    computedHash <- case ProtoLF.archiveHashFunction archive of
-      Proto.Enumerated (Right ProtoLF.HashFunctionSHA256) ->
-        Right $ encodeHash (BA.convert (Crypto.hash @_ @Crypto.SHA256 payloadBytes) :: BS.ByteString)
-      Proto.Enumerated (Left idx) ->
-        Left (UnknownHashFunction idx)
+    -- computedHash <- case ProtoLF.archiveHashFunction archive of
+    --   Proto.Enumerated (Right ProtoLF.HashFunctionSHA256) ->
+    --     Right $ encodeHash (BA.convert (Crypto.hash @_ @Crypto.SHA256 payloadBytes) :: BS.ByteString)
+    --   Proto.Enumerated (Left idx) ->
+    --     Left (UnknownHashFunction idx)
 
-    when (computedHash /= archiveHash) $
-      Left (HashMismatch archiveHash computedHash)
+    -- when (computedHash /= archiveHash) $
+    --   Left (HashMismatch archiveHash computedHash)
     let packageId = LF.PackageId archiveHash
     pure (packageId, payloadBytes)
 

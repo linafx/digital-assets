@@ -5,6 +5,7 @@
 {-# LANGUAGE PatternSynonyms #-}
 module DA.Daml.LF.Ast.Util(module DA.Daml.LF.Ast.Util) where
 
+import Debug.Trace
 import Control.Monad
 import Data.Maybe
 import qualified Data.Text as T
@@ -294,7 +295,7 @@ packageMetadataFromFile file pkg pkgId
     | Just (PackageMetadata name version) <- packageMetadata pkg =
           -- GHC insists on daml-prim not having a version so we filter it out.
           (name, version <$ guard (name /= PackageName "daml-prim"))
-    | otherwise = splitUnitId (unitIdFromFile file pkgId)
+    | otherwise = traceShow file $ splitUnitId (unitIdFromFile file pkgId)
 
 -- Get the name of a file and an expeted package id of the package, get the unit id
 -- by stripping away the package name at the end.
