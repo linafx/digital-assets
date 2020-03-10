@@ -20,7 +20,7 @@ class KeyValueParticipantState(reader: LedgerReader, writer: LedgerWriter)(
   private val readerAdapter =
     new KeyValueParticipantStateReader(reader)
   private val writerAdapter =
-    new KeyValueParticipantStateWriter(writer)(materializer.executionContext)
+    new KeyValueParticipantStateWriter(writer)(materializer)
 
   override def getLedgerInitialConditions(): Source[LedgerInitialConditions, NotUsed] =
     readerAdapter.getLedgerInitialConditions()

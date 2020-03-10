@@ -122,6 +122,24 @@ class SubmissionValidator[LogResult](
       ) => Future[T],
   )(implicit logCtx: LoggingContext): Future[Either[ValidationFailed, T]] =
     Envelope.open(envelope) match {
+      case Right(Envelope.BatchMessage(batch)) =>
+        println(s"!!!! PROCESSING BATCH OF ${batch.getSubmissionsCount} SUBMISSIONS !!!!")
+        // FIXME(JM): This is just a hacky version to verify that batching works.
+        Future
+          .sequence(batch.getSubmissionsList.asScala.map { correlatedSubmission =>
+            runValidation(
+              correlatedSubmission.getSubmission.toByteArray,
+              correlatedSubmission.getCorrelationId,
+              recordTime,
+              participantId,
+              postProcessResult
+            )
+          })
+          .map { results =>
+            // FIXME(JM): HACK HACK HACK
+            results.head
+          }
+
       case Right(Envelope.SubmissionMessage(submission)) =>
         val declaredInputs = submission.getInputDamlStateList.asScala
         val inputKeysAsBytes = declaredInputs.map(keyToBytes)

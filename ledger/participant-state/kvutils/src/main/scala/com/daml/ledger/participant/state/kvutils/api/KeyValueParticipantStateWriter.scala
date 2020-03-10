@@ -6,6 +6,7 @@ package com.daml.ledger.participant.state.kvutils.api
 import java.util.UUID
 import java.util.concurrent.CompletionStage
 
+import akka.stream.Materializer
 import com.daml.ledger.participant.state.kvutils.DamlKvutils.DamlSubmission
 import com.daml.ledger.participant.state.kvutils.{Envelope, KeyValueSubmission}
 import com.daml.ledger.participant.state.v1._
@@ -15,10 +16,19 @@ import com.digitalasset.ledger.api.health.HealthStatus
 
 import scala.compat.java8.FutureConverters
 import scala.concurrent.ExecutionContext
+import scala.concurrent.duration._
 
-class KeyValueParticipantStateWriter(writer: LedgerWriter)(
-    implicit executionContext: ExecutionContext)
+class KeyValueParticipantStateWriter(writer: LedgerWriter)(implicit val materializer: Materializer)
     extends WriteService {
+
+  implicit val executionContext: ExecutionContext = materializer.executionContext
+
+  val batchingWriter = new BatchingLedgerWriter(
+    writer = writer,
+    maxQueueSize = 1024,
+    maxBatchSizeBytes = 4 * 1024 * 1024,
+    maxWaitDuration = 5.millis,
+    maxParallelism = 10)
 
   override def submitTransaction(
       submitterInfo: SubmitterInfo,
@@ -82,5 +92,6 @@ class KeyValueParticipantStateWriter(writer: LedgerWriter)(
   private def commit(
       correlationId: String,
       submission: DamlSubmission): CompletionStage[SubmissionResult] =
-    FutureConverters.toJava(writer.commit(correlationId, Envelope.enclose(submission).toByteArray))
+    FutureConverters.toJava(
+      batchingWriter.commit(correlationId, Envelope.enclose(submission).toByteArray))
 }

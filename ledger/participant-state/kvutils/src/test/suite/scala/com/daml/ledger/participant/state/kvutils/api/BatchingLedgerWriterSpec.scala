@@ -3,34 +3,73 @@
 
 package com.daml.ledger.participant.state.kvutils.api
 
-import java.time.{Clock, Duration}
-import java.util.UUID
-
-import com.daml.ledger.participant.state.kvutils.DamlKvutils.DamlSubmission
+import com.daml.ledger.participant.state.kvutils.DamlKvutils.DamlSubmissionBatch
 import com.daml.ledger.participant.state.kvutils.Envelope
 import com.daml.ledger.participant.state.v1
-import com.daml.ledger.participant.state.v1._
-import com.digitalasset.daml.lf.crypto
-import com.digitalasset.daml.lf.data.Time.Timestamp
-import com.digitalasset.daml.lf.data.{ImmArray, Ref}
-import com.digitalasset.daml.lf.transaction.{GenTransaction, Transaction}
+import com.daml.ledger.participant.state.v1.SubmissionResult
 import com.digitalasset.ledger.api.testing.utils.AkkaBeforeAndAfterAll
+import com.google.protobuf.ByteString
 import org.mockito.ArgumentCaptor
-import org.mockito.ArgumentMatchers._
-import org.mockito.Mockito._
+import org.mockito.ArgumentMatchers
+import org.mockito.Mockito.{times, _}
 import org.scalatest.mockito.MockitoSugar
-import org.scalatest.{Assertion, WordSpec}
+import org.scalatest.{AsyncWordSpec, Matchers}
 
-import scala.collection.immutable.HashMap
 import scala.concurrent.Future
+import scala.concurrent.duration._
 
-class KeyValueParticipantStateWriterSpec
-    extends WordSpec
+class BatchingLedgerWriterSpec
+    extends AsyncWordSpec
     with MockitoSugar
-    with AkkaBeforeAndAfterAll {
-  //implicit val executionContext: ExecutionContext = ExecutionContext.global
+    with AkkaBeforeAndAfterAll
+    with Matchers {
 
-  "participant state writer" should {
+  private def createWriter(captor: Option[ArgumentCaptor[Array[Byte]]] = None): LedgerWriter = {
+    val writer = mock[LedgerWriter]
+    when(
+      writer.commit(
+        ArgumentMatchers.anyString(),
+        captor.map(_.capture()).getOrElse(ArgumentMatchers.any[Array[Byte]]())))
+      .thenReturn(Future.successful(SubmissionResult.Acknowledged))
+    when(writer.participantId).thenReturn(v1.ParticipantId.assertFromString("test-participant"))
+    writer
+  }
+
+  "BatchingLedgerWriter" should {
+    "construct batch within maxWait" in {
+      val batchCaptor: ArgumentCaptor[Array[Byte]] = ArgumentCaptor.forClass(classOf[Array[Byte]])
+      val mockWriter = createWriter(Some(batchCaptor))
+      val batchingWriter = new BatchingLedgerWriter(
+        writer = mockWriter,
+        maxQueueSize = 128,
+        maxBatchSizeBytes = 1024,
+        maxWaitDuration = 50.millis,
+        maxParallelism = 1)
+
+      val expectedBatch =
+        Envelope
+          .enclose(
+            DamlSubmissionBatch.newBuilder
+              .addSubmissions(DamlSubmissionBatch.CorrelatedSubmission.newBuilder
+                .setCorrelationId("test")
+                .setSubmission(ByteString.copyFrom(Array[Byte](1, 2, 3))))
+              .build)
+          .toByteArray
+
+      for {
+        res <- batchingWriter.commit("test", Array[Byte](1, 2, 3))
+        _ <- Future { Thread.sleep(2 * batchingWriter.maxWaitDuration.toMillis); }
+      } yield {
+        verify(mockWriter, times(1))
+          .commit(ArgumentMatchers.anyString(), ArgumentMatchers.eq(expectedBatch))
+
+        res should be(SubmissionResult.Acknowledged)
+      }
+    }
+
+  }
+
+  /*
     "submit a transaction" in {
       val transactionCaptor = ArgumentCaptor.forClass(classOf[Array[Byte]])
       val writer = createWriter(Some(transactionCaptor))
@@ -74,8 +113,11 @@ class KeyValueParticipantStateWriterSpec
       verify(writer, times(1)).commit(anyString(), any[Array[Byte]]())
       verifyEnvelope(partyAllocationCaptor.getValue)(_.hasPartyAllocationEntry)
     }
-  }
 
+
+   */
+
+  /*
   private def verifyEnvelope(written: Array[Byte])(
       assertion: DamlSubmission => Boolean): Assertion =
     Envelope.openSubmission(written) match {
@@ -118,5 +160,5 @@ class KeyValueParticipantStateWriterSpec
   )
 
   private def newRecordTime(): Timestamp =
-    Timestamp.assertFromInstant(Clock.systemUTC().instant())
+    Timestamp.assertFromInstant(Clock.systemUTC().instant())*/
 }

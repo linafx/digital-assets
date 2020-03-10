@@ -2,37 +2,44 @@ package com.daml.ledger.participant.state.kvutils.api
 
 import java.util.UUID
 
+import akka.NotUsed
 import akka.stream.QueueOfferResult.Enqueued
 import akka.stream.scaladsl.{Keep, RestartSink, Sink, Source, SourceQueueWithComplete}
 import akka.stream.{Materializer, OverflowStrategy}
-import com.daml.ledger.participant.state.v1.{ParticipantId, SubmissionResult}
 import com.daml.ledger.participant.state.kvutils.DamlKvutils.DamlSubmissionBatch
+import com.daml.ledger.participant.state.kvutils.Envelope
+import com.daml.ledger.participant.state.v1.{ParticipantId, SubmissionResult}
 import com.digitalasset.ledger.api.health.HealthStatus
 import com.google.protobuf.ByteString
 
+import scala.collection.JavaConverters._
 import scala.concurrent.Future
 import scala.concurrent.duration._
-import scala.collection.JavaConverters._
 
-class BatchingLedgerWriter(val writer: LedgerWriter, implicit val materializer: Materializer)
+class BatchingLedgerWriter(
+    val writer: LedgerWriter,
+    val maxQueueSize: Int,
+    val maxBatchSizeBytes: Long,
+    val maxWaitDuration: FiniteDuration,
+    val maxParallelism: Int)(implicit val materializer: Materializer)
     extends LedgerWriter {
-  val maxBatchSize = 8 * 1024 * 1024 // 8MB
-  val maxWaitDuration = 100 milliseconds
-  val numParallelSends = 16
+
+  private def submissionCost(submission: (String, Array[Byte])): Long =
+    submission._2.length.toLong
+
+  private val sendSink: Sink[Seq[(String, Array[Byte])], NotUsed] =
+    // FIXME(JM): Parameters need tuning
+    RestartSink.withBackoff(100.millis, 1.seconds, 0.2) { () =>
+      Sink.foreachAsync(maxParallelism)(sendBatch)
+    }
+
+  //@SuppressWarnings(Array("org.wartremover.warts.Any"))
   val queue: SourceQueueWithComplete[(String, Array[Byte])] =
     Source
-      .queue(128, OverflowStrategy.backpressure)
-      .groupedWeightedWithin(maxBatchSize, maxWaitDuration) {
-        case (_, envelope: Array[Byte]) =>
-          envelope.length
-      }
-      .toMat(sendSink)(Keep.left)
+      .queue(maxQueueSize, OverflowStrategy.dropNew)
+      .groupedWeightedWithin(maxBatchSizeBytes, maxWaitDuration)(submissionCost)
+      .toMat(sendSink)(Keep.left[SourceQueueWithComplete[(String, Array[Byte])], NotUsed])
       .run
-
-  val sendSink =
-    RestartSink.withBackoff(maxWaitDuration, maxWaitDuration, 0.5) { () =>
-      Sink.foreachAsync(numParallelSends)(sendBatch)
-    }
 
   // TODO(JM): We need to keep repeating sending of the batch if it fails. Use Sink.withBackoff?
   private def sendBatch(batch: Seq[(String, Array[Byte])]): Future[Unit] = {
@@ -46,8 +53,10 @@ class BatchingLedgerWriter(val writer: LedgerWriter, implicit val materializer: 
             .build
       }.asJava
     )
+
+    val envelope = Envelope.enclose(builder.build)
     writer
-      .commit(UUID.randomUUID().toString, builder.build.toByteArray)
+      .commit(UUID.randomUUID().toString, envelope.toByteArray)
       .map(_ => ())(materializer.executionContext) // FIXME(JM): wrong ec?
   }
 
