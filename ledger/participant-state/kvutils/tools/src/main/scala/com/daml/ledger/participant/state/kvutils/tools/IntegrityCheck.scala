@@ -86,7 +86,7 @@ object IntegrityCheck extends App {
           defaultConfig,
           submission,
           Ref.ParticipantId.assertFromString(entry.getParticipantId),
-          inputState
+          inputState,
       ))
     total_t_commit += t_commit
 

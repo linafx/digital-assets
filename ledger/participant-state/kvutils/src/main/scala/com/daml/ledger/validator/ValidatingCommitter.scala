@@ -49,6 +49,7 @@ class ValidatingCommitter[LogResult](
       correlationId: String,
       envelope: Bytes,
       submittingParticipantId: ParticipantId,
+      validateTransactionModel: Boolean = true,
   )(implicit executionContext: ExecutionContext): Future[SubmissionResult] =
     newLoggingContext("correlationId" -> correlationId) { implicit logCtx =>
       validator
@@ -57,6 +58,7 @@ class ValidatingCommitter[LogResult](
           correlationId,
           Timestamp.assertFromInstant(now()),
           submittingParticipantId,
+          validateTransactionModel,
         )
         .map {
           case Right(value) =>

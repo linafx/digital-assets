@@ -87,7 +87,8 @@ class SubmissionValidatorSpec extends AsyncWordSpec with Matchers with Inside {
           recordTime: Timestamp,
           damlSubmission: DamlSubmission,
           participantId: ParticipantId,
-          inputState: Map[DamlStateKey, Option[DamlStateValue]]
+          inputState: Map[DamlStateKey, Option[DamlStateValue]],
+          validateTransactionModel: Boolean,
       ): LogEntryAndState =
         throw new IllegalArgumentException("Validation failed")
 
@@ -160,7 +161,7 @@ class SubmissionValidatorSpec extends AsyncWordSpec with Matchers with Inside {
       val logEntryAndStateResult = (aLogEntry(), someStateUpdates)
       val instance = new SubmissionValidator(
         ledgerStateAccess = new FakeStateAccess(mockStateOperations),
-        processSubmission = (_, _, _, _, _) => logEntryAndStateResult,
+        processSubmission = (_, _, _, _, _, _) => logEntryAndStateResult,
         allocateLogEntryId = () => aLogEntryId(),
         checkForMissingInputs = false,
         stateValueCache = Cache.none,
@@ -195,7 +196,7 @@ class SubmissionValidatorSpec extends AsyncWordSpec with Matchers with Inside {
       val logEntryAndStateResult = (aLogEntry(), someStateUpdates)
       val instance = new SubmissionValidator(
         ledgerStateAccess = new FakeStateAccess(mockStateOperations),
-        processSubmission = (_, _, _, _, _) => logEntryAndStateResult,
+        processSubmission = (_, _, _, _, _, _) => logEntryAndStateResult,
         allocateLogEntryId = () => aLogEntryId(),
         checkForMissingInputs = false,
         stateValueCache = Cache.none,
@@ -229,7 +230,7 @@ class SubmissionValidatorSpec extends AsyncWordSpec with Matchers with Inside {
       val logEntryAndStateResult = (aLogEntry(), someStateUpdates)
       val instance = new SubmissionValidator(
         ledgerStateAccess = new FakeStateAccess(mockStateOperations),
-        processSubmission = (_, _, _, _, _) => logEntryAndStateResult,
+        processSubmission = (_, _, _, _, _, _) => logEntryAndStateResult,
         allocateLogEntryId = () => aLogEntryId(),
         checkForMissingInputs = false,
         stateValueCache = Cache.none,
@@ -266,7 +267,7 @@ class SubmissionValidatorSpec extends AsyncWordSpec with Matchers with Inside {
       val logEntryAndStateResult = (aLogEntry(), someStateUpdates)
       val instance = new SubmissionValidator(
         ledgerStateAccess = new FakeStateAccess(mockStateOperations),
-        processSubmission = (_, _, _, _, _) => logEntryAndStateResult,
+        processSubmission = (_, _, _, _, _, _) => logEntryAndStateResult,
         allocateLogEntryId = () => aLogEntryId(),
         checkForMissingInputs = false,
         stateValueCache = Cache.none,

@@ -47,6 +47,7 @@ class SubmissionValidator[LogResult] private[validator] (
         DamlSubmission,
         ParticipantId,
         Map[DamlStateKey, Option[DamlStateValue]],
+        Boolean,
     ) => LogEntryAndState,
     allocateLogEntryId: () => DamlLogEntryId,
     checkForMissingInputs: Boolean,
@@ -63,6 +64,7 @@ class SubmissionValidator[LogResult] private[validator] (
       correlationId: String,
       recordTime: Timestamp,
       participantId: ParticipantId,
+      validateTransactionModel: Boolean = true,
   ): Future[Either[ValidationFailed, Unit]] =
     newLoggingContext { implicit logCtx =>
       runValidation(
@@ -72,6 +74,7 @@ class SubmissionValidator[LogResult] private[validator] (
         participantId,
         postProcessResult = (_, _, _, _) => Future.unit,
         postProcessResultTimer = None,
+        validateTransactionModel
       )
     }
 
@@ -80,9 +83,15 @@ class SubmissionValidator[LogResult] private[validator] (
       correlationId: String,
       recordTime: Timestamp,
       participantId: ParticipantId,
+      validateTransactionModel: Boolean = true,
   ): Future[Either[ValidationFailed, LogResult]] =
     newLoggingContext { implicit logCtx =>
-      validateAndCommitWithLoggingContext(envelope, correlationId, recordTime, participantId)
+      validateAndCommitWithLoggingContext(
+        envelope,
+        correlationId,
+        recordTime,
+        participantId,
+        validateTransactionModel)
     }
 
   private[validator] def validateAndCommitWithLoggingContext(
@@ -90,6 +99,7 @@ class SubmissionValidator[LogResult] private[validator] (
       correlationId: String,
       recordTime: Timestamp,
       participantId: ParticipantId,
+      validateTransactionModel: Boolean,
   )(implicit logCtx: LoggingContext): Future[Either[ValidationFailed, LogResult]] =
     runValidation(
       envelope,
@@ -98,6 +108,7 @@ class SubmissionValidator[LogResult] private[validator] (
       participantId,
       commit,
       Some(Metrics.commitSubmission),
+      validateTransactionModel,
     )
 
   def validateAndTransform[U](
@@ -109,7 +120,8 @@ class SubmissionValidator[LogResult] private[validator] (
           DamlLogEntryId,
           StateMap,
           LogEntryAndState,
-          LedgerStateOperations[LogResult]) => Future[U]
+          LedgerStateOperations[LogResult]) => Future[U],
+      validateTransactionModel: Boolean,
   ): Future[Either[ValidationFailed, U]] =
     newLoggingContext { implicit logCtx =>
       runValidation(
@@ -119,6 +131,7 @@ class SubmissionValidator[LogResult] private[validator] (
         participantId,
         transform,
         Some(Metrics.transformSubmission),
+        validateTransactionModel,
       )
     }
 
@@ -155,6 +168,7 @@ class SubmissionValidator[LogResult] private[validator] (
           LedgerStateOperations[LogResult],
       ) => Future[T],
       postProcessResultTimer: Option[Timer],
+      validateTransactionModel: Boolean,
   )(implicit logCtx: LoggingContext): Future[Either[ValidationFailed, T]] =
     Metrics.openEnvelope.time(() => Envelope.open(envelope)) match {
       case Right(Envelope.SubmissionBatchMessage(batch)) =>
@@ -170,7 +184,9 @@ class SubmissionValidator[LogResult] private[validator] (
               recordTime,
               participantId,
               postProcessResult,
-              postProcessResultTimer)
+              postProcessResultTimer,
+              validateTransactionModel,
+            )
           case submissions =>
             logger.error(s"Unsupported batch size of ${submissions.length}, rejecting submission.")
             Future.successful(Left(
@@ -207,7 +223,9 @@ class SubmissionValidator[LogResult] private[validator] (
                       recordTime,
                       submission,
                       participantId,
-                      readInputs))))
+                      readInputs,
+                      validateTransactionModel)))
+              )
               processResult = () =>
                 postProcessResult(
                   damlLogEntryId,
@@ -360,6 +378,7 @@ object SubmissionValidator {
       damlSubmission: DamlSubmission,
       participantId: ParticipantId,
       inputState: Map[DamlStateKey, Option[DamlStateValue]],
+      validateTransactionModel: Boolean,
   ): LogEntryAndState =
     keyValueCommitting.processSubmission(
       engine,
@@ -368,7 +387,8 @@ object SubmissionValidator {
       LedgerReader.DefaultConfiguration,
       damlSubmission,
       participantId,
-      inputState
+      inputState,
+      validateTransactionModel,
     )
 
   private[validator] def serializeProcessedSubmission(

@@ -101,6 +101,7 @@ class KeyValueCommitting private[daml] (metricRegistry: MetricRegistry, inStatic
       submission: DamlSubmission,
       participantId: ParticipantId,
       inputState: Map[DamlStateKey, Option[DamlStateValue]],
+      validateTransactionModel: Boolean = true,
   ): (DamlLogEntry, Map[DamlStateKey, DamlStateValue]) = {
     Metrics.processing.inc()
     Metrics.lastRecordTimeGauge.updateValue(recordTime.toString)
@@ -116,6 +117,7 @@ class KeyValueCommitting private[daml] (metricRegistry: MetricRegistry, inStatic
         submission,
         participantId,
         inputState,
+        validateTransactionModel,
       )
       Debug.dumpLedgerEntry(submission, participantId, entryId, logEntry, outputState)
       verifyStateUpdatesAgainstPreDeclaredOutputs(outputState, entryId, submission)
@@ -142,6 +144,7 @@ class KeyValueCommitting private[daml] (metricRegistry: MetricRegistry, inStatic
       submission: DamlSubmission,
       participantId: ParticipantId,
       inputState: Map[DamlStateKey, Option[DamlStateValue]],
+      validateTransactionModel: Boolean,
   ): (DamlLogEntry, Map[DamlStateKey, DamlStateValue]) =
     submission.getPayloadCase match {
       case DamlSubmission.PayloadCase.PACKAGE_UPLOAD_ENTRY =>
@@ -184,6 +187,7 @@ class KeyValueCommitting private[daml] (metricRegistry: MetricRegistry, inStatic
             participantId,
             submission.getTransactionEntry,
             inputState,
+            validateTransactionModel,
           )
 
       case DamlSubmission.PayloadCase.PAYLOAD_NOT_SET =>
