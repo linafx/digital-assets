@@ -9,8 +9,8 @@ module DA.Daml.LFConversion.UtilLF(
     ) where
 
 import           DA.Daml.LF.Ast
+import           DA.Daml.LF.Ast.Pretty (renderPrettySC)
 import qualified DA.Daml.LF.Proto3.Archive  as Archive
-import           DA.Pretty (renderPretty)
 
 import qualified Data.ByteString.Char8      as BS
 import Data.Maybe
@@ -104,7 +104,7 @@ buildPackage mbPkgName mbPkgVersion version mods =
         getPackageMetadata version (fromMaybe (PackageName "unknown") mbPkgName) mbPkgVersion
 
 instance Outputable Expr where
-    ppr = text . renderPretty
+    ppr = text . renderPrettySC
 
 sourceLocToRange :: SourceLoc -> Range
 sourceLocToRange (SourceLoc _ slin scol elin ecol) =

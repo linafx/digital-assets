@@ -29,6 +29,7 @@ import DA.Daml.LF.ScenarioServiceClient (readScenarioServiceConfig, withScenario
 import qualified DA.Daml.LF.ReplClient as ReplClient
 import DA.Daml.Compiler.Validate (validateDar)
 import qualified DA.Daml.LF.Ast as LF
+import qualified DA.Daml.LF.Ast.Pretty as LF
 import qualified DA.Daml.LF.Proto3.Archive as Archive
 import DA.Daml.LF.Reader
 import DA.Daml.LanguageServer
@@ -56,6 +57,7 @@ import Data.List.Extra
 import qualified Data.List.Split as Split
 import qualified Data.Map.Strict as Map
 import Data.Maybe
+import qualified Data.NameMap as NM
 import qualified Data.Text.Extended as T
 import Development.IDE.Core.API
 import Development.IDE.Core.Debouncer
@@ -480,7 +482,7 @@ execCompile inputFile outputFile opts (WriteInterface writeInterface) mbIfaceDir
             dalf <- liftIO $ mbErr "ERROR: Compilation failed." mbDalf
             liftIO $ write dalf
     write bs
-      | outputFile == "-" = putStrLn $ render Colored $ DA.Pretty.pretty bs
+      | outputFile == "-" = putStrLn $ render Colored $ LF.pPrint bs
       | otherwise = do
         createDirectoryIfMissing True $ takeDirectory outputFile
         B.writeFile outputFile $ Archive.encodeArchive bs
@@ -700,13 +702,19 @@ execInspect inFile outFile jsonOutput lvl =
          $ Aeson.Pretty.encodePretty
          $ Proto.JSONPB.toAesonValue archive
       else do
-        (pkgId, lfPkg) <- errorOnLeft "Cannot decode package" $
+        (_pkgId, lfPkg) <- errorOnLeft "Cannot decode package" $
                    Archive.decodeArchive Archive.DecodeAsMain bytes
-        writeOutput outFile $ render Plain $
-          DA.Pretty.vsep
-            [ DA.Pretty.keyword_ "package" DA.Pretty.<-> DA.Pretty.text (LF.unPackageId pkgId) DA.Pretty.<-> DA.Pretty.keyword_ "where"
-            , DA.Pretty.nest 2 (DA.Pretty.pPrintPrec lvl 0 lfPkg)
-            ]
+        forM_ (NM.toList (LF.packageModules lfPkg)) $ \lfMod -> do
+            let file = outFile </> joinPath (map T.unpack (LF.unModuleName (LF.moduleName lfMod))) <.> "html"
+            createDirectoryIfMissing True (takeDirectory file)
+            T.writeFileUtf8 file $ DA.Pretty.renderHtmlDocumentText 120 (LF.pPrintPrec lvl 0 lfMod)
+            pure ()
+
+        -- writeOutput outFile $ render Plain $
+        --   DA.Pretty.vsep
+        --     [ DA.Pretty.keyword_ "package" DA.Pretty.<-> DA.Pretty.text (LF.unPackageId pkgId) DA.Pretty.<-> DA.Pretty.keyword_ "where"
+        --     , DA.Pretty.nest 2 (DA.Pretty.pPrintPrec lvl 0 lfPkg)
+        --     ]
 
 errorOnLeft :: Show a => String -> Either a b -> IO b
 errorOnLeft desc = \case

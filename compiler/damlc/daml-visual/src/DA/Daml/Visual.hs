@@ -117,7 +117,7 @@ d3NodesFromGraph g = concatMap subGraphToD3Nodes (subgraphs g)
                                             D3Node (T.unlines $ templateFields sg)
                                             (tplNameUnqual $ clusterTemplate sg)
                                             (nodeId chcD)
-                                            (DAP.renderPretty $ displayChoiceName chcD)
+                                            undefined -- (DAP.renderPretty $ displayChoiceName chcD)
                                             )
                                     (nodes sg)
 
@@ -299,17 +299,17 @@ graphEdges lookupData tplChcActions =
 subGraphHeader :: SubGraph -> String
 subGraphHeader sg = "subgraph cluster_" ++ (DAP.renderPretty $ head (LF.unTypeConName $ LF.tplTypeCon $ clusterTemplate sg)) ++ "{\n"
 
-choiceDetailsColorCode :: IsConsuming -> String
-choiceDetailsColorCode True = "red"
-choiceDetailsColorCode False = "green"
+_choiceDetailsColorCode :: IsConsuming -> String
+_choiceDetailsColorCode True = "red"
+_choiceDetailsColorCode False = "green"
 
 subGraphBodyLine :: ChoiceDetails -> String
-subGraphBodyLine chc = "n" ++ show (nodeId chc)++ "[label=" ++ DAP.renderPretty (displayChoiceName chc) ++"][color=" ++ choiceDetailsColorCode (consuming chc) ++"]; "
+subGraphBodyLine _chc = undefined -- "n" ++ show (nodeId chc)++ "[label=" ++ DAP.renderPretty (displayChoiceName chc) ++"][color=" ++ choiceDetailsColorCode (consuming chc) ++"]; "
 
 subGraphEnd :: SubGraph -> String
 subGraphEnd sg = "label=<" ++ tHeader ++ tTitle ++ tBody  ++ tclose ++ ">" ++ ";color=" ++ "blue" ++ "\n}"
     where tHeader = "<table align = \"left\" border=\"0\" cellborder=\"0\" cellspacing=\"1\">\n"
-          tTitle =  "<tr><td align=\"center\"><b>" ++  DAP.renderPretty (LF.tplTypeCon $ clusterTemplate sg) ++ "</b></td></tr>"
+          tTitle =  undefined -- "<tr><td align=\"center\"><b>" ++  DAP.renderPretty (LF.tplTypeCon $ clusterTemplate sg) ++ "</b></td></tr>"
           tBody = concatMap fieldTableLine (templateFields sg)
           fieldTableLine field = "<tr><td align=\"left\">" ++ T.unpack field  ++ "</td></tr> \n"
           tclose = "</table>"

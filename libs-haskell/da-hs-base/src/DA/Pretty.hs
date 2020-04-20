@@ -85,6 +85,7 @@ data SyntaxClass
     | IdSC T.Text
     -- ^ @IdSC id@: Identifier for the node. For linking into.
     | OnClickSC T.Text
+    | TooltipSC T.Text
     deriving (Eq, Ord, Show)
 
 
@@ -188,6 +189,7 @@ renderColored doc =
       LinkSC _ _     -> CSNode (Vivid, Green)
       IdSC _         -> id
       OnClickSC _    -> id
+      TooltipSC _    -> id
 
 -- | Render without any syntax annotations
 renderPlain :: IsString string => Doc SyntaxClass -> string
@@ -251,6 +253,7 @@ applySyntaxClass = \case
     LinkSC url title ->
       H.a H.! A.href (H.preEscapedTextValue url) H.! A.title (H.preEscapedTextValue title)
     OnClickSC x    -> H.span H.! A.class_ "da-hl-link" H.! A.onclick (H.preEscapedTextValue x)
+    TooltipSC x    -> H.span H.! A.title (H.preEscapedTextValue x)
   where
     apply :: H.AttributeValue -> H.Html -> H.Html
     apply class_ =

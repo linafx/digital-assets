@@ -18,7 +18,7 @@ import Development.IDE.Types.Location
 import Numeric.Natural
 
 import DA.Daml.LF.Ast
-import DA.Daml.LF.Ast.Pretty
+import DA.Daml.LF.Ast.Pretty hiding (pPrint)
 
 -- TODO(MH): Rework the context machinery to avoid code duplication.
 -- | Type checking context for error reporting purposes.
@@ -184,18 +184,21 @@ instance Pretty UnserializabilityReason where
     URAny -> "Any"
     URTypeRep -> "TypeRep"
     URTypeSyn -> "type synonym"
+    where
+      pretty :: PrettySC a => a -> Doc ann
+      pretty = string . renderPrettySC
 
 instance Pretty Error where
   pPrint = \case
     EContext ctx err ->
       vcat
-      [ "error type checking " <> pretty ctx <> ":"
-      , nest 2 (pretty err)
+      [ "error type checking " <> pPrint ctx <> ":"
+      , nest 2 (pPrint err)
       ]
 
     EUnknownTypeVar v -> "unknown type variable: " <> pretty v
     EUnknownExprVar v -> "unknown expr variable: " <> pretty v
-    EUnknownDefinition e -> pretty e
+    EUnknownDefinition e -> pPrint e
     ETypeConAppWrongArity tapp -> "wrong arity in typecon application: " <> string (show tapp)
     EDuplicateTypeParam name -> "duplicate type parameter: " <> pretty name
     EDuplicateField name -> "duplicate field: " <> pretty name
@@ -277,10 +280,10 @@ instance Pretty Error where
     EExpectedSerializableType reason foundType info ->
       vcat
       [ "expected serializable type:"
-      , "* reason:" <-> pretty reason
+      , "* reason:" <-> pPrint reason
       , "* found:" <-> pretty foundType
       , "* problem:"
-      , nest 4 (pretty info)
+      , nest 4 (pPrint info)
       ]
     EExpectedAnyType foundType ->
       "expected a type containing neither type variables nor quantifiers, but found: " <> pretty foundType
@@ -305,13 +308,16 @@ instance Pretty Error where
     EExpectedOptionalType typ -> do
       "expected list type, but found: " <> pretty typ
     EUnsupportedFeature Feature{..} ->
-      "unsupported feature:" <-> pretty featureName
-      <-> "only supported in DAML-LF version" <-> pretty featureMinVersion <-> "and later"
+      "unsupported feature:" <-> pPrint featureName
+      <-> "only supported in DAML-LF version" <-> pPrint featureMinVersion <-> "and later"
     EForbiddenNameCollision name names ->
-      "name collision between " <-> pretty name <-> " and " <-> pretty (T.intercalate ", " names)
+      "name collision between " <-> text name <-> " and " <-> text (T.intercalate ", " names)
     ESynAppWrongArity DefTypeSyn{synName,synParams} args ->
       vcat ["wrong arity in type synonym application: " <> pretty synName,
-            "expected: " <> pretty (length synParams) <> ", found: " <> pretty (length args)]
+            "expected: " <> pPrint (length synParams) <> ", found: " <> pPrint (length args)]
+    where
+      pretty :: PrettySC a => a -> Doc ann
+      pretty = string . renderPrettySC
 
 instance Pretty Context where
   pPrint = \case
@@ -325,6 +331,9 @@ instance Pretty Context where
       hsep [ "template", pretty (moduleName m) <> "." <>  pretty (tplTypeCon t), string (show p) ]
     ContextDefValue m v ->
       hsep [ "value", pretty (moduleName m) <> "." <> pretty (fst $ dvalBinder v) ]
+    where
+      pretty :: PrettySC a => a -> Doc ann
+      pretty = string . renderPrettySC
 
 toDiagnostic :: DiagnosticSeverity -> Error -> Diagnostic
 toDiagnostic sev err = Diagnostic

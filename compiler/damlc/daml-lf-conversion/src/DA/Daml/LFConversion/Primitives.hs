@@ -11,7 +11,7 @@ module DA.Daml.LFConversion.Primitives(convertPrim) where
 
 import           DA.Daml.LFConversion.UtilLF
 import           DA.Daml.LF.Ast
-import           DA.Pretty (renderPretty)
+import           DA.Daml.LF.Ast.Pretty (renderPrettySC)
 import qualified Data.Text as T
 
 convertPrim :: Version -> String -> Type -> Expr
@@ -369,7 +369,7 @@ convertPrim version "EToAnyContractKey"
         EToAny key (EVar $ mkVar "key")
 
 -- Unknown primitive.
-convertPrim _ x ty = error $ "Unknown primitive " ++ show x ++ " at type " ++ renderPretty ty
+convertPrim _ x ty = error $ "Unknown primitive " ++ show x ++ " at type " ++ renderPrettySC ty
 
 -- | Some builtins are only supported in specific versions of DAML-LF.
 whenRuntimeSupports :: Version -> Feature -> Type -> Expr -> Expr

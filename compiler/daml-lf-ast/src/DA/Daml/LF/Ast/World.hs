@@ -32,7 +32,7 @@ import qualified Data.NameMap as NM
 import GHC.Generics
 
 import DA.Daml.LF.Ast.Base
-import DA.Daml.LF.Ast.Pretty ()
+import qualified DA.Daml.LF.Ast.Pretty as LF
 import DA.Daml.LF.Ast.Version
 
 -- | The 'World' contains all imported packages together with (a subset of)
@@ -151,3 +151,6 @@ instance Pretty LookupError where
     LEValue valRef-> "unknown value:" <-> pretty valRef
     LETemplate tplRef -> "unknown template:" <-> pretty tplRef
     LEChoice tplRef chName -> "unknown choice:" <-> pretty tplRef <> ":" <> pretty chName
+    where
+      pretty :: LF.PrettySC a => a -> Doc ann
+      pretty = string . renderPlain . LF.pPrint
