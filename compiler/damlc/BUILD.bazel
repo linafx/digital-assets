@@ -222,12 +222,12 @@ genrule(
             --output=$(OUTS) \
             --package-name=daml-prim \
             --format=Json \
-            --cpp $(location @hpp//:hpp) \
+            --cpp $(location @stackage//:hpp_exe_hpp) \
             $(locations //compiler/damlc/daml-prim-src)
     """,
     tools = [
         "//compiler/damlc",
-        "@hpp",
+        "@stackage//:hpp_exe_hpp",
     ],
     visibility = ["//visibility:public"],
 )
@@ -241,12 +241,12 @@ genrule(
             --output=$(OUTS) \
             --package-name=daml-stdlib \
             --format=Json \
-            --cpp $(location @hpp//:hpp) \
+            --cpp $(location @stackage//:hpp_exe_hpp) \
             $(locations //compiler/damlc/daml-stdlib-src)
     """,
     tools = [
         "//compiler/damlc",
-        "@hpp",
+        "@stackage//:hpp_exe_hpp",
     ],
     visibility = ["//visibility:public"],
 )

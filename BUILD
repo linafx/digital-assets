@@ -57,7 +57,7 @@ load(
 
 c2hs_toolchain(
     name = "c2hs-toolchain",
-    c2hs = "@c2hs//:c2hs",
+    c2hs = "@stackage//:c2hs_exe_c2hs",
 )
 
 #
