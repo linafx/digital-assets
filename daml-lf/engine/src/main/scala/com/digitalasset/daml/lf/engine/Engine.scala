@@ -83,6 +83,7 @@ final class Engine {
       participantId: ParticipantId,
       submissionSeed: Option[crypto.Hash],
   ): Result[(Transaction.Transaction, Transaction.Metadata)] = {
+    scala.Console.out.println(s"Engine.submit($cmds, $participantId, $submissionSeed)")
     val submissionTime = cmds.ledgerEffectiveTime
     _preprocessor
       .preprocessCommands(cmds.commands)
@@ -149,7 +150,8 @@ final class Engine {
       submitters: Set[Party],
       nodes: Seq[GenNode.WithTxValue[Value.NodeId, Value.ContractId]],
       ledgerEffectiveTime: Time.Timestamp,
-  ): Result[(Transaction.Transaction, Boolean)] =
+  ): Result[(Transaction.Transaction, Boolean)] = {
+    scala.Console.out.println(s"Engine.reinterpret($rootSeedAndSubmissionTime, $submitters, $nodes, $ledgerEffectiveTime)")
     for {
       commands <- Result.sequence(ImmArray(nodes).map(_preprocessor.translateNode))
       checkSubmitterInMaintainers <- ShouldCheckSubmitterInMaintainers(
@@ -165,6 +167,7 @@ final class Engine {
         rootSeedAndSubmissionTime,
       )
     } yield result
+  }
 
   /**
     * Check if the given transaction is a valid result of some single-submitter command.
@@ -187,6 +190,7 @@ final class Engine {
       participantId: Ref.ParticipantId,
       submissionSeedAndTime: Option[(crypto.Hash, Time.Timestamp)] = None,
   ): Result[Unit] = {
+    scala.Console.out.println(s"Engine.validate($tx, $ledgerEffectiveTime, $participantId, $submissionSeedAndTime)")
     import scalaz.std.option._
     import scalaz.syntax.traverse.ToTraverseOps
     val transactionSeedAndSubmissionTime = submissionSeedAndTime.map {
@@ -233,6 +237,7 @@ final class Engine {
       validationResult <- if (tx isReplayedBy rtx) {
         ResultDone(())
       } else {
+        scala.Console.out.println(s"recreated and original transaction mismatch $tx expected, but $rtx is recreated")
         ResultError(
           ValidationError(
             s"recreated and original transaction mismatch $tx expected, but $rtx is recreated"))

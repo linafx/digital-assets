@@ -167,6 +167,7 @@ final class ApiSubmissionService private (
 
       logger.trace(s"Received composite commands: $commands")
       logger.debug(s"Received composite command let ${commands.ledgerEffectiveTime}.")
+      scala.Console.out.println(s"ApiSubmissionService.submit($request)")
       deduplicateAndRecordOnLedger(seedService.map(_.nextSeed()), commands)
         .andThen(logger.logErrorsOnCall[Unit])(DirectExecutionContext)
     }
@@ -245,6 +246,7 @@ final class ApiSubmissionService private (
       case None =>
         transactionInfo match {
           case CommandExecutionResult(submitterInfo, transactionMeta, transaction, _) =>
+            scala.Console.out.println(s"writeService.submitTransaction($submitterInfo, $transactionMeta, $transaction)")
             timedFuture(
               Metrics.submittedTransactionsTimer,
               FutureConverters.toScala(

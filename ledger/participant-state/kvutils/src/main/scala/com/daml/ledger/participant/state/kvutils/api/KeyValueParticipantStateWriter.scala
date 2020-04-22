@@ -26,6 +26,7 @@ class KeyValueParticipantStateWriter(writer: LedgerWriter, metricRegistry: Metri
       transactionMeta: TransactionMeta,
       transaction: SubmittedTransaction,
   ): CompletionStage[SubmissionResult] = {
+    scala.Console.out.println(s"KeyValueParticipantStateWriter.submitTransaction($submitterInfo, $transactionMeta, $transaction)")
     val submission =
       keyValueSubmission.transactionToSubmission(
         submitterInfo,
@@ -82,6 +83,8 @@ class KeyValueParticipantStateWriter(writer: LedgerWriter, metricRegistry: Metri
 
   private def commit(
       correlationId: String,
-      submission: DamlSubmission): CompletionStage[SubmissionResult] =
+      submission: DamlSubmission): CompletionStage[SubmissionResult] = {
+    scala.Console.out.println(s"KeyValueParticipantStateWriter.commit($correlationId, $submission)")
     FutureConverters.toJava(writer.commit(correlationId, Envelope.enclose(submission)))
+  }
 }

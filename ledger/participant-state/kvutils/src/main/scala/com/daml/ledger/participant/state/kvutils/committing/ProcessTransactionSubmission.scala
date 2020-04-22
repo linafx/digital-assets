@@ -198,7 +198,7 @@ private[kvutils] class ProcessTransactionSubmission(
               && contractIsActiveAndVisibleToSubmitter(transactionEntry, value.getContractState) =>
           value.getContractState.getContractKey -> Conversions.stateKeyToContractId(key)
       }
-
+    scala.Console.out.println(s"ProcessTransactionSubmission.validateModelConformance(_, $recordTime, $participantId, $transactionEntry, _)")
     engine
       .validate(
         transactionEntry.abs,

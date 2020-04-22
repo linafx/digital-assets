@@ -49,6 +49,7 @@ final class LedgerTimeAwareCommandExecutor(
       implicit ec: ExecutionContext,
       logCtx: LoggingContext
   ): Future[Either[ErrorCause, CommandExecutionResult]] = {
+    scala.Console.out.println(s"LedgerTimeAwareCommandExecutor.loop($commands, $submissionSeed, $retriesLeft)")
     delegate
       .execute(commands, submissionSeed)
       .flatMap {
@@ -71,11 +72,14 @@ final class LedgerTimeAwareCommandExecutor(
               .lookupMaximumLedgerTime(usedContractIds)
               .flatMap(maxUsedTime =>
                 if (!maxUsedTime.isAfter(commands.ledgerEffectiveTime)) {
+                  scala.Console.out.println(s"LedgerTimeAwareCommandExecutor.loop: result is ok, LET is ${commands.ledgerEffectiveTime}")
                   Future.successful(Right(cer))
                 } else if (!cer.dependsOnLedgerTime) {
+                  scala.Console.out.println(s"LedgerTimeAwareCommandExecutor.loop: result does not depend on time, advancing output LET to $maxUsedTime")
                   Future.successful(Right(advanceOutputTime(cer, maxUsedTime)))
                 } else if (retriesLeft > 0) {
                   Metrics.retryMeter.mark()
+                  scala.Console.out.println(s"LedgerTimeAwareCommandExecutor.loop: result depends on time, advancing input LET to $maxUsedTime")
                   loop(advanceInputTime(commands, maxUsedTime), submissionSeed, retriesLeft - 1)
                 } else {
                   Future.successful(Left(ErrorCause.LedgerTime(maxRetries)))
