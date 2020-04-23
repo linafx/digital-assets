@@ -70,7 +70,8 @@ final class LedgerTimeAwareCommandExecutor(
           else
             contractStore
               .lookupMaximumLedgerTime(usedContractIds)
-              .flatMap(maxUsedTime =>
+              .flatMap(maxUsedTime => {
+                scala.Console.out.println(s"LedgerTimeAwareCommandExecutor.loop: lookupMaximumLedgerTime($usedContractIds) returned $maxUsedTime")
                 if (!maxUsedTime.isAfter(commands.ledgerEffectiveTime)) {
                   scala.Console.out.println(s"LedgerTimeAwareCommandExecutor.loop: result is ok, LET is ${commands.ledgerEffectiveTime}")
                   Future.successful(Right(cer))
@@ -83,7 +84,8 @@ final class LedgerTimeAwareCommandExecutor(
                   loop(advanceInputTime(commands, maxUsedTime), submissionSeed, retriesLeft - 1)
                 } else {
                   Future.successful(Left(ErrorCause.LedgerTime(maxRetries)))
-              })
+                }}
+              )
               .recoverWith {
                 // An error while looking up the maximum ledger time for the used contracts
                 // most likely means that one of the contracts is already not active anymore,
