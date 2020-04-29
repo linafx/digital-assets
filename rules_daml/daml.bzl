@@ -159,7 +159,7 @@ def _extract_main_dalf_impl(ctx):
         outputs = [output_dalf],
         progress_message = "Extract DALF from DAR (%s)" % project_name,
         command = """
-            set -eou pipefail
+            set -eoux pipefail
             {zipper} x {input_dar}
             echo "PWD: $PWD"
             main_dalf=$({find} . -name '{project_name}-{project_version}-[a-z0-9]*.dalf')
