@@ -161,6 +161,7 @@ def _extract_main_dalf_impl(ctx):
         command = """
             set -eou pipefail
             {zipper} x {input_dar}
+            echo "PWD: $PWD"
             main_dalf=$({find} . -name '{project_name}-{project_version}-[a-z0-9]*.dalf')
             cp $main_dalf {output_dalf}
         """.format(
