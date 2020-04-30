@@ -221,7 +221,7 @@ def _scala_source_jar_impl(ctx):
 
         cmd = """
 set -eoux pipefail
-echo "{tmpsrc_cmds}"
+echo '{joined_tmpsrc_cmds}'
 (echo -e \"{src_paths}\" && {joined_tmpsrc_cmds}) | {sort} > {args_file}
 """.format(
             src_paths = "\\n".join(zipper_args),
