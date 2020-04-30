@@ -510,9 +510,6 @@ object Pretty {
             prettySExpr(index)(handler) + text(", ") +
             prettySExpr(index)(fin) + char(')')
 
-        case SELocation(loc @ _, body) =>
-          prettySExpr(index)(body)
-
         case SEMakeClo(fv, n, body) =>
           val prefix = char('[') +
             intercalate(space, fv.map((v: Int) => str(v))) + char(']') + text("(\\") +

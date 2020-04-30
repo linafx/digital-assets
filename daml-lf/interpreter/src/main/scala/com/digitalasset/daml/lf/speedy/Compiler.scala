@@ -574,14 +574,11 @@ private[lf] final case class Compiler(packages: PackageId PartialFunction Packag
             }
         }
 
-      case ELocation(loc, EScenario(scen)) =>
-        SELocation(loc, translateScenario(scen, Some(loc)))
-
       case EScenario(scen) =>
         translateScenario(scen, None)
 
-      case ELocation(loc, e) =>
-        SELocation(loc, translate(e))
+      case ELocation(_, e) =>
+        translate(e)
 
       case EToAny(ty, e) =>
         SEApp(SEBuiltin(SBToAny(ty)), Array(translate(e)))
@@ -905,12 +902,6 @@ private[lf] final case class Compiler(packages: PackageId PartialFunction Packag
       f(())
     }
 
-  def stripLocation(e: SExpr): SExpr =
-    e match {
-      case SELocation(_, e2) => stripLocation(e2)
-      case _ => e
-    }
-
   /** Convert abstractions in a speedy expression into
     * explicit closure creations.
     * This step computes the free variables in an abstraction
@@ -943,8 +934,6 @@ private[lf] final case class Compiler(packages: PackageId PartialFunction Packag
       case be: SEBuiltin => be
       case pl: SEValue => pl
       case f: SEBuiltinRecursiveDefinition => f
-      case SELocation(loc, body) =>
-        SELocation(loc, closureConvert(remaps, bound, body))
 
       case SEAbs(0, _) =>
         throw CompilationError("empty SEAbs")
@@ -1014,8 +1003,6 @@ private[lf] final case class Compiler(packages: PackageId PartialFunction Packag
         case _: SEBuiltin => ()
         case _: SEValue => ()
         case _: SEBuiltinRecursiveDefinition => ()
-        case SELocation(_, body) =>
-          go(body)
         case SEApp(fun, args) =>
           go(fun)
           args.foreach(go)
@@ -1117,8 +1104,6 @@ private[lf] final case class Compiler(packages: PackageId PartialFunction Packag
           go(body)
           go(handler)
           go(fin)
-        case SELocation(_, body) =>
-          go(body)
       }
     go(expr)
     expr

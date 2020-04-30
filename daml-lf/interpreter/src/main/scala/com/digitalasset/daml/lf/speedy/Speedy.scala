@@ -56,43 +56,10 @@ object Speedy {
     def popEnv(count: Int): Unit =
       env.subList(env.size - count, env.size).clear
 
-    /** Push a single location to the continuation stack for the sake of
-        maintaining a stack trace. */
-    def pushLocation(loc: Location): Unit = {
-      lastLocation = Some(loc)
-      val last_index = kont.size() - 1
-      val last_kont = if (last_index >= 0) Some(kont.get(last_index)) else None
-      last_kont match {
-        // NOTE(MH): If the top of the continuation stack is the monadic token,
-        // we push location information under it to account for the implicit
-        // lambda binding the token.
-        case Some(KArg(Array(SEValue.Token))) => kont.add(last_index, KLocation(loc))
-        // NOTE(MH): When we use a cached top level value, we need to put the
-        // stack trace it produced back on the continuation stack to get
-        // complete stack trace at the use site. Thus, we store the stack traces
-        // of top level values separately during their execution.
-        case Some(KCacheVal(v, stack_trace)) =>
-          kont.set(last_index, KCacheVal(v, loc :: stack_trace)); ()
-        case _ => kont.add(KLocation(loc)); ()
-      }
-    }
-
-    /** Push an entire stack trace to the continuation stack. The first
-        element of the list will be pushed last. */
-    def pushStackTrace(locs: List[Location]): Unit =
-      locs.reverse.foreach(pushLocation)
-
     /** Compute a stack trace from the locations in the continuation stack.
         The last seen location will come last. */
     def stackTrace(): ImmArray[Location] = {
-      val s = new util.ArrayList[Location]
-      kont.forEach { k =>
-        k match {
-          case KLocation(location) => { s.add(location); () }
-          case _ => ()
-        }
-      }
-      ImmArray(s.asScala)
+      ImmArray.empty
     }
 
     /** Perform a single step of the machine execution. */
@@ -140,15 +107,14 @@ object Speedy {
 
     def lookupVal(eval: SEVal): Ctrl = {
       eval.cached match {
-        case Some((v, stack_trace)) =>
-          pushStackTrace(stack_trace)
+        case Some((v, _)) =>
           CtrlValue(v)
 
         case None =>
           val ref = eval.ref
           compiledPackages.getDefinition(ref) match {
             case Some(body) =>
-              kont.add(KCacheVal(eval, Nil))
+              kont.add(KCacheVal(eval))
               CtrlExpr(body)
             case None =>
               if (compiledPackages.getPackage(ref.packageId).isDefined)
@@ -680,10 +646,9 @@ object Speedy {
     * accessed. In older compilers which did not use the builtin record and struct
     * updates this solves the blow-up which would happen when a large record is
     * updated multiple times. */
-  final case class KCacheVal(v: SEVal, stack_trace: List[Location]) extends Kont {
+  final case class KCacheVal(v: SEVal) extends Kont {
     def execute(sv: SValue, machine: Machine) = {
-      machine.pushStackTrace(stack_trace)
-      v.cached = Some((sv, stack_trace))
+      v.cached = Some((sv, Nil))
     }
   }
 
@@ -696,13 +661,6 @@ object Speedy {
 
     def execute(v: SValue, machine: Machine) = {
       machine.ctrl = CtrlExpr(fin)
-    }
-  }
-
-  /** A location frame stores a location annotation found in the AST. */
-  final case class KLocation(location: Location) extends Kont {
-    def execute(v: SValue, machine: Machine) = {
-      machine.ctrl = CtrlValue(v)
     }
   }
 

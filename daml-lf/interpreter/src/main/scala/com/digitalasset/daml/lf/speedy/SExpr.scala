@@ -189,16 +189,6 @@ object SExpr {
 
   }
 
-  /** Location annotation. When encountered the location is stored in the 'lastLocation'
-    * variable of the machine. When commit is begun the location is stored in 'commitLocation'.
-    */
-  final case class SELocation(loc: Location, expr: SExpr) extends SExpr {
-    def execute(machine: Machine): Ctrl = {
-      machine.pushLocation(loc)
-      CtrlExpr(expr)
-    }
-  }
-
   /** A catch expression. This is used internally solely for the purpose of implementing
     * mustFailAt. If the evaluation of 'body' causes an exception of type 'DamlException'
     * (see SError), then the environment and continuation stacks are reset and 'handler'
