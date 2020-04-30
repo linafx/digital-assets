@@ -219,7 +219,11 @@ def _scala_source_jar_impl(ctx):
             for tmpsrcdir in tmpsrcdirs
         ]
 
-        cmd = "(echo -e \"{src_paths}\" && {joined_tmpsrc_cmds}) | {sort} > {args_file}".format(
+        cmd = """
+set -eoux pipefail
+echo "{tmpsrc_cmds}"
+(echo -e \"{src_paths}\" && {joined_tmpsrc_cmds}) | {sort} > {args_file}
+""".format(
             src_paths = "\\n".join(zipper_args),
             joined_tmpsrc_cmds = " && ".join(tmpsrc_cmds),
             args_file = zipper_args_file.path,
