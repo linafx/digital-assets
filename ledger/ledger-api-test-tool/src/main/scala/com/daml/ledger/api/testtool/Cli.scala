@@ -14,6 +14,17 @@ import scopt.Read.{intRead, stringRead}
 
 object Cli {
 
+  private def exclusionRead: Read[TestExclusion] = new Read[TestExclusion] {
+    val arity = 1
+    val reads: String => TestExclusion = { s: String =>
+      s.split(":") match {
+        case Array(groupName) => GroupExclusion(groupName)
+        case Array(groupName, testName) => GroupExclusion(groupName)
+        case _ => throw new IllegalArgumentException("Exclusion must be `<group>` to exclude a whole group or `<group>:<test>` to exclude an individual test")
+      }
+    }
+  }
+
   private def endpointRead: Read[(String, Int)] = new Read[(String, Int)] {
     val arity = 2
     val reads: String => (String, Int) = { s: String =>
@@ -126,7 +137,7 @@ object Cli {
               |The DAR needs to be manually loaded into a DAML ledger for the tool to work.""".stripMargin,
       )
 
-    opt[Seq[String]]("exclude")
+    opt[Seq[TestExclusion]]("exclude")(Read.seqRead(exclusionRead))
       .action((ex, c) => c.copy(excluded = c.excluded ++ ex))
       .unbounded()
       .text(

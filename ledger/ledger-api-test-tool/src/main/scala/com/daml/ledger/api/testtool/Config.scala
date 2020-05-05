@@ -9,6 +9,12 @@ import java.nio.file.Path
 import com.daml.ledger.api.testtool.infrastructure.PartyAllocationConfiguration
 import com.daml.ledger.api.tls.TlsConfiguration
 
+sealed trait TestExclusion
+// Exclude a whole group of tests
+final case class GroupExclusion(groupName: String) extends TestExclusion
+// Exclude an individual test
+final case class IndividualTestExclusion(groupName: String, testName: String) extends TestExclusion
+
 final case class Config(
     participants: Vector[(String, Int)],
     darPackages: List[File],
