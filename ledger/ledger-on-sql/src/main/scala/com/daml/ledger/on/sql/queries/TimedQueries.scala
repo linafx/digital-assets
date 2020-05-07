@@ -19,10 +19,10 @@ final class TimedQueries(delegate: Queries, metrics: Metrics) extends Queries {
       metrics.daml.ledger.database.queries.selectLatestLogEntryId,
       delegate.selectLatestLogEntryId())
 
-  override def selectFromLog(start: Index, end: Index): Try[immutable.Seq[(Index, LedgerRecord)]] =
+  override def selectFromLog(start: Index, end: Index, pageSize: Int, pageOffset: Long): Try[immutable.Seq[(Index, LedgerRecord)]] =
     Timed.value(
       metrics.daml.ledger.database.queries.selectFromLog,
-      delegate.selectFromLog(start, end))
+      delegate.selectFromLog(start, end, pageSize, pageOffset))
 
   override def selectStateValuesByKeys(keys: Seq[Key]): Try[immutable.Seq[Option[Value]]] =
     Timed.value(

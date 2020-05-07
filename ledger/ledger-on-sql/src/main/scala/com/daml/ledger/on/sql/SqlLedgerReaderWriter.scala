@@ -9,10 +9,11 @@ import akka.NotUsed
 import akka.stream.Materializer
 import akka.stream.scaladsl.Source
 import com.daml.api.util.TimeProvider
+import com.daml.dec.DirectExecutionContext
 import com.daml.ledger.api.domain
 import com.daml.ledger.api.health.{HealthStatus, Healthy}
 import com.daml.ledger.on.sql.SqlLedgerReaderWriter._
-import com.daml.ledger.on.sql.queries.Queries
+import com.daml.ledger.on.sql.queries.{Queries, ReadQueries}
 import com.daml.ledger.participant.state.kvutils.DamlKvutils.{DamlLogEntryId, DamlStateValue}
 import com.daml.ledger.participant.state.kvutils.api.{LedgerReader, LedgerRecord, LedgerWriter}
 import com.daml.ledger.participant.state.kvutils.caching.Cache
@@ -73,20 +74,20 @@ final class SqlLedgerReaderWriter(
 
   override def currentHealth(): HealthStatus = Healthy
 
+  val PageSize = 10
+
   override def events(startExclusive: Option[Offset]): Source[LedgerRecord, NotUsed] =
     dispatcher
       .startingAt(
         KVOffset.highestIndex(startExclusive.getOrElse(StartOffset)),
         RangeSource(
           (startExclusive, endInclusive) =>
-            Source
-              .future(
-                Timed.value(metrics.daml.ledger.log.read, database.inReadTransaction("read_log") {
-                  queries =>
-                    Future.fromTry(queries.selectFromLog(startExclusive, endInclusive))
-                }))
-              .mapConcat(identity)
-              .mapMaterializedValue(_ => NotUsed)),
+            PaginatingAsyncStream(10) { pageOffset =>
+                Timed.value(metrics.daml.ledger.log.read,
+                  database.inReadTransaction("read_log") { queries =>
+                    Future.fromTry(queries.selectFromLog(startExclusive, endInclusive, 10, pageOffset).map(_.toVector))
+                })
+            })
       )
       .map { case (_, entry) => entry }
 
@@ -186,4 +187,42 @@ object SqlLedgerReaderWriter {
         Future.fromTry(queries.selectLatestLogEntryId().map(_.map(_ + 1).getOrElse(StartIndex)))
       }
       .map(head => Dispatcher("sql-participant-state", StartIndex, head))
+}
+
+
+object PaginatingAsyncStream {
+
+  /**
+   * Concatenates the results of multiple asynchronous calls into
+   * a single [[Source]], injecting the offset of the next page to
+   * retrieve for every call.
+   *
+   * This is designed to work with database limit/offset pagination and
+   * in particular to break down large queries intended to serve streams
+   * into smaller ones. The reason for this is that we are currently using
+   * simple blocking JDBC APIs and a long-running stream would end up
+   * occupying a thread in the DB pool, severely limiting the ability
+   * of keeping multiple, concurrent, long-running streams while serving
+   * lookup calls.
+   *
+   * This is not designed to page through results using the "seek method":
+   * https://use-the-index-luke.com/sql/partial-results/fetch-next-page
+   *
+   * @param pageSize number of items to retrieve per call
+   * @param queryPage takes the offset from which to start the next page and returns that page
+   * @tparam T the type of the items returned in each call
+   */
+  def apply[T](pageSize: Int)(queryPage: Long => Future[Vector[T]]): Source[T, NotUsed] = {
+    Source
+      .unfoldAsync(Option(0L)) {
+        case None => Future.successful(None)
+        case Some(queryOffset) =>
+          queryPage(queryOffset).map { result =>
+            val resultSize = result.size.toLong
+            val newQueryOffset = if (resultSize < pageSize) None else Some(queryOffset + pageSize)
+            Some(newQueryOffset -> result)
+          }(DirectExecutionContext)
+      }
+      .flatMapConcat(Source(_))
+  }
 }

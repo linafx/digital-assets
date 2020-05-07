@@ -28,8 +28,10 @@ trait CommonQueries extends Queries {
   override final def selectFromLog(
       startExclusive: Index,
       endInclusive: Index,
+      pageSize: Int,
+      pageOffset: Long,
   ): Try[immutable.Seq[(Index, LedgerRecord)]] = Try {
-    SQL"SELECT sequence_no, entry_id, envelope FROM #$LogTable WHERE sequence_no > $startExclusive AND sequence_no <= $endInclusive ORDER BY sequence_no"
+    SQL"SELECT sequence_no, entry_id, envelope FROM #$LogTable WHERE sequence_no > $startExclusive AND sequence_no <= $endInclusive ORDER BY sequence_no LIMIT $pageSize OFFSET $pageOffset"
       .as((long("sequence_no") ~ getBytes("entry_id") ~ getBytes("envelope")).map {
         case index ~ entryId ~ envelope =>
           index -> LedgerRecord(KVOffset.fromLong(index), entryId, envelope)
