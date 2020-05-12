@@ -140,7 +140,11 @@ object Speedy {
       }
     }
 
-    @inline def popEnv(count: Int): Unit = {
+    @inline def popEnv(): SValue = {
+      env.remove(env.size - 1)
+    }
+
+    @inline def popEnvN(count: Int): Unit = {
       env.subList(env.size - count, env.size).clear
     }
 
@@ -154,9 +158,9 @@ object Speedy {
         // NOTE(MH): If the top of the continuation stack is the monadic token,
         // we push location information under it to account for the implicit
         // lambda binding the token.
-        case Some(KArg(Array(SEValue.Token))) => {
+        case Some(KPushTo(_,SEArgs(Array(SEValue.Token)))) => {
           // Can't call pushKont here, because we don't push at the top of the stack.
-          kontStack.add(last_index, KLocation(loc))
+          kontStack.add(last_index, KLocation(this,loc))
           if (enableInstrumentation) {
             track.countPushesKont += 1
             if (kontDepth > track.maxDepthKont) track.maxDepthKont = kontDepth
@@ -166,9 +170,9 @@ object Speedy {
         // stack trace it produced back on the continuation stack to get
         // complete stack trace at the use site. Thus, we store the stack traces
         // of top level values separately during their execution.
-        case Some(KCacheVal(v, stack_trace)) =>
-          kontStack.set(last_index, KCacheVal(v, loc :: stack_trace)); ()
-        case _ => pushKont(KLocation(loc))
+        case Some(KPushTo(_,SECacheVal(v, stack_trace))) =>
+          kontStack.set(last_index, KCacheVal(this, v, loc :: stack_trace)); ()
+        case _ => pushKont(KLocation(this,loc))
       }
     }
 
@@ -183,7 +187,7 @@ object Speedy {
       val s = new util.ArrayList[Location]
       kontStack.forEach { k =>
         k match {
-          case KLocation(location) => { s.add(location); () }
+          case KPushTo(_,SELocationTrace(location)) => { s.add(location); () }
           case _ => ()
         }
       }
@@ -214,8 +218,8 @@ object Speedy {
       */
     def setExpressionToEvaluate(expr: SExpr): Unit = {
       ctrl = expr
-      kontStack = initialKontStack()
       env = emptyEnv
+      kontStack = initialKontStack(this)
     }
 
     /** Run a machine until we get a result: either a final-value or a request for data, with a callback */
@@ -261,6 +265,12 @@ object Speedy {
             result = SResultError(SErrorCrash(s"exception: $ex")) //stop
         }
       }
+      if (enableInstrumentation) {
+        result match {
+          case _:SResultFinalValue => track.print()
+          case _ => ()
+        }
+      }
       result
     }
 
@@ -270,12 +280,18 @@ object Speedy {
       */
     def tryHandleException(): Boolean = {
       val catchIndex =
-        kontStack.asScala.lastIndexWhere(_.isInstanceOf[KCatch])
+        kontStack.asScala.lastIndexWhere {
+          case KPushTo(_,SECatchMarker(_,_,_)) => true
+          case _ => false
+        }
       if (catchIndex >= 0) {
-        val kcatch = kontStack.get(catchIndex).asInstanceOf[KCatch]
-        kontStack.subList(catchIndex, kontStack.size).clear()
-        env.subList(kcatch.envSize, env.size).clear()
-        ctrl = kcatch.handler
+        kontStack.get(catchIndex) match {
+          case KPushTo(_,SECatchMarker(handler,_,envSize)) =>
+            kontStack.subList(catchIndex, kontStack.size).clear()
+            env.subList(envSize, env.size).clear()
+            ctrl = handler
+          case _ => () //not possible
+        }
         true
       } else
         false
@@ -291,7 +307,7 @@ object Speedy {
           val ref = eval.ref
           compiledPackages.getDefinition(ref) match {
             case Some(body) =>
-              pushKont(KCacheVal(eval, Nil))
+              pushKont(KCacheVal(this, eval, Nil))
               ctrl = body
             case None =>
               if (compiledPackages.getPackage(ref.packageId).isDefined)
@@ -317,7 +333,7 @@ object Speedy {
       prim match {
         case PClosure(expr, vars) =>
           // Pop the arguments once we're done evaluating the body.
-          pushKont(KPop(args.size + vars.size))
+          pushKont(KPop(this, args.size + vars.size))
 
           // Add all the variables we closed over
           vars.foreach(pushEnv)
@@ -488,12 +504,12 @@ object Speedy {
         submissionTime: Time.Timestamp,
         initialSeeding: InitialSeeding,
         globalCids: Set[V.AbsoluteContractId]
-    ) =
+    ) = {
       Machine(
         ctrl = null,
         returnValue = null,
         env = emptyEnv,
-        kontStack = initialKontStack(),
+        kontStack = null,
         lastLocation = None,
         ptx = PartialTransaction.initial(submissionTime, initialSeeding),
         committers = Set.empty,
@@ -509,6 +525,7 @@ object Speedy {
         steps = 0,
         track = Instrumentation(),
       )
+    }
 
     def newBuilder(
         compiledPackages: CompiledPackages,
@@ -575,8 +592,132 @@ object Speedy {
         submissionTime: Time.Timestamp,
         seeding: InitialSeeding,
         globalCids: Set[V.AbsoluteContractId],
-    ): Machine =
-      initial(compiledPackages, submissionTime, seeding, globalCids).copy(ctrl = sexpr)
+    ): Machine = {
+      val machine = initial(compiledPackages, submissionTime, seeding, globalCids)
+      machine.setExpressionToEvaluate(sexpr)
+      machine
+    }
+  }
+
+  def executeApplication(v: SValue, newArgs: Array[SExpr], machine: Machine) = {
+    v match {
+      case SPAP(prim, args, arity) =>
+        val missing = arity - args.size
+        val newArgsLimit = Math.min(missing, newArgs.length)
+
+        // Keep some space free, because both `KFun` and `KPushTo` will add to the list.
+        val extendedArgs = new util.ArrayList[SValue](args.size + newArgsLimit)
+        extendedArgs.addAll(args)
+
+        // Stash away over-applied arguments, if any.
+        val othersLength = newArgs.length - missing
+        if (othersLength > 0) {
+          val others = new Array[SExpr](othersLength)
+          System.arraycopy(newArgs, missing, others, 0, othersLength)
+          machine.pushKont(KArg(machine,others))
+        }
+
+        // check if there are now enough arguments to saturate the function arity
+        if (othersLength >= 0) {
+          // push a continuation to enter the function
+          machine.pushKont(KFun(prim, extendedArgs))
+        } else {
+          // push a continuation to build the PAP
+          machine.pushKont(KPap(prim, extendedArgs, arity))
+        }
+
+        // Start evaluating the arguments.
+        var i = 1
+        while (i < newArgsLimit) {
+          val arg = newArgs(newArgsLimit - i)
+          machine.pushKont(KPushTo(extendedArgs, arg))
+          i = i + 1
+        }
+        machine.ctrl = newArgs(0)
+
+      case _ =>
+        crash(s"Applying non-PAP: $v")
+    }
+  }
+
+  /** The scrutinee of a match has been evaluated, now match the alternatives against it. */
+  def matchAlternative(alts: Array[SCaseAlt], v: SValue, machine: Machine) : Unit = {
+    val altOpt = v match {
+      case SBool(b) =>
+        alts.find { alt =>
+          alt.pattern match {
+            case SCPPrimCon(PCTrue) => b
+            case SCPPrimCon(PCFalse) => !b
+            case SCPDefault => true
+            case _ => false
+          }
+        }
+      case SVariant(_, _, rank1, arg) =>
+        alts.find { alt =>
+          alt.pattern match {
+            case SCPVariant(_, _, rank2) if rank1 == rank2 =>
+              machine.pushKont(KPop(machine, 1))
+              machine.pushEnv(arg)
+              true
+            case SCPDefault => true
+            case _ => false
+          }
+        }
+      case SEnum(_, _, rank1) =>
+        alts.find { alt =>
+          alt.pattern match {
+            case SCPEnum(_, _, rank2) => rank1 == rank2
+            case SCPDefault => true
+            case _ => false
+          }
+        }
+      case SList(lst) =>
+        alts.find { alt =>
+          alt.pattern match {
+            case SCPNil if lst.isEmpty => true
+            case SCPCons if !lst.isEmpty =>
+              machine.pushKont(KPop(machine, 2))
+              val Some((head, tail)) = lst.pop
+              machine.pushEnv(head)
+              machine.pushEnv(SList(tail))
+              true
+            case SCPDefault => true
+            case _ => false
+          }
+        }
+      case SUnit =>
+        alts.find { alt =>
+          alt.pattern match {
+            case SCPPrimCon(PCUnit) => true
+            case SCPDefault => true
+            case _ => false
+          }
+        }
+      case SOptional(mbVal) =>
+        alts.find { alt =>
+          alt.pattern match {
+            case SCPNone if mbVal.isEmpty => true
+            case SCPSome =>
+              mbVal match {
+                case None => false
+                case Some(x) =>
+                  machine.pushKont(KPop(machine, 1))
+                  machine.pushEnv(x)
+                  true
+              }
+            case SCPDefault => true
+            case _ => false
+          }
+        }
+      case SContractId(_) | SDate(_) | SNumeric(_) | SInt64(_) | SParty(_) | SText(_) |
+          STimestamp(_) | SStruct(_, _) | STextMap(_) | SGenMap(_) | SRecord(_, _, _) |
+          SAny(_, _) | STypeRep(_) | STNat(_) | _: SPAP | SToken =>
+        crash("Match on non-matchable value")
+    }
+
+    machine.ctrl = altOpt
+      .getOrElse(throw DamlEMatchError(s"No match for $v in ${alts.toList}"))
+      .body
   }
 
   //
@@ -594,9 +735,9 @@ object Speedy {
   // We do this by pushing a KFinished continutaion on the initially empty stack, which
   // returns the final result (by raising it as a SpeedyHungry exception).
 
-  def initialKontStack(): util.ArrayList[Kont] = {
+  def initialKontStack(machine: Machine): util.ArrayList[Kont] = {
     val kontStack = new util.ArrayList[Kont](128)
-    kontStack.add(KFinished)
+    kontStack.add(KFinished(machine))
     kontStack
   }
 
@@ -607,158 +748,6 @@ object Speedy {
 
     /** Execute the continuation. */
     def execute(v: SValue, machine: Machine): Unit
-  }
-
-  /** Final continuation; machine has computed final value */
-  final case object KFinished extends Kont {
-    def execute(v: SValue, machine: Machine) = {
-      if (enableInstrumentation) {
-        machine.track.print()
-      }
-      throw SpeedyHungry(SResultFinalValue(v))
-    }
-  }
-
-  /** Pop 'count' arguments from the environment. */
-  final case class KPop(count: Int) extends Kont {
-    def execute(v: SValue, machine: Machine) = {
-      machine.popEnv(count)
-      machine.returnValue = v
-    }
-  }
-
-  /** The function has been evaluated to a value, now start evaluating the arguments. */
-  final case class KArg(newArgs: Array[SExpr]) extends Kont with SomeArrayEquals {
-    def execute(v: SValue, machine: Machine) = {
-      v match {
-        case SPAP(prim, args, arity) =>
-          val missing = arity - args.size
-          val newArgsLimit = Math.min(missing, newArgs.length)
-
-          // Keep some space free, because both `KFun` and `KPushTo` will add to the list.
-          val extendedArgs = new util.ArrayList[SValue](args.size + newArgsLimit)
-          extendedArgs.addAll(args)
-
-          // Stash away over-applied arguments, if any.
-          val othersLength = newArgs.length - missing
-          if (othersLength > 0) {
-            val others = new Array[SExpr](othersLength)
-            System.arraycopy(newArgs, missing, others, 0, othersLength)
-            machine.pushKont(KArg(others))
-          }
-
-          machine.pushKont(KFun(prim, extendedArgs, arity))
-
-          // Start evaluating the arguments.
-          var i = 1
-          while (i < newArgsLimit) {
-            val arg = newArgs(newArgsLimit - i)
-            machine.pushKont(KPushTo(extendedArgs, arg))
-            i = i + 1
-          }
-          machine.ctrl = newArgs(0)
-
-        case _ =>
-          crash(s"Applying non-PAP: $v")
-      }
-    }
-  }
-
-  /** The function and the arguments have been evaluated. Construct a PAP from them.
-    * If the PAP is fully applied the machine will push the arguments to the environment
-    * and start evaluating the function body. */
-  final case class KFun(prim: Prim, args: util.ArrayList[SValue], var arity: Int) extends Kont {
-    def execute(v: SValue, machine: Machine) = {
-      args.add(v) // Add last argument
-      if (args.size == arity) {
-        machine.enterFullyAppliedFunction(prim, args)
-      } else {
-        // args.size < arity (we already dealt with args.size > args in Karg)
-        machine.returnValue = SPAP(prim, args, arity)
-      }
-    }
-  }
-
-  /** The scrutinee of a match has been evaluated, now match the alternatives against it. */
-  final case class KMatch(alts: Array[SCaseAlt]) extends Kont with SomeArrayEquals {
-    def execute(v: SValue, machine: Machine) = {
-      val altOpt = v match {
-        case SBool(b) =>
-          alts.find { alt =>
-            alt.pattern match {
-              case SCPPrimCon(PCTrue) => b
-              case SCPPrimCon(PCFalse) => !b
-              case SCPDefault => true
-              case _ => false
-            }
-          }
-        case SVariant(_, _, rank1, arg) =>
-          alts.find { alt =>
-            alt.pattern match {
-              case SCPVariant(_, _, rank2) if rank1 == rank2 =>
-                machine.pushKont(KPop(1))
-                machine.pushEnv(arg)
-                true
-              case SCPDefault => true
-              case _ => false
-            }
-          }
-        case SEnum(_, _, rank1) =>
-          alts.find { alt =>
-            alt.pattern match {
-              case SCPEnum(_, _, rank2) => rank1 == rank2
-              case SCPDefault => true
-              case _ => false
-            }
-          }
-        case SList(lst) =>
-          alts.find { alt =>
-            alt.pattern match {
-              case SCPNil if lst.isEmpty => true
-              case SCPCons if !lst.isEmpty =>
-                machine.pushKont(KPop(2))
-                val Some((head, tail)) = lst.pop
-                machine.pushEnv(head)
-                machine.pushEnv(SList(tail))
-                true
-              case SCPDefault => true
-              case _ => false
-            }
-          }
-        case SUnit =>
-          alts.find { alt =>
-            alt.pattern match {
-              case SCPPrimCon(PCUnit) => true
-              case SCPDefault => true
-              case _ => false
-            }
-          }
-        case SOptional(mbVal) =>
-          alts.find { alt =>
-            alt.pattern match {
-              case SCPNone if mbVal.isEmpty => true
-              case SCPSome =>
-                mbVal match {
-                  case None => false
-                  case Some(x) =>
-                    machine.pushKont(KPop(1))
-                    machine.pushEnv(x)
-                    true
-                }
-              case SCPDefault => true
-              case _ => false
-            }
-          }
-        case SContractId(_) | SDate(_) | SNumeric(_) | SInt64(_) | SParty(_) | SText(_) |
-            STimestamp(_) | SStruct(_, _) | STextMap(_) | SGenMap(_) | SRecord(_, _, _) |
-            SAny(_, _) | STypeRep(_) | STNat(_) | _: SPAP | SToken =>
-          crash("Match on non-matchable value")
-      }
-
-      machine.ctrl = altOpt
-        .getOrElse(throw DamlEMatchError(s"No match for $v in ${alts.toList}"))
-        .body
-    }
   }
 
   /** Push the evaluated value to the array 'to', and start evaluating the expression 'next'.
@@ -774,36 +763,40 @@ object Speedy {
     }
   }
 
-  /** Store the evaluated value in the 'SEVal' from which the expression came from.
-    * This in principle makes top-level values lazy. It is a useful optimization to
-    * allow creation of large constants (for example records) that are repeatedly
-    * accessed. In older compilers which did not use the builtin record and struct
-    * updates this solves the blow-up which would happen when a large record is
-    * updated multiple times. */
-  final case class KCacheVal(v: SEVal, stack_trace: List[Location]) extends Kont {
-    def execute(sv: SValue, machine: Machine): Unit = {
-      machine.pushStackTrace(stack_trace)
-      v.setCached(sv, stack_trace)
-      machine.returnValue = sv
-    }
+  @inline def KArg(machine: Machine, args: Array[SExpr]) : Kont = {
+    KPushTo(machine.env,SEArgs(args))
   }
 
-  /** A catch frame marks the point to which an exception (of type 'SErrorDamlException')
-    * is unwound. The 'envSize' specifies the size to which the environment must be pruned.
-    * If an exception is raised and 'KCatch' is found from kont-stack, then 'handler' is
-    * evaluated. If 'KCatch' is encountered naturally, then 'fin' is evaluated.
-    */
-  final case class KCatch(handler: SExpr, fin: SExpr, envSize: Int) extends Kont {
-    def execute(v: SValue, machine: Machine) = {
-      machine.ctrl = fin
-    }
+  @inline def KFun(prim: Prim, args: util.ArrayList[SValue]): Kont = {
+    KPushTo(args, SEFun(prim, args))
   }
 
-  /** A location frame stores a location annotation found in the AST. */
-  final case class KLocation(location: Location) extends Kont {
-    def execute(v: SValue, machine: Machine) = {
-      machine.returnValue = v
-    }
+  @inline def KPap(prim: Prim, args: util.ArrayList[SValue], arity: Int): Kont = {
+    KPushTo(args, SEPAP(prim, args, arity))
+  }
+
+  @inline def KFinished(machine: Machine): Kont = {
+    KPushTo(machine.env, SEFinished())
+  }
+
+  @inline def KMatch(machine: Machine, alts: Array[SCaseAlt]): Kont = {
+    KPushTo(machine.env, SEMatch(alts))
+  }
+
+  @inline def KCacheVal(machine: Machine, eval: SEVal, stack_trace: List[Location]) : Kont = {
+    KPushTo(machine.env, SECacheVal(eval,stack_trace))
+  }
+
+  @inline def KPop(machine: Machine, count: Int): Kont = {
+    KPushTo(machine.env, SEPop(count))
+  }
+
+  @inline def KLocation(machine: Machine, location: Location): Kont = {
+    KPushTo(machine.env, SELocationTrace(location))
+  }
+
+  @inline def KCatch(machine: Machine, handler: SExpr, fin: SExpr, envSize: Int): Kont = {
+    KPushTo(machine.env, SECatchMarker(handler,fin,envSize))
   }
 
   /** Internal exception thrown when a continuation result needs to be returned.

@@ -1001,11 +1001,17 @@ private[lf] final case class Compiler(packages: PackageId PartialFunction Packag
           closureConvert(remaps, bound, fin),
         )
 
-      case x: SEWronglyTypeContractId =>
-        throw CompilationError(s"unexpected SEWronglyTypeContractId: $x")
-
-      case x: SEImportValue =>
-        throw CompilationError(s"unexpected SEImportValue: $x")
+      case x: SEWronglyTypeContractId => throw CompilationError(s"unexpected expression: $x")
+      case x: SEImportValue => throw CompilationError(s"unexpected expression: $x")
+      case x: SEFun => throw CompilationError(s"unexpected expression: $x")
+      case x: SEPAP => throw CompilationError(s"unexpected expression: $x")
+      case x: SEArgs => throw CompilationError(s"unexpected expression: $x")
+      case x: SEFinished => throw CompilationError(s"unexpected expression: $x")
+      case x: SEMatch => throw CompilationError(s"unexpected expression: $x")
+      case x: SECacheVal => throw CompilationError(s"unexpected expression: $x")
+      case x: SEPop => throw CompilationError(s"unexpected expression: $x")
+      case x: SELocationTrace => throw CompilationError(s"unexpected expression: $x")
+      case x: SECatchMarker => throw CompilationError(s"unexpected expression: $x")
     }
   }
 
@@ -1054,10 +1060,18 @@ private[lf] final case class Compiler(packages: PackageId PartialFunction Packag
           go(body)
           go(handler)
           go(fin)
-        case x: SEWronglyTypeContractId =>
-          throw CompilationError(s"unexpected SEWronglyTypeContractId: $x")
-        case x: SEImportValue =>
-          throw CompilationError(s"unexpected SEImportValue: $x")
+
+        case x: SEWronglyTypeContractId => throw CompilationError(s"unexpected expression: $x")
+        case x: SEImportValue => throw CompilationError(s"unexpected expression: $x")
+        case x: SEFun => throw CompilationError(s"unexpected expression: $x")
+        case x: SEPAP => throw CompilationError(s"unexpected expression: $x")
+        case x: SEArgs => throw CompilationError(s"unexpected expression: $x")
+        case x: SEFinished => throw CompilationError(s"unexpected expression: $x")
+        case x: SEMatch => throw CompilationError(s"unexpected expression: $x")
+        case x: SECacheVal => throw CompilationError(s"unexpected expression: $x")
+        case x: SEPop => throw CompilationError(s"unexpected expression: $x")
+        case x: SELocationTrace => throw CompilationError(s"unexpected expression: $x")
+        case x: SECatchMarker => throw CompilationError(s"unexpected expression: $x")
       }
     go(expr)
     free
@@ -1134,10 +1148,18 @@ private[lf] final case class Compiler(packages: PackageId PartialFunction Packag
           go(fin)
         case SELocation(_, body) =>
           go(body)
-        case x: SEWronglyTypeContractId =>
-          throw CompilationError(s"unexpected SEWronglyTypeContractId: $x")
-        case x: SEImportValue =>
-          throw CompilationError(s"unexpected SEImportValue: $x")
+
+        case x: SEWronglyTypeContractId => throw CompilationError(s"unexpected expression: $x")
+        case x: SEImportValue => throw CompilationError(s"unexpected expression: $x")
+        case x: SEFun => throw CompilationError(s"unexpected expression: $x")
+        case x: SEPAP => throw CompilationError(s"unexpected expression: $x")
+        case x: SEArgs => throw CompilationError(s"unexpected expression: $x")
+        case x: SEFinished => throw CompilationError(s"unexpected expression: $x")
+        case x: SEMatch => throw CompilationError(s"unexpected expression: $x")
+        case x: SECacheVal => throw CompilationError(s"unexpected expression: $x")
+        case x: SEPop => throw CompilationError(s"unexpected expression: $x")
+        case x: SELocationTrace => throw CompilationError(s"unexpected expression: $x")
+        case x: SECatchMarker => throw CompilationError(s"unexpected expression: $x")
       }
     go(expr)
     expr

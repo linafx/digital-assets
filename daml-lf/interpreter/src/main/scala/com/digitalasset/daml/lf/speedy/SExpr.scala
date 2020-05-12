@@ -18,6 +18,7 @@ import com.daml.lf.speedy.SValue._
 import com.daml.lf.speedy.Speedy._
 import com.daml.lf.speedy.SError._
 import com.daml.lf.speedy.SBuiltin._
+import com.daml.lf.speedy.SResult._
 import java.util.ArrayList
 
 /** The speedy expression:
@@ -35,6 +36,93 @@ sealed abstract class SExpr extends Product with Serializable {
 
 @SuppressWarnings(Array("org.wartremover.warts.Any"))
 object SExpr {
+
+  /** Expression variants which correspond to evaluator continuations... */
+
+  /** The function has been evaluated to a value, now start evaluating the arguments. */
+  final case class SEArgs(args: Array[SExpr]) extends SExpr with SomeArrayEquals {
+    def execute(machine: Machine): Unit = {
+      val func = machine.popEnv()
+      executeApplication(func,args,machine)
+    }
+  }
+
+  /** The function and all arguments have been evaluated. Enter the function */
+  final case class SEFun(prim: Prim, args: util.ArrayList[SValue]) extends SExpr {
+    def execute(machine: Machine): Unit = {
+      machine.enterFullyAppliedFunction(prim, args)
+    }
+  }
+
+  /** The function and some arguments have been evaluated. Construct a PAP from them. */
+  final case class SEPAP(prim: Prim, args: util.ArrayList[SValue], arity: Int) extends SExpr {
+    def execute(machine: Machine): Unit = {
+      machine.returnValue = SPAP(prim, args, arity)
+    }
+  }
+
+  /** The scrutinee of a match has been evaluated, now match the alternatives against it. */
+  final case class SEMatch(alts: Array[SCaseAlt]) extends SExpr with SomeArrayEquals {
+    def execute(machine: Machine): Unit = {
+      val value = machine.popEnv()
+      matchAlternative(alts, value, machine)
+    }
+  }
+
+  /** Pop 'count' arguments from the environment. */
+  final case class SEPop(count: Int) extends SExpr {
+    def execute(machine: Machine) = {
+      val value = machine.popEnv()
+      machine.popEnvN(count)
+      machine.returnValue = value
+    }
+  }
+
+  /** A location frame stores a location annotation found in the AST. */
+  final case class SELocationTrace(location: Location) extends SExpr {
+    def execute(machine: Machine) = {
+      val value = machine.popEnv()
+      machine.returnValue = value
+    }
+  }
+
+  /** A catch frame marks the point to which an exception (of type 'SErrorDamlException')
+    * is unwound. The 'envSize' specifies the size to which the environment must be pruned.
+    * If an exception is raised and 'KCatch' is found from kont-stack, then 'handler' is
+    * evaluated. If 'KCatch' is encountered naturally, then 'fin' is evaluated.
+    */
+  final case class SECatchMarker(handler: SExpr, fin: SExpr, envSize: Int) extends SExpr {
+    def execute(machine: Machine) = {
+      val _ = machine.popEnv()
+      machine.ctrl = fin
+    }
+  }
+
+  /** Store the evaluated value in the 'SEVal' from which the expression came from.
+    * This in principle makes top-level values lazy. It is a useful optimization to
+    * allow creation of large constants (for example records) that are repeatedly
+    * accessed. In older compilers which did not use the builtin record and struct
+    * updates this solves the blow-up which would happen when a large record is
+    * updated multiple times. */
+  final case class SECacheVal(eval: SEVal, stack_trace: List[Location]) extends SExpr {
+    def execute(machine: Machine): Unit = {
+      val value = machine.popEnv()
+      machine.pushStackTrace(stack_trace)
+      eval.setCached(value, stack_trace)
+      machine.returnValue = value
+    }
+  }
+
+
+  /** Finished; machine has computed final value */
+  final case class SEFinished() extends SExpr {
+    def execute(machine: Machine): Unit = {
+      val v = machine.popEnv()
+      throw SpeedyHungry(SResultFinalValue(v))
+    }
+  }
+
+  /** Expression variants which correspond to syntactic forms in DAML... */
 
   /** Reference to a variable. 'index' is the 1-based de Bruijn index,
     * that is, SEVar(1) points to the top-most value in the environment.
@@ -101,7 +189,7 @@ object SExpr {
     */
   final case class SEApp(fun: SExpr, args: Array[SExpr]) extends SExpr with SomeArrayEquals {
     def execute(machine: Machine): Unit = {
-      machine.pushKont(KArg(args))
+      machine.pushKont(KArg(machine,args))
       machine.ctrl = fun
     }
   }
@@ -149,7 +237,7 @@ object SExpr {
   /** Pattern match. */
   final case class SECase(scrut: SExpr, alts: Array[SCaseAlt]) extends SExpr with SomeArrayEquals {
     def execute(machine: Machine): Unit = {
-      machine.pushKont(KMatch(alts))
+      machine.pushKont(KMatch(machine,alts))
       machine.ctrl = scrut
     }
 
@@ -177,7 +265,7 @@ object SExpr {
   final case class SELet(bounds: Array[SExpr], body: SExpr) extends SExpr with SomeArrayEquals {
     def execute(machine: Machine): Unit = {
       // Pop the block once we're done evaluating the body
-      machine.pushKont(KPop(bounds.size))
+      machine.pushKont(KPop(machine, bounds.size))
 
       // Evaluate the body after we've evaluated the binders
       machine.pushKont(KPushTo(machine.env, body))
@@ -228,7 +316,7 @@ object SExpr {
     */
   final case class SECatch(body: SExpr, handler: SExpr, fin: SExpr) extends SExpr {
     def execute(machine: Machine): Unit = {
-      machine.pushKont(KCatch(handler, fin, machine.env.size))
+      machine.pushKont(KCatch(machine, handler, fin, machine.env.size))
       machine.ctrl = body
     }
   }

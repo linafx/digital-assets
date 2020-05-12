@@ -31,20 +31,16 @@ object PrettyLightweight { // lightweight pretty printer for CEK machine states
 
   def ppKontStack(ks: util.ArrayList[Kont]): String = {
     //ks.asScala.reverse.map(ppKont).mkString(" -- ")
-    s"[#${ks.size()}]" //show just the kont-stack depth
+    if (ks.size > 0) {
+      val kTop = ks.get(ks.size -1)
+      s"[#${ks.size()}]: ${ppKont(kTop)}" //show kont-stack depth + the top kont
+    } else {
+      s"[#${ks.size()}]" //show just the kont-stack depth
+    }
   }
 
   def ppKont(k: Kont): String = k match {
-    case KPop(n) => s"KPop($n)"
-    case KArg(es) => s"KArg(${commas(es.map(pp))})"
-    case KFun(prim, extendedArgs, arity) =>
-      s"KFun(${pp(prim)}/$arity,[${commas(extendedArgs.asScala.map(pp))}])"
     case KPushTo(_, e) => s"KPushTo(_, ${pp(e)})"
-    case KCacheVal(_, _) => "KCacheVal"
-    case KLocation(_) => "KLocation"
-    case KMatch(_) => "KMatch"
-    case KCatch(_, _, _) => "KCatch" //never seen
-    case KFinished => "KFinished"
   }
 
   def ppVarRef(n: Int): String = {
@@ -68,6 +64,15 @@ object PrettyLightweight { // lightweight pretty printer for CEK machine states
     case SEAbs(_, _) => "<SEAbs...>" // will never get these on a running machine
     case SEImportValue(_) => "<SEImportValue...>"
     case SEWronglyTypeContractId(_, _, _) => "<SEWronglyTypeContractId...>"
+    case SEArgs(args) => s"SEArgs(${commas(args.map(pp))})"
+    case SEFun(prim,args) => s"SEFun(${pp(prim)},[${commas(args.asScala.map(pp))}])"
+    case SEPAP(prim,args,arity) => s"SEPAP(${pp(prim)}/$arity,[${commas(args.asScala.map(pp))}])"
+    case SEFinished() => "<SEFinished>"
+    case SEMatch(_) => "<SEMatch...>"
+    case SECacheVal(_,_) => "<SECacheVal...>"
+    case SEPop(n) => s"<SEPop:$n>"
+    case SELocationTrace(_) => s"<SELocationTrace>"
+    case SECatchMarker(_,_,_) => s"<SECatchMarker...>"
   }
 
   def pp(v: SValue): String = v match {
