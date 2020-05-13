@@ -14,15 +14,12 @@ import com.daml.lf.speedy.SValue._
 object PrettyLightweight { // lightweight pretty printer for CEK machine states
 
   def ppMachine(m: Machine): String = {
-    s"${ppEnv(m.env)} -- ${ppCtrl(m.ctrl, m.returnValue)} -- ${ppKontStack(m.kontStack)}"
+    s"${ppEnv(m.env)} -- ${ppCtrl(m.ctrl)} -- ${ppKontStack(m.kontStack)}"
   }
 
-  def ppCtrl(e: SExpr, v: SValue): String =
-    if (v != null) {
-      s"V-${pp(v)}"
-    } else {
-      s"E-${pp(e)}"
-    }
+  def ppCtrl(e: SExpr): String = {
+    s"${pp(e)}"
+  }
 
   def ppEnv(env: Env): String = {
     //s"{${commas(env.asScala.map(pp))}}"

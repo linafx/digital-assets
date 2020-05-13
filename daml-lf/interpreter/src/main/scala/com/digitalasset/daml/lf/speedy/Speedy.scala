@@ -60,19 +60,12 @@ object Speedy {
 
   /** The speedy CEK machine. */
   final case class Machine(
-      /* The control is what the machine should be evaluating. If this is not
-       * null, then `returnValue` must be null.
-       */
+      /* The control is what the machine should be evaluating. */
       var ctrl: SExpr,
-      /* `returnValue` contains the result once the expression in `ctrl` has
-       * been fully evaluated. If this is not null, then `ctrl` must be null.
-       */
-      var returnValue: SValue,
       /* The environment: an array of values */
       var env: Env,
-      /* Kont, or continuation specifies what should be done next
-       * once the control has been evaluated.
-       */
+      /* The continuation-stack specifies what should be done
+       * once the control has been evaluated. */
       var kontStack: util.ArrayList[Kont],
       /* The last encountered location */
       var lastLocation: Option[Location],
@@ -223,6 +216,13 @@ object Speedy {
       kontStack = initialKontStack()
     }
 
+    /** Return a value to the waiting continuation */
+    @inline def returnValue(value: SValue): Unit = {
+      env.add(value)
+      ctrl = popKont()
+    }
+
+
     /** Run a machine until we get a result: either a final-value or a request for data, with a callback */
     def run(): SResult = {
       // Note: We have an outer and inner while loop.
@@ -245,18 +245,9 @@ object Speedy {
               steps += 1
               println(s"$steps: ${PrettyLightweight.ppMachine(this)}")
             }
-            if (returnValue != null) {
-              val value = returnValue
-              returnValue = null
-
-              env.add(value)
-              ctrl = popKont()
-
-            } else {
-              val expr = ctrl
-              ctrl = null
-              expr.execute(this)
-            }
+            val expr = ctrl
+            ctrl = null // ensures that executing the current ctrl sets the next ctrl
+            expr.execute(this)
           }
         } catch {
           case SpeedyHungry(res: SResult) => result = res //stop
@@ -303,9 +294,9 @@ object Speedy {
 
     def lookupVal(eval: SEVal): Unit = {
       eval.cached match {
-        case Some((v, stack_trace)) =>
+        case Some((value, stack_trace)) =>
           pushStackTrace(stack_trace)
-          returnValue = v
+          returnValue(value)
 
         case None =>
           val ref = eval.ref
@@ -362,15 +353,8 @@ object Speedy {
 
     def print(count: Int) = {
       println(s"Step: $count")
-      if (returnValue != null) {
-        println("Control: null")
-        println("Return:")
-        println(s"  ${returnValue}")
-      } else {
-        println("Control:")
-        println(s"  ${ctrl}")
-        println("Return: null")
-      }
+      println("Control:")
+      println(s"  ${ctrl}")
       println("Environment:")
       env.forEach { v =>
         println("  " + v.toString)
@@ -470,7 +454,7 @@ object Speedy {
                     id.packageId,
                     pkg => {
                       compiledPackages = pkg
-                      returnValue = go(value)
+                      returnValue(go(value))
                     }
                   ))
             }
@@ -489,12 +473,12 @@ object Speedy {
                     id.packageId,
                     pkg => {
                       compiledPackages = pkg
-                      returnValue = go(value)
+                      returnValue(go(value))
                     }
                   ))
             }
         }
-      returnValue = go(value)
+      returnValue(go(value))
     }
 
   }
@@ -511,7 +495,6 @@ object Speedy {
     ) = {
       Machine(
         ctrl = null,
-        returnValue = null,
         env = emptyEnv,
         kontStack = null,
         lastLocation = None,

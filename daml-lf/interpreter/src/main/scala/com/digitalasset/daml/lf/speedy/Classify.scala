@@ -10,8 +10,7 @@ import com.daml.lf.speedy.SExpr._
 object Classify { // classify the machine state w.r.t what step occurs next
 
   case class Counts(
-      var ctrl: Int,
-      var returnValue: Int,
+      var steps: Int,
 
       // expression classification (ctrlExpr)
       var evalue: Int,
@@ -40,11 +39,8 @@ object Classify { // classify the machine state w.r.t what step occurs next
       var ecollectarg: Int,
 
   ) {
-    def steps = ctrl + returnValue
     def pp: String = {
       List(
-        ("ReturnValue", returnValue),
-        ("Ctrl:", ctrl),
         ("- evalue", evalue),
         ("- evar", evar),
         ("- eapp", eapp),
@@ -74,17 +70,13 @@ object Classify { // classify the machine state w.r.t what step occurs next
   }
 
   def newEmptyCounts(): Counts = {
-    Counts(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+    Counts(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
   }
 
   def classifyMachine(machine: Machine, counts: Counts): Unit = {
-    if (machine.returnValue != null) {
-      // classify a value by the continution it is about to return to
-      counts.returnValue += 1
-    } else {
-      counts.ctrl += 1
-      classifyExpr(machine.ctrl, counts)
-    }
+    // classify a machine by the control expression
+    counts.steps += 1
+    classifyExpr(machine.ctrl, counts)
   }
 
   def classifyExpr(exp: SExpr, counts: Counts): Unit = {

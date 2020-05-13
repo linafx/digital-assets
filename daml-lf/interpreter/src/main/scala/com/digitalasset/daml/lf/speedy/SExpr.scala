@@ -67,7 +67,7 @@ object SExpr {
   final case class SEPAP(prim: Prim, args: util.ArrayList[SValue], arity: Int) extends SExpr {
     def execute(machine: Machine): Unit = {
       args.add(machine.popEnv())
-      machine.returnValue = SPAP(prim, args, arity)
+      machine.returnValue(SPAP(prim, args, arity))
     }
   }
 
@@ -84,7 +84,7 @@ object SExpr {
     def execute(machine: Machine) = {
       val value = machine.popEnv()
       machine.popEnvN(count)
-      machine.returnValue = value
+      machine.returnValue(value)
     }
   }
 
@@ -92,7 +92,7 @@ object SExpr {
   final case class SELocationTrace(location: Location) extends SExpr {
     def execute(machine: Machine) = {
       val value = machine.popEnv()
-      machine.returnValue = value
+      machine.returnValue(value)
     }
   }
 
@@ -119,7 +119,7 @@ object SExpr {
       val value = machine.popEnv()
       machine.pushStackTrace(stack_trace)
       eval.setCached(value, stack_trace)
-      machine.returnValue = value
+      machine.returnValue(value)
     }
   }
 
@@ -140,7 +140,7 @@ object SExpr {
     */
   final case class SEVar(index: Int) extends SExpr {
     def execute(machine: Machine): Unit = {
-      machine.returnValue = machine.getEnv(index)
+      machine.returnValue(machine.getEnv(index))
     }
   }
 
@@ -176,11 +176,11 @@ object SExpr {
   final case class SEBuiltin(b: SBuiltin) extends SExpr {
     def execute(machine: Machine): Unit = {
       /* special case for nullary record constructors */
-      machine.returnValue = b match {
+      b match {
         case SBRecCon(id, fields) if b.arity == 0 =>
-          SRecord(id, fields, new ArrayList())
+          machine.returnValue(SRecord(id, fields, new ArrayList()))
         case _ =>
-          SPAP(PBuiltin(b), new util.ArrayList[SValue](), b.arity)
+          machine.returnValue(SPAP(PBuiltin(b), new util.ArrayList[SValue](), b.arity))
       }
     }
   }
@@ -188,7 +188,7 @@ object SExpr {
   /** A pre-computed value, usually primitive literal, e.g. integer, text, boolean etc. */
   final case class SEValue(v: SValue) extends SExpr {
     def execute(machine: Machine): Unit = {
-      machine.returnValue = v
+      machine.returnValue(v)
     }
   }
 
@@ -240,7 +240,7 @@ object SExpr {
       }
 
       val sValues = convertToSValues(fv, machine.getEnv)
-      machine.returnValue = SPAP(PClosure(body, sValues), new util.ArrayList[SValue](), arity)
+      machine.returnValue(SPAP(PClosure(body, sValues), new util.ArrayList[SValue](), arity))
     }
   }
 

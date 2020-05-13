@@ -109,8 +109,8 @@ object SBuiltin {
 
   sealed abstract class SBBinaryOpInt64(op: (Long, Long) => Long) extends SBuiltin(2) {
     final def execute(args: util.ArrayList[SValue], machine: Machine): Unit =
-      machine.returnValue = (args.get(0), args.get(1)) match {
-        case (SInt64(a), SInt64(b)) => SInt64(op(a, b))
+      (args.get(0), args.get(1)) match {
+        case (SInt64(a), SInt64(b)) => machine.returnValue(SInt64(op(a, b)))
         case _ => crash(s"type mismatch add: $args")
       }
   }
@@ -159,7 +159,7 @@ object SBuiltin {
       val a = args.get(1).asInstanceOf[SNumeric].value
       val b = args.get(2).asInstanceOf[SNumeric].value
       assert(a.scale == scale && b.scale == scale)
-      machine.returnValue = SNumeric(op(a, b))
+      machine.returnValue(SNumeric(op(a, b)))
     }
   }
 
@@ -172,7 +172,7 @@ object SBuiltin {
       val a = args.get(3).asInstanceOf[SNumeric].value
       val b = args.get(4).asInstanceOf[SNumeric].value
       assert(a.scale == scaleA && b.scale == scaleB)
-      machine.returnValue = SNumeric(op(scale, a, b))
+      machine.returnValue(SNumeric(op(scale, a, b)))
     }
   }
 
@@ -186,9 +186,9 @@ object SBuiltin {
       val scale = args.get(0).asInstanceOf[STNat].n
       val prec = args.get(1).asInstanceOf[SInt64].value
       val x = args.get(2).asInstanceOf[SNumeric].value
-      machine.returnValue = SNumeric(
+      machine.returnValue(SNumeric(
         rightOrArithmeticError(s"Error while rounding (Numeric $scale)", Numeric.round(prec, x)),
-      )
+      ))
     }
   }
 
@@ -197,12 +197,12 @@ object SBuiltin {
       val inputScale = args.get(0).asInstanceOf[STNat].n
       val outputScale = args.get(1).asInstanceOf[STNat].n
       val x = args.get(2).asInstanceOf[SNumeric].value
-      machine.returnValue = SNumeric(
+      machine.returnValue(SNumeric(
         rightOrArithmeticError(
           s"Error while casting (Numeric $inputScale) to (Numeric $outputScale)",
           Numeric.fromBigDecimal(outputScale, x),
         ),
-      )
+      ))
     }
   }
 
@@ -211,12 +211,12 @@ object SBuiltin {
       val inputScale = args.get(0).asInstanceOf[STNat].n
       val outputScale = args.get(1).asInstanceOf[STNat].n
       val x = args.get(2).asInstanceOf[SNumeric].value
-      machine.returnValue = SNumeric(
+      machine.returnValue(SNumeric(
         rightOrArithmeticError(
           s"Error while shifting (Numeric $inputScale) to (Numeric $outputScale)",
           Numeric.fromBigDecimal(outputScale, x.scaleByPowerOfTen(inputScale - outputScale)),
         ),
-      )
+      ))
     }
   }
 
@@ -225,18 +225,18 @@ object SBuiltin {
   //
   final case object SBExplodeText extends SBuiltin(1) {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
-      machine.returnValue = args.get(0) match {
+      machine.returnValue(args.get(0) match {
         case SText(t) =>
           SList(FrontStack(Utf8.explode(t).map(SText)))
         case _ =>
           throw SErrorCrash(s"type mismatch explodeText: $args")
-      }
+      })
     }
   }
 
   final case object SBImplodeText extends SBuiltin(1) {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
-      machine.returnValue = args.get(0) match {
+      machine.returnValue(args.get(0) match {
         case SList(xs) =>
           val ts = xs.map {
             case SText(t) => t
@@ -246,24 +246,24 @@ object SBuiltin {
           SText(Utf8.implode(ts.toImmArray))
         case _ =>
           throw SErrorCrash(s"type mismatch implodeText: $args")
-      }
+      })
     }
   }
 
   final case object SBAppendText extends SBuiltin(2) {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
-      machine.returnValue = (args.get(0), args.get(1)) match {
+      machine.returnValue((args.get(0), args.get(1)) match {
         case (SText(head), SText(tail)) =>
           SText(head + tail)
         case _ =>
           throw SErrorCrash(s"type mismatch appendText: $args")
-      }
+      })
     }
   }
 
   final case object SBToText extends SBuiltin(1) {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
-      machine.returnValue = litToText(args)
+      machine.returnValue(litToText(args))
     }
 
     def litToText(vs: util.ArrayList[SValue]): SValue = {
@@ -284,31 +284,31 @@ object SBuiltin {
   final case object SBToTextNumeric extends SBuiltin(2) {
     override def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
       val x = args.get(1).asInstanceOf[SNumeric].value
-      machine.returnValue = SText(Numeric.toUnscaledString(x))
+      machine.returnValue(SText(Numeric.toUnscaledString(x)))
     }
   }
 
   final case object SBToQuotedTextParty extends SBuiltin(1) {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
       val v = args.get(0).asInstanceOf[SParty]
-      machine.returnValue = SText(s"'${v.value: String}'")
+      machine.returnValue(SText(s"'${v.value: String}'"))
     }
   }
 
   final case object SBToTextCodePoints extends SBuiltin(1) {
     override def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
       val codePoints = args.get(0).asInstanceOf[SList].list.map(_.asInstanceOf[SInt64].value)
-      machine.returnValue = SText(Utf8.pack(codePoints.toImmArray))
+      machine.returnValue(SText(Utf8.pack(codePoints.toImmArray)))
     }
   }
 
   final case object SBFromTextParty extends SBuiltin(1) {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
       val v = args.get(0).asInstanceOf[SText]
-      machine.returnValue = Party.fromString(v.value) match {
+      machine.returnValue(Party.fromString(v.value) match {
         case Left(_) => SV.None
         case Right(p) => SOptional(Some(SParty(p)))
-      }
+      })
     }
   }
 
@@ -317,7 +317,7 @@ object SBuiltin {
 
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
       val s = args.get(0).asInstanceOf[SText].value
-      machine.returnValue =
+      machine.returnValue(
         if (pattern.matcher(s).matches())
           try {
             SOptional(Some(SInt64(java.lang.Long.parseLong(s))))
@@ -325,7 +325,7 @@ object SBuiltin {
             case _: NumberFormatException =>
               SV.None
           } else
-          SV.None
+          SV.None)
     }
   }
 
@@ -340,7 +340,7 @@ object SBuiltin {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
       val scale = args.get(0).asInstanceOf[STNat].n
       val string = args.get(1).asInstanceOf[SText].value
-      machine.returnValue = string match {
+      machine.returnValue(string match {
         case validFormat(signPart, intPart, _, decPartOrNull) =>
           val decPart = Option(decPartOrNull).filterNot(_ == "0").getOrElse("")
           // First, we count the number of significant digits to avoid the conversion attempts that
@@ -358,7 +358,7 @@ object SBuiltin {
           }
         case _ =>
           SV.None
-      }
+      })
     }
   }
 
@@ -366,23 +366,23 @@ object SBuiltin {
     override def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
       val string = args.get(0).asInstanceOf[SText].value
       val codePoints = Utf8.unpack(string)
-      machine.returnValue = SList(FrontStack(codePoints.map(SInt64)))
+      machine.returnValue(SList(FrontStack(codePoints.map(SInt64))))
     }
   }
 
   final case object SBSHA256Text extends SBuiltin(1) {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
-      machine.returnValue = args.get(0) match {
+      machine.returnValue(args.get(0) match {
         case SText(t) => SText(Utf8.sha256(t))
         case _ =>
           throw SErrorCrash(s"type mismatch textSHA256: $args")
-      }
+      })
     }
   }
 
   final case object SBTextMapInsert extends SBuiltin(3) {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
-      machine.returnValue = args.get(2) match {
+      machine.returnValue(args.get(2) match {
         case STextMap(map) =>
           args.get(0) match {
             case SText(key) =>
@@ -392,13 +392,13 @@ object SBuiltin {
           }
         case x =>
           throw SErrorCrash(s"type mismatch SBTextMapInsert, expected TextMap got $x")
-      }
+      })
     }
   }
 
   final case object SBTextMapLookup extends SBuiltin(2) {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
-      machine.returnValue = args.get(1) match {
+      machine.returnValue(args.get(1) match {
         case STextMap(map) =>
           args.get(0) match {
             case SText(key) =>
@@ -408,13 +408,13 @@ object SBuiltin {
           }
         case x =>
           throw SErrorCrash(s"type mismatch SBTextMapLookup, expected TextMap get $x")
-      }
+      })
     }
   }
 
   final case object SBTextMapDelete extends SBuiltin(2) {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
-      machine.returnValue = args.get(1) match {
+      machine.returnValue(args.get(1) match {
         case STextMap(map) =>
           args.get(0) match {
             case SText(key) =>
@@ -424,102 +424,102 @@ object SBuiltin {
           }
         case x =>
           throw SErrorCrash(s"type mismatch SBTextMapDelete, expected TextMap get $x")
-      }
+      })
     }
   }
 
   final case object SBTextMapToList extends SBuiltin(1) {
 
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
-      machine.returnValue = args.get(0) match {
+      machine.returnValue(args.get(0) match {
         case map: STextMap =>
           SValue.toList(map)
         case x =>
           throw SErrorCrash(s"type mismatch SBTextMapToList, expected TextMap get $x")
-      }
+      })
     }
   }
 
   final case object SBTextMapSize extends SBuiltin(1) {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
-      machine.returnValue = args.get(0) match {
+      machine.returnValue(args.get(0) match {
         case STextMap(map) =>
           SInt64(map.size.toLong)
         case x =>
           throw SErrorCrash(s"type mismatch SBTextMapSize, expected TextMap get $x")
-      }
+      })
     }
   }
 
   final case object SBGenMapInsert extends SBuiltin(3) {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
-      machine.returnValue = args.get(2) match {
+      machine.returnValue(args.get(2) match {
         case SGenMap(map) =>
           val key = args.get(0)
           SGenMap.comparable(key)
           SGenMap(map.updated(key, args.get(1)))
         case x =>
           throw SErrorCrash(s"type mismatch SBGenMapInsert, expected GenMap got $x")
-      }
+      })
     }
   }
 
   final case object SBGenMapLookup extends SBuiltin(2) {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
-      machine.returnValue = args.get(1) match {
+      machine.returnValue(args.get(1) match {
         case SGenMap(value) =>
           val key = args.get(0)
           SGenMap.comparable(key)
           SOptional(value.get(key))
         case x =>
           throw SErrorCrash(s"type mismatch SBGenMapLookup, expected GenMap get $x")
-      }
+      })
     }
   }
 
   final case object SBGenMapDelete extends SBuiltin(2) {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
-      machine.returnValue = args.get(1) match {
+      machine.returnValue(args.get(1) match {
         case SGenMap(value) =>
           val key = args.get(0)
           SGenMap.comparable(key)
           SGenMap(value - key)
         case x =>
           throw SErrorCrash(s"type mismatch SBGenMapDelete, expected GenMap get $x")
-      }
+      })
     }
   }
 
   final case object SBGenMapKeys extends SBuiltin(1) {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
-      machine.returnValue = args.get(0) match {
+      machine.returnValue(args.get(0) match {
         case SGenMap(value) =>
           SList(ImmArray(value.keys) ++: FrontStack.empty)
         case x =>
           throw SErrorCrash(s"type mismatch SBGenMapKeys, expected GenMap get $x")
-      }
+      })
     }
   }
 
   final case object SBGenMapValues extends SBuiltin(1) {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
-      machine.returnValue = args.get(0) match {
+      machine.returnValue(args.get(0) match {
         case SGenMap(value) =>
           SList(ImmArray(value.values) ++: FrontStack.empty)
         case x =>
           throw SErrorCrash(s"type mismatch SBGenMapValues, expected GenMap get $x")
-      }
+      })
     }
   }
 
   final case object SBGenMapSize extends SBuiltin(1) {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
-      machine.returnValue = args.get(0) match {
+      machine.returnValue(args.get(0) match {
         case SGenMap(value) =>
           SInt64(value.size.toLong)
         case x =>
           throw SErrorCrash(s"type mismatch SBGenMapSize, expected GenMap get $x")
-      }
+      })
     }
   }
 
@@ -531,40 +531,40 @@ object SBuiltin {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
       val scale = args.get(0).asInstanceOf[STNat].n
       val x = args.get(1).asInstanceOf[SInt64].value
-      machine.returnValue = SNumeric(
+      machine.returnValue(SNumeric(
         rightOrArithmeticError(
           s"overflow when converting $x to (Numeric $scale)",
           Numeric.fromLong(scale, x),
         ),
-      )
+      ))
     }
   }
 
   final case object SBNumericToInt64 extends SBuiltin(2) {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
       val x = args.get(1).asInstanceOf[SNumeric].value
-      machine.returnValue = SInt64(
+      machine.returnValue(SInt64(
         rightOrArithmeticError(
           s"Int64 overflow when converting ${Numeric.toString(x)} to Int64",
           Numeric.toLong(x),
         ),
-      )
+      ))
     }
   }
 
   final case object SBDateToUnixDays extends SBuiltin(1) {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
-      machine.returnValue = args.get(0) match {
+      machine.returnValue(args.get(0) match {
         case SDate(d) => SInt64(d.days.toLong)
         case _ =>
           throw SErrorCrash(s"type mismatch dateToUnixDays: $args")
-      }
+      })
     }
   }
 
   final case object SBUnixDaysToDate extends SBuiltin(1) {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
-      machine.returnValue = args.get(0) match {
+      machine.returnValue(args.get(0) match {
         case SInt64(days) =>
           SDate(
             rightOrArithmeticError(
@@ -574,23 +574,23 @@ object SBuiltin {
           )
         case _ =>
           throw SErrorCrash(s"type mismatch unixDaysToDate: $args")
-      }
+      })
     }
   }
 
   final case object SBTimestampToUnixMicroseconds extends SBuiltin(1) {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
-      machine.returnValue = args.get(0) match {
+      machine.returnValue(args.get(0) match {
         case STimestamp(t) => SInt64(t.micros)
         case _ =>
           throw SErrorCrash(s"type mismatch timestampToUnixMicroseconds: $args")
-      }
+      })
     }
   }
 
   final case object SBUnixMicrosecondsToTimestamp extends SBuiltin(1) {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
-      machine.returnValue = args.get(0) match {
+      machine.returnValue(args.get(0) match {
         case SInt64(t) =>
           STimestamp(
             rightOrArithmeticError(
@@ -600,7 +600,7 @@ object SBuiltin {
           )
         case _ =>
           throw SErrorCrash(s"type mismatch unixMicrosecondsToTimestamp: $args")
-      }
+      })
     }
   }
 
@@ -609,13 +609,13 @@ object SBuiltin {
   //
   final case object SBEqual extends SBuiltin(2) {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
-      machine.returnValue = SBool(svalue.Equality.areEqual(args.get(0), args.get(1)))
+      machine.returnValue(SBool(svalue.Equality.areEqual(args.get(0), args.get(1))))
     }
   }
 
   sealed abstract class SBCompare(pred: Int => Boolean) extends SBuiltin(2) {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
-      machine.returnValue = SBool(pred(svalue.Ordering.compare(args.get(0), args.get(1))))
+      machine.returnValue(SBool(pred(svalue.Ordering.compare(args.get(0), args.get(1)))))
     }
   }
 
@@ -627,19 +627,19 @@ object SBuiltin {
   /** $consMany[n] :: a -> ... -> List a -> List a */
   final case class SBConsMany(n: Int) extends SBuiltin(1 + n) {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
-      machine.returnValue = args.get(n) match {
+      machine.returnValue(args.get(n) match {
         case SList(tail) =>
           SList(ImmArray(args.subList(0, n).asScala) ++: tail)
         case x =>
           crash(s"Cons onto non-list: $x")
-      }
+      })
     }
   }
 
   /** $some :: a -> Optional a */
   final case object SBSome extends SBuiltin(1) {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
-      machine.returnValue = SOptional(Some(args.get(0)))
+      machine.returnValue(SOptional(Some(args.get(0))))
     }
   }
 
@@ -648,14 +648,14 @@ object SBuiltin {
       extends SBuiltin(fields.length)
       with SomeArrayEquals {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
-      machine.returnValue = SRecord(id, fields, args)
+      machine.returnValue(SRecord(id, fields, args))
     }
   }
 
   /** $rupd[R, field] :: R -> a -> R */
   final case class SBRecUpd(id: Identifier, field: Int) extends SBuiltin(2) {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
-      machine.returnValue = args.get(0) match {
+      machine.returnValue(args.get(0) match {
         case SRecord(id2, fields, values) =>
           if (id != id2) {
             crash(s"type mismatch on record update: expected $id, got record of type $id2")
@@ -665,18 +665,18 @@ object SBuiltin {
           SRecord(id2, fields, values2)
         case v =>
           crash(s"RecUpd on non-record: $v")
-      }
+      })
     }
   }
 
   /** $rproj[R, field] :: R -> a */
   final case class SBRecProj(id: Identifier, field: Int) extends SBuiltin(1) {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
-      machine.returnValue = args.get(0) match {
+      machine.returnValue(args.get(0) match {
         case SRecord(id @ _, _, values) => values.get(field)
         case v =>
           crash(s"RecProj on non-record: $v")
-      }
+      })
     }
   }
 
@@ -685,33 +685,33 @@ object SBuiltin {
       extends SBuiltin(fields.length)
       with SomeArrayEquals {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
-      machine.returnValue = SStruct(fields, args)
+      machine.returnValue(SStruct(fields, args))
     }
   }
 
   /** $tproj[field] :: Struct -> a */
   final case class SBStructProj(field: Ast.FieldName) extends SBuiltin(1) {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
-      machine.returnValue = args.get(0) match {
+      machine.returnValue(args.get(0) match {
         case SStruct(fields, values) =>
           values.get(fields.indexOf(field))
         case v =>
           crash(s"StructProj on non-struct: $v")
-      }
+      })
     }
   }
 
   /** $tupd[field] :: Struct -> a -> Struct */
   final case class SBStructUpd(field: Ast.FieldName) extends SBuiltin(2) {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
-      machine.returnValue = args.get(0) match {
+      machine.returnValue(args.get(0) match {
         case SStruct(fields, values) =>
           val values2 = values.clone.asInstanceOf[util.ArrayList[SValue]]
           values2.set(fields.indexOf(field), args.get(1))
           SStruct(fields, values2)
         case v =>
           crash(s"StructUpd on non-struct: $v")
-      }
+      })
     }
   }
 
@@ -719,7 +719,7 @@ object SBuiltin {
   final case class SBVariantCon(id: Identifier, variant: Ast.VariantConName, constructorRank: Int)
       extends SBuiltin(1) {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
-      machine.returnValue = SVariant(id, variant, constructorRank, args.get(0))
+      machine.returnValue(SVariant(id, variant, constructorRank, args.get(0)))
     }
   }
 
@@ -748,7 +748,7 @@ object SBuiltin {
         case v =>
           crash(s"PrecondCheck on non-boolean: $v")
       }
-      machine.returnValue = SUnit
+      machine.returnValue(SUnit)
     }
   }
 
@@ -791,7 +791,7 @@ object SBuiltin {
       machine.addLocalContract(coid, templateId, createArg)
       machine.ptx = newPtx
       checkAborted(machine.ptx)
-      machine.returnValue = SContractId(coid)
+      machine.returnValue(SContractId(coid))
     }
   }
 
@@ -853,7 +853,7 @@ object SBuiltin {
         )
         .fold(err => throw DamlETransactionError(err), identity)
       checkAborted(machine.ptx)
-      machine.returnValue = SUnit
+      machine.returnValue(SUnit)
     }
   }
 
@@ -872,7 +872,7 @@ object SBuiltin {
           case Right(x) => x
         })
       checkAborted(machine.ptx)
-      machine.returnValue = SUnit
+      machine.returnValue(SUnit)
     }
   }
 
@@ -894,7 +894,7 @@ object SBuiltin {
           if (tmplId != templateId)
             crash(s"contract $coid ($templateId) not found from partial transaction")
           else
-            machine.returnValue = contract
+            machine.returnValue(contract)
         case None =>
           coid match {
             case acoid: V.AbsoluteContractId =>
@@ -960,7 +960,7 @@ object SBuiltin {
         byKey,
       )
       checkAborted(machine.ptx)
-      machine.returnValue = SUnit
+      machine.returnValue(SUnit)
     }
   }
 
@@ -977,9 +977,9 @@ object SBuiltin {
       // check if we find it locally
       machine.ptx.keys.get(gkey) match {
         case Some(mbCoid) =>
-          machine.returnValue = SOptional(mbCoid.map { coid =>
+          machine.returnValue(SOptional(mbCoid.map { coid =>
             SContractId(coid)
-          })
+          }))
         case None =>
           // if we cannot find it here, send help, and make sure to update [[PartialTransaction.key]] after
           // that.
@@ -996,7 +996,7 @@ object SBuiltin {
                   true
                 case SKeyLookupResult.NotFound =>
                   machine.ptx = machine.ptx.copy(keys = machine.ptx.keys + (gkey -> None))
-                  machine.returnValue = SV.None
+                  machine.returnValue(SV.None)
                   true
                 case SKeyLookupResult.NotVisible =>
                   machine.tryHandleException()
@@ -1035,7 +1035,7 @@ object SBuiltin {
         mbCoid,
       )
       checkAborted(machine.ptx)
-      machine.returnValue = SV.Unit
+      machine.returnValue(SV.Unit)
     }
   }
 
@@ -1054,7 +1054,7 @@ object SBuiltin {
         case Some(None) =>
           crash(s"Could not find key $gkey")
         case Some(Some(coid)) =>
-          machine.returnValue = SContractId(coid)
+          machine.returnValue(SContractId(coid))
         case None =>
           // if we cannot find it here, send help, and make sure to update [[PartialTransaction.key]] after
           // that.
@@ -1085,7 +1085,7 @@ object SBuiltin {
       checkToken(args.get(0))
       // $ugettime :: Token -> Timestamp
       throw SpeedyHungry(
-        SResultNeedTime(timestamp => machine.returnValue = STimestamp(timestamp)),
+        SResultNeedTime(timestamp => machine.returnValue(STimestamp(timestamp))),
       )
     }
   }
@@ -1098,7 +1098,7 @@ object SBuiltin {
       machine.globalDiscriminators = Set.empty
       machine.committers = extractParties(args.get(0))
       machine.commitLocation = optLocation
-      machine.returnValue = SV.Unit
+      machine.returnValue(SV.Unit)
     }
   }
 
@@ -1124,19 +1124,19 @@ object SBuiltin {
           // update expression threw an exception. we're
           // now done.
           machine.clearCommit
-          machine.returnValue = SV.Unit
+          machine.returnValue(SV.Unit)
           throw SpeedyHungry(SResultScenarioInsertMustFail(committerOld, commitLocationOld))
 
         case SBool(false) =>
           ptxOld.finish match {
             case Left(_) =>
               machine.clearCommit
-              machine.returnValue = SV.Unit
+              machine.returnValue(SV.Unit)
             case Right(tx) =>
               // Transaction finished successfully. It might still
               // fail when committed, so tell the scenario runner to
               // do that.
-              machine.returnValue = SV.Unit
+              machine.returnValue(SV.Unit)
               throw SpeedyHungry(
                 SResultScenarioMustFail(tx, committerOld, _ => machine.clearCommit))
           }
@@ -1162,7 +1162,7 @@ object SBuiltin {
           committers = machine.committers,
           callback = newValue => {
             machine.clearCommit
-            machine.returnValue = newValue
+            machine.returnValue(newValue)
           },
         ),
       )
@@ -1181,7 +1181,7 @@ object SBuiltin {
       throw SpeedyHungry(
         SResultScenarioPassTime(
           relTime,
-          timestamp => machine.returnValue = STimestamp(timestamp),
+          timestamp => machine.returnValue(STimestamp(timestamp)),
         ),
       )
     }
@@ -1194,7 +1194,7 @@ object SBuiltin {
       args.get(0) match {
         case SText(name) =>
           throw SpeedyHungry(
-            SResultScenarioGetParty(name, party => machine.returnValue = SParty(party)),
+            SResultScenarioGetParty(name, party => machine.returnValue(SParty(party))),
           )
         case v =>
           crash(s"invalid argument to GetParty: $v")
@@ -1208,7 +1208,7 @@ object SBuiltin {
       args.get(0) match {
         case SText(message) =>
           machine.traceLog.add(message, machine.lastLocation)
-          machine.returnValue = args.get(1)
+          machine.returnValue(args.get(1))
         case v =>
           crash(s"invalid argument to trace: $v")
       }
@@ -1227,7 +1227,7 @@ object SBuiltin {
     */
   final case class SBToAny(ty: Ast.Type) extends SBuiltin(1) {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
-      machine.returnValue = SAny(ty, args.get(0))
+      machine.returnValue(SAny(ty, args.get(0)))
     }
   }
 
@@ -1237,11 +1237,11 @@ object SBuiltin {
     */
   final case class SBFromAny(expectedTy: Ast.Type) extends SBuiltin(1) {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
-      machine.returnValue = args.get(0) match {
+      machine.returnValue(args.get(0) match {
         case SAny(actualTy, v) =>
           SOptional(if (actualTy == expectedTy) Some(v) else None)
         case v => crash(s"FromAny applied to non-Any: $v")
-      }
+      })
     }
   }
 
@@ -1252,7 +1252,7 @@ object SBuiltin {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
       args.get(0) match {
         case SText(t) =>
-          machine.returnValue = SText(t.toUpperCase(util.Locale.ROOT))
+          machine.returnValue(SText(t.toUpperCase(util.Locale.ROOT)))
         // TODO [FM]: replace with ASCII-specific function, or not
         case x =>
           throw SErrorCrash(s"type mismatch SBTextoUpper, expected Text got $x")
@@ -1265,7 +1265,7 @@ object SBuiltin {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
       args.get(0) match {
         case SText(t) =>
-          machine.returnValue = SText(t.toLowerCase(util.Locale.ROOT))
+          machine.returnValue(SText(t.toLowerCase(util.Locale.ROOT)))
         // TODO [FM]: replace with ASCII-specific function, or not
         case x =>
           throw SErrorCrash(s"type mismatch SBTextToLower, expected Text got $x")
@@ -1276,7 +1276,7 @@ object SBuiltin {
   /** $text_slice :: Int -> Int -> Text -> Text */
   final case object SBTextSlice extends SBuiltin(3) {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
-      machine.returnValue = args.get(0) match {
+      machine.returnValue(args.get(0) match {
         case SInt64(from) =>
           args.get(1) match {
             case SInt64(to) =>
@@ -1305,14 +1305,14 @@ object SBuiltin {
           }
         case x =>
           throw SErrorCrash(s"type mismatch SBTextSlice, expected Int64 got $x")
-      }
+      })
     }
   }
 
   /** $text_slice_index :: Text -> Text -> Optional Int */
   final case object SBTextSliceIndex extends SBuiltin(2) {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
-      machine.returnValue = args.get(0) match {
+      machine.returnValue(args.get(0) match {
         case SText(slice) =>
           args.get(1) match {
             case SText(t) =>
@@ -1328,14 +1328,14 @@ object SBuiltin {
           }
         case x =>
           throw SErrorCrash(s"type mismatch SBTextSliceIndex, expected Text got $x")
-      }
+      })
     }
   }
 
   /** $text_contains_only :: Text -> Text -> Bool */
   final case object SBTextContainsOnly extends SBuiltin(2) {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
-      machine.returnValue = args.get(0) match {
+      machine.returnValue(args.get(0) match {
         case SText(alphabet) =>
           args.get(1) match {
             case SText(t) =>
@@ -1347,14 +1347,14 @@ object SBuiltin {
           }
         case x =>
           throw SErrorCrash(s"type mismatch SBTextContainsOnly, expected Text got $x")
-      }
+      })
     }
   }
 
   /** $text_replicate :: Int -> Text -> Text */
   final case object SBTextReplicate extends SBuiltin(2) {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
-      machine.returnValue = args.get(0) match {
+      machine.returnValue(args.get(0) match {
         case SInt64(n) =>
           args.get(1) match {
             case SText(t) =>
@@ -1369,14 +1369,14 @@ object SBuiltin {
           }
         case x =>
           throw SErrorCrash(s"type mismatch SBTextReplicate, expected Int64 got $x")
-      }
+      })
     }
   }
 
   /** $text_split_on :: Text -> Text -> List Text */
   final case object SBTextSplitOn extends SBuiltin(2) {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
-      machine.returnValue = args.get(0) match {
+      machine.returnValue(args.get(0) match {
         case SText(pattern) =>
           args.get(1) match {
             case SText(t) =>
@@ -1396,14 +1396,14 @@ object SBuiltin {
           }
         case x =>
           throw SErrorCrash(s"type mismatch SBTextSplitOn, expected Text got $x")
-      }
+      })
     }
   }
 
   /** $text_intercalate :: Text -> List Text -> Text */
   final case object SBTextIntercalate extends SBuiltin(2) {
     def execute(args: util.ArrayList[SValue], machine: Machine): Unit = {
-      machine.returnValue = args.get(0) match {
+      machine.returnValue(args.get(0) match {
         case SText(sep) =>
           args.get(1) match {
             case SList(vs) =>
@@ -1422,7 +1422,7 @@ object SBuiltin {
           }
         case x =>
           throw SErrorCrash(s"type mismatch SBTextIntercalate, expected Text got $x")
-      }
+      })
     }
   }
 
