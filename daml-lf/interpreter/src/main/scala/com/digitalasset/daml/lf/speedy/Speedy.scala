@@ -158,7 +158,7 @@ object Speedy {
         // NOTE(MH): If the top of the continuation stack is the monadic token,
         // we push location information under it to account for the implicit
         // lambda binding the token.
-        case Some(KPushTo(SEArgs(Array(SEValue.Token)))) => {
+        case Some(SEArgs(Array(SEValue.Token))) => {
           // Can't call pushKont here, because we don't push at the top of the stack.
           kontStack.add(last_index, KLocation(loc))
           if (enableInstrumentation) {
@@ -170,7 +170,7 @@ object Speedy {
         // stack trace it produced back on the continuation stack to get
         // complete stack trace at the use site. Thus, we store the stack traces
         // of top level values separately during their execution.
-        case Some(KPushTo(SECacheVal(v, stack_trace))) =>
+        case Some(SECacheVal(v, stack_trace)) =>
           //TODO(NC): mutate stack_trace in place
           kontStack.set(last_index, KCacheVal(v, loc :: stack_trace)); ()
         case _ => pushKont(KLocation(loc))
@@ -188,7 +188,7 @@ object Speedy {
       val s = new util.ArrayList[Location]
       kontStack.forEach { k =>
         k match {
-          case KPushTo(SELocationTrace(location)) => { s.add(location); () }
+          case SELocationTrace(location) => { s.add(location); () }
           case _ => ()
         }
       }
@@ -249,10 +249,8 @@ object Speedy {
               val value = returnValue
               returnValue = null
 
-              val topK = popKont()
-              //topK.to.add(value)
               env.add(value)
-              ctrl = topK.next
+              ctrl = popKont()
 
             } else {
               val expr = ctrl
@@ -287,12 +285,12 @@ object Speedy {
     def tryHandleException(): Boolean = {
       val catchIndex =
         kontStack.asScala.lastIndexWhere {
-          case KPushTo(SECatchMarker(_,_,_)) => true
+          case SECatchMarker(_,_,_) => true
           case _ => false
         }
       if (catchIndex >= 0) {
         kontStack.get(catchIndex) match {
-          case KPushTo(SECatchMarker(handler,_,envSize)) =>
+          case SECatchMarker(handler,_,envSize) =>
             kontStack.subList(catchIndex, kontStack.size).clear()
             env.subList(envSize, env.size).clear()
             ctrl = handler
@@ -611,7 +609,7 @@ object Speedy {
         val missing = arity - args.size
         val newArgsLimit = Math.min(missing, newArgs.length)
 
-        // Keep some space free, because both `KFun` and `KPushTo` will add to the list.
+        // Keep some space free, because both `KFun` and `KCollectArg` add to the list.
         val extendedArgs = new util.ArrayList[SValue](args.size + newArgsLimit)
         extendedArgs.addAll(args)
 
@@ -751,9 +749,13 @@ object Speedy {
     * after an expression has been evaluated into a 'SValue'.
     */
 
-  type Kont = KPushTo
+  //type Kont = KPushTo
+  //final case class KPushTo(next: SExpr)
 
-  final case class KPushTo(next: SExpr)
+  type Kont = SExpr
+  @inline def KPushTo(e:SExpr) : Kont = {
+    e
+  }
 
   @inline def KArg(args: Array[SExpr]) : Kont = {
     KPushTo(SEArgs(args))
