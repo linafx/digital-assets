@@ -151,9 +151,9 @@ object Speedy {
         // NOTE(MH): If the top of the continuation stack is the monadic token,
         // we push location information under it to account for the implicit
         // lambda binding the token.
-        case Some(SEArgs(Array(SEValue.Token))) => {
+        case Some(KArg(Array(SEValue.Token))) => {
           // Can't call pushKont here, because we don't push at the top of the stack.
-          kontStack.add(last_index, KLocation(loc))
+          kontStack.add(last_index, KLocationTrace(loc))
           if (enableInstrumentation) {
             track.countPushesKont += 1
             if (kontDepth > track.maxDepthKont) track.maxDepthKont = kontDepth
@@ -163,10 +163,10 @@ object Speedy {
         // stack trace it produced back on the continuation stack to get
         // complete stack trace at the use site. Thus, we store the stack traces
         // of top level values separately during their execution.
-        case Some(SECacheVal(v, stack_trace)) =>
+        case Some(KCacheVal(v, stack_trace)) =>
           //TODO(NC): mutate stack_trace in place
           kontStack.set(last_index, KCacheVal(v, loc :: stack_trace)); ()
-        case _ => pushKont(KLocation(loc))
+        case _ => pushKont(KLocationTrace(loc))
       }
     }
 
@@ -181,7 +181,7 @@ object Speedy {
       val s = new util.ArrayList[Location]
       kontStack.forEach { k =>
         k match {
-          case SELocationTrace(location) => { s.add(location); () }
+          case KLocationTrace(location) => { s.add(location); () }
           case _ => ()
         }
       }
@@ -276,12 +276,12 @@ object Speedy {
     def tryHandleException(): Boolean = {
       val catchIndex =
         kontStack.asScala.lastIndexWhere {
-          case SECatchMarker(_,_,_) => true
+          case KCatchMarker(_,_,_) => true
           case _ => false
         }
       if (catchIndex >= 0) {
         kontStack.get(catchIndex) match {
-          case SECatchMarker(handler,_,envSize) =>
+          case KCatchMarker(handler,_,envSize) =>
             kontStack.subList(catchIndex, kontStack.size).clear()
             env.subList(envSize, env.size).clear()
             ctrl = handler
@@ -610,14 +610,14 @@ object Speedy {
           machine.pushKont(KFun(prim, extendedArgs))
         } else {
           // push a continuation to build the PAP
-          machine.pushKont(KPap(prim, extendedArgs, arity))
+          machine.pushKont(KPAP(prim, extendedArgs, arity))
         }
 
         // Start evaluating the arguments.
         var i = 1
         while (i < newArgsLimit) {
           val arg = newArgs(newArgsLimit - i)
-          machine.pushKont(KPushTo(SECollectArg(extendedArgs,arg)))
+          machine.pushKont(KCollectArg(extendedArgs,arg))
           i = i + 1
         }
         machine.ctrl = newArgs(0)
@@ -732,49 +732,7 @@ object Speedy {
     * after an expression has been evaluated into a 'SValue'.
     */
 
-  //type Kont = KPushTo
-  //final case class KPushTo(next: SExpr)
-
   type Kont = SExpr
-  @inline def KPushTo(e:SExpr) : Kont = {
-    e
-  }
-
-  @inline def KArg(args: Array[SExpr]) : Kont = {
-    KPushTo(SEArgs(args))
-  }
-
-  @inline def KFun(prim: Prim, args: util.ArrayList[SValue]): Kont = {
-    KPushTo(SEFun(prim, args))
-  }
-
-  @inline def KPap(prim: Prim, args: util.ArrayList[SValue], arity: Int): Kont = {
-    KPushTo(SEPAP(prim, args, arity))
-  }
-
-  @inline def KFinished(): Kont = {
-    KPushTo(SEFinished())
-  }
-
-  @inline def KMatch(alts: Array[SCaseAlt]): Kont = {
-    KPushTo(SEMatch(alts))
-  }
-
-  @inline def KCacheVal(eval: SEVal, stack_trace: List[Location]) : Kont = {
-    KPushTo(SECacheVal(eval,stack_trace))
-  }
-
-  @inline def KPop(count: Int): Kont = {
-    KPushTo(SEPop(count))
-  }
-
-  @inline def KLocation(location: Location): Kont = {
-    KPushTo(SELocationTrace(location))
-  }
-
-  @inline def KCatch(handler: SExpr, fin: SExpr, envSize: Int): Kont = {
-    KPushTo(SECatchMarker(handler,fin,envSize))
-  }
 
   /** Internal exception thrown when a continuation result needs to be returned.
     Or machine execution has reached a final value. */

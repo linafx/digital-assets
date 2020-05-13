@@ -95,16 +95,17 @@ object Classify { // classify the machine state w.r.t what step occurs next
       case _:SEAbs => //never expect these!
       case _:SEImportValue => counts.eimportvalue += 1
       case _:SEWronglyTypeContractId => counts.ewronglytypedcontractid += 1
-      case _:SEArgs => counts.eargs += 1
-      case _:SEFun => counts.efun += 1
-      case _:SEPAP => counts.epap += 1
-      case _:SEFinished => counts.efinished += 1
-      case _:SEMatch => counts.ematch += 1
-      case _:SECacheVal => counts.ecacheval += 1
-      case _:SEPop => counts.epop += 1
-      case _:SELocationTrace => counts.elocationtrace += 1
-      case _:SECatchMarker => counts.ecatchmarker += 1
-      case _:SECollectArg => counts.ecollectarg += 1
+
+      case _:KArg => counts.eargs += 1
+      case _:KFun => counts.efun += 1
+      case _:KPAP => counts.epap += 1
+      case _:KFinished => counts.efinished += 1
+      case _:KMatch => counts.ematch += 1
+      case _:KCacheVal => counts.ecacheval += 1
+      case _:KPop => counts.epop += 1
+      case _:KLocationTrace => counts.elocationtrace += 1
+      case _:KCatchMarker => counts.ecatchmarker += 1
+      case _:KCollectArg => counts.ecollectarg += 1
     }
   }
 

@@ -37,10 +37,11 @@ sealed abstract class SExpr extends Product with Serializable {
 @SuppressWarnings(Array("org.wartremover.warts.Any"))
 object SExpr {
 
-  /** Expression variants which correspond to evaluator continuations... */
+  /** Expression variants which correspond to evaluator continuations...
+    Named with a leading K, instead of a leading SE */
 
   /** The function has been evaluated to a value, now start evaluating the arguments. */
-  final case class SEArgs(args: Array[SExpr]) extends SExpr with SomeArrayEquals {
+  final case class KArg(args: Array[SExpr]) extends SExpr with SomeArrayEquals {
     def execute(machine: Machine): Unit = {
       val func = machine.popEnv()
       executeApplication(func,args,machine)
@@ -48,7 +49,7 @@ object SExpr {
   }
 
   /** Collect an evaluted argument; and begin evaluation of the next */
-  final case class SECollectArg(args: util.ArrayList[SValue], next: SExpr) extends SExpr {
+  final case class KCollectArg(args: util.ArrayList[SValue], next: SExpr) extends SExpr {
     def execute(machine: Machine): Unit = {
       args.add(machine.popEnv())
       machine.ctrl = next
@@ -56,7 +57,7 @@ object SExpr {
   }
 
   /** The function and all arguments have been evaluated. Enter the function */
-  final case class SEFun(prim: Prim, args: util.ArrayList[SValue]) extends SExpr {
+  final case class KFun(prim: Prim, args: util.ArrayList[SValue]) extends SExpr {
     def execute(machine: Machine): Unit = {
       args.add(machine.popEnv())
       machine.enterFullyAppliedFunction(prim, args)
@@ -64,7 +65,7 @@ object SExpr {
   }
 
   /** The function and some arguments have been evaluated. Construct a PAP from them. */
-  final case class SEPAP(prim: Prim, args: util.ArrayList[SValue], arity: Int) extends SExpr {
+  final case class KPAP(prim: Prim, args: util.ArrayList[SValue], arity: Int) extends SExpr {
     def execute(machine: Machine): Unit = {
       args.add(machine.popEnv())
       machine.returnValue(SPAP(prim, args, arity))
@@ -72,7 +73,7 @@ object SExpr {
   }
 
   /** The scrutinee of a match has been evaluated, now match the alternatives against it. */
-  final case class SEMatch(alts: Array[SCaseAlt]) extends SExpr with SomeArrayEquals {
+  final case class KMatch(alts: Array[SCaseAlt]) extends SExpr with SomeArrayEquals {
     def execute(machine: Machine): Unit = {
       val value = machine.popEnv()
       matchAlternative(alts, value, machine)
@@ -80,7 +81,7 @@ object SExpr {
   }
 
   /** Pop 'count' arguments from the environment. */
-  final case class SEPop(count: Int) extends SExpr {
+  final case class KPop(count: Int) extends SExpr {
     def execute(machine: Machine) = {
       val value = machine.popEnv()
       machine.popEnvN(count)
@@ -89,7 +90,7 @@ object SExpr {
   }
 
   /** A location frame stores a location annotation found in the AST. */
-  final case class SELocationTrace(location: Location) extends SExpr {
+  final case class KLocationTrace(location: Location) extends SExpr {
     def execute(machine: Machine) = {
       val value = machine.popEnv()
       machine.returnValue(value)
@@ -101,7 +102,7 @@ object SExpr {
     * If an exception is raised and 'KCatch' is found from kont-stack, then 'handler' is
     * evaluated. If 'KCatch' is encountered naturally, then 'fin' is evaluated.
     */
-  final case class SECatchMarker(handler: SExpr, fin: SExpr, envSize: Int) extends SExpr {
+  final case class KCatchMarker(handler: SExpr, fin: SExpr, envSize: Int) extends SExpr {
     def execute(machine: Machine) = {
       val _ = machine.popEnv()
       machine.ctrl = fin
@@ -114,7 +115,7 @@ object SExpr {
     * accessed. In older compilers which did not use the builtin record and struct
     * updates this solves the blow-up which would happen when a large record is
     * updated multiple times. */
-  final case class SECacheVal(eval: SEVal, stack_trace: List[Location]) extends SExpr {
+  final case class KCacheVal(eval: SEVal, stack_trace: List[Location]) extends SExpr {
     def execute(machine: Machine): Unit = {
       val value = machine.popEnv()
       machine.pushStackTrace(stack_trace)
@@ -123,12 +124,11 @@ object SExpr {
     }
   }
 
-
   /** Finished; machine has computed final value */
-  final case class SEFinished() extends SExpr {
+  final case class KFinished() extends SExpr {
     def execute(machine: Machine): Unit = {
-      val v = machine.popEnv()
-      throw SpeedyHungry(SResultFinalValue(v))
+      val value = machine.popEnv()
+      throw SpeedyHungry(SResultFinalValue(value))
     }
   }
 
@@ -278,12 +278,12 @@ object SExpr {
       machine.pushKont(KPop(bounds.size))
 
       // Evaluate the body after we've evaluated the binders
-      machine.pushKont(KPushTo(body))
+      machine.pushKont(body)
 
       // Start evaluating the let binders
       for (i <- 1 until bounds.size) {
         val b = bounds(bounds.size - i)
-        machine.pushKont(KPushTo(b))
+        machine.pushKont(b)
       }
       machine.ctrl = bounds.head
     }
@@ -326,7 +326,7 @@ object SExpr {
     */
   final case class SECatch(body: SExpr, handler: SExpr, fin: SExpr) extends SExpr {
     def execute(machine: Machine): Unit = {
-      machine.pushKont(KCatch(handler, fin, machine.env.size))
+      machine.pushKont(KCatchMarker(handler, fin, machine.env.size))
       machine.ctrl = body
     }
   }

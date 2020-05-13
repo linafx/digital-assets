@@ -62,16 +62,17 @@ object PrettyLightweight { // lightweight pretty printer for CEK machine states
     case SEAbs(_, _) => "<SEAbs...>" // will never get these on a running machine
     case SEImportValue(_) => "<SEImportValue...>"
     case SEWronglyTypeContractId(_, _, _) => "<SEWronglyTypeContractId...>"
-    case SEArgs(args) => s"SEArgs(${commas(args.map(pp))})"
-    case SEFun(prim,args) => s"SEFun(${pp(prim)},[${commas(args.asScala.map(pp))}])"
-    case SEPAP(prim,args,arity) => s"SEPAP(${pp(prim)}/$arity,[${commas(args.asScala.map(pp))}])"
-    case SEFinished() => "<SEFinished>"
-    case SEMatch(_) => "<SEMatch...>"
-    case SECacheVal(_,_) => "<SECacheVal...>"
-    case SEPop(n) => s"<SEPop:$n>"
-    case SELocationTrace(_) => s"<SELocationTrace>"
-    case SECatchMarker(_,_,_) => s"<SECatchMarker...>"
-    case SECollectArg(_,_) => s"<SECollectArg...>"
+
+    case KArg(args) => s"KArg(${commas(args.map(pp))})"
+    case KFun(prim,args) => s"KFun(${pp(prim)},[${commas(args.asScala.map(pp))}])"
+    case KPAP(prim,args,arity) => s"KPAP(${pp(prim)}/$arity,[${commas(args.asScala.map(pp))}])"
+    case KFinished() => "<KFinished>"
+    case KMatch(_) => "<KMatch...>"
+    case KCacheVal(_,_) => "<KCacheVal...>"
+    case KPop(n) => s"<KPop:$n>"
+    case KLocationTrace(_) => s"<KLocationTrace>"
+    case KCatchMarker(_,_,_) => s"<KCatchMarker...>"
+    case KCollectArg(_,_) => s"<SECollectArg...>"
   }
 
   def pp(v: SValue): String = v match {
