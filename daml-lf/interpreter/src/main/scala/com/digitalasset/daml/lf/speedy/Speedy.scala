@@ -247,7 +247,11 @@ object Speedy {
             if (returnValue != null) {
               val value = returnValue
               returnValue = null
-              popKont.execute(value, this)
+
+              val topK = popKont()
+              topK.to.add(value)
+              ctrl = topK.next
+
             } else {
               val expr = ctrl
               ctrl = null
@@ -744,24 +748,10 @@ object Speedy {
   /** Kont, or continuation. Describes the next step for the machine
     * after an expression has been evaluated into a 'SValue'.
     */
-  sealed trait Kont {
 
-    /** Execute the continuation. */
-    def execute(v: SValue, machine: Machine): Unit
-  }
+  type Kont = KPushTo
 
-  /** Push the evaluated value to the array 'to', and start evaluating the expression 'next'.
-    * This continuation is used to implement both function application and lets. In
-    * the case of function application the arguments are pushed into the 'args' array of
-    * the PAP that is being built, and in the case of lets the evaluated value is pushed
-    * direy into the environment.
-    */
-  final case class KPushTo(to: util.ArrayList[SValue], next: SExpr) extends Kont {
-    def execute(v: SValue, machine: Machine) = {
-      to.add(v)
-      machine.ctrl = next
-    }
-  }
+  final case class KPushTo(to: util.ArrayList[SValue], next: SExpr)
 
   @inline def KArg(machine: Machine, args: Array[SExpr]) : Kont = {
     KPushTo(machine.env,SEArgs(args))
