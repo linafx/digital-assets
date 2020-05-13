@@ -64,7 +64,7 @@ object PrettyLightweight { // lightweight pretty printer for CEK machine states
     case SEWronglyTypeContractId(_, _, _) => "<SEWronglyTypeContractId...>"
 
     case KArg(args) => s"KArg(${commas(args.map(pp))})"
-    case KFun(prim,args) => s"KFun(${pp(prim)},[${commas(args.asScala.map(pp))}])"
+    case KFun(prim,args,_) => s"KFun(${pp(prim)},[${commas(args.asScala.map(pp))}])"
     case KPAP(prim,args,arity) => s"KPAP(${pp(prim)}/$arity,[${commas(args.asScala.map(pp))}])"
     case KFinished() => "<KFinished>"
     case KMatch(_) => "<KMatch...>"

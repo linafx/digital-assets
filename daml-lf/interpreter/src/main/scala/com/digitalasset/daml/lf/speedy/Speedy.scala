@@ -324,11 +324,12 @@ object Speedy {
       }
     }
 
-    def enterFullyAppliedFunction(prim: Prim, args: util.ArrayList[SValue]): Unit = {
+    def enterFullyAppliedFunction(kpop: Kont, prim: Prim, args: util.ArrayList[SValue]): Unit = {
       prim match {
         case PClosure(expr, vars) =>
           // Pop the arguments once we're done evaluating the body.
-          pushKont(KPop(args.size + vars.size))
+          //val kpop = KPop(args.size + vars.size)
+          pushKont(kpop)
 
           // Add all the variables we closed over
           vars.foreach(pushEnv)
@@ -607,7 +608,7 @@ object Speedy {
         // check if there are now enough arguments to saturate the function arity
         if (othersLength >= 0) {
           // push a continuation to enter the function
-          machine.pushKont(KFun(prim, extendedArgs))
+          machine.pushKont(KFun(prim, extendedArgs, arity))
         } else {
           // push a continuation to build the PAP
           machine.pushKont(KPAP(prim, extendedArgs, arity))

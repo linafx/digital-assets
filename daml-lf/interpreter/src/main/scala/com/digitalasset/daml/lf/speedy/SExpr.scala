@@ -57,10 +57,14 @@ object SExpr {
   }
 
   /** The function and all arguments have been evaluated. Enter the function */
-  final case class KFun(prim: Prim, args: util.ArrayList[SValue]) extends SExpr {
+  final case class KFun(prim: Prim, args: util.ArrayList[SValue], arity: Int) extends SExpr {
+    private val kpop = prim match {
+      case PClosure(_, vars) => KPop(arity + vars.size)
+      case PBuiltin(_) => null
+    }
     def execute(machine: Machine): Unit = {
       args.add(machine.popEnv())
-      machine.enterFullyAppliedFunction(prim, args)
+      machine.enterFullyAppliedFunction(kpop, prim, args)
     }
   }
 
@@ -198,8 +202,9 @@ object SExpr {
     * evaluates to a builtin or a closure.
     */
   final case class SEApp(fun: SExpr, args: Array[SExpr]) extends SExpr with SomeArrayEquals {
+    private val k = KArg(args)
     def execute(machine: Machine): Unit = {
-      machine.pushKont(KArg(args))
+      machine.pushKont(k)
       machine.ctrl = fun
     }
   }
@@ -246,8 +251,9 @@ object SExpr {
 
   /** Pattern match. */
   final case class SECase(scrut: SExpr, alts: Array[SCaseAlt]) extends SExpr with SomeArrayEquals {
+    private val k = KMatch(alts)
     def execute(machine: Machine): Unit = {
-      machine.pushKont(KMatch(alts))
+      machine.pushKont(k)
       machine.ctrl = scrut
     }
 
@@ -273,9 +279,10 @@ object SExpr {
     * with later expressions possibly referring to earlier.
     */
   final case class SELet(bounds: Array[SExpr], body: SExpr) extends SExpr with SomeArrayEquals {
+    private val k1 = KPop(bounds.size)
     def execute(machine: Machine): Unit = {
       // Pop the block once we're done evaluating the body
-      machine.pushKont(KPop(bounds.size))
+      machine.pushKont(k1)
 
       // Evaluate the body after we've evaluated the binders
       machine.pushKont(body)
