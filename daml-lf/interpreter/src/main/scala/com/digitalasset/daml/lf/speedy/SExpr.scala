@@ -199,7 +199,7 @@ object SExpr {
     */
   final case class SEApp(fun: SExpr, args: Array[SExpr]) extends SExpr with SomeArrayEquals {
     def execute(machine: Machine): Unit = {
-      machine.pushKont(KArg(machine,args))
+      machine.pushKont(KArg(args))
       machine.ctrl = fun
     }
   }
@@ -247,7 +247,7 @@ object SExpr {
   /** Pattern match. */
   final case class SECase(scrut: SExpr, alts: Array[SCaseAlt]) extends SExpr with SomeArrayEquals {
     def execute(machine: Machine): Unit = {
-      machine.pushKont(KMatch(machine,alts))
+      machine.pushKont(KMatch(alts))
       machine.ctrl = scrut
     }
 
@@ -275,15 +275,15 @@ object SExpr {
   final case class SELet(bounds: Array[SExpr], body: SExpr) extends SExpr with SomeArrayEquals {
     def execute(machine: Machine): Unit = {
       // Pop the block once we're done evaluating the body
-      machine.pushKont(KPop(machine, bounds.size))
+      machine.pushKont(KPop(bounds.size))
 
       // Evaluate the body after we've evaluated the binders
-      machine.pushKont(KPushTo(machine.env, body))
+      machine.pushKont(KPushTo(body))
 
       // Start evaluating the let binders
       for (i <- 1 until bounds.size) {
         val b = bounds(bounds.size - i)
-        machine.pushKont(KPushTo(machine.env, b))
+        machine.pushKont(KPushTo(b))
       }
       machine.ctrl = bounds.head
     }
@@ -326,7 +326,7 @@ object SExpr {
     */
   final case class SECatch(body: SExpr, handler: SExpr, fin: SExpr) extends SExpr {
     def execute(machine: Machine): Unit = {
-      machine.pushKont(KCatch(machine, handler, fin, machine.env.size))
+      machine.pushKont(KCatch(handler, fin, machine.env.size))
       machine.ctrl = body
     }
   }

@@ -40,7 +40,7 @@ object PrettyLightweight { // lightweight pretty printer for CEK machine states
   }
 
   def ppKont(k: Kont): String = k match {
-    case KPushTo(_, e) => s"KPushTo(_, ${pp(e)})"
+    case KPushTo(e) => s"KPushTo(_, ${pp(e)})"
   }
 
   def ppVarRef(n: Int): String = {

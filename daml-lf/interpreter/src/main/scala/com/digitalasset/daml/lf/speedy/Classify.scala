@@ -10,8 +10,9 @@ import com.daml.lf.speedy.SExpr._
 object Classify { // classify the machine state w.r.t what step occurs next
 
   case class Counts(
-      var ctrlExpr: Int,
-      var ctrlValue: Int,
+      var ctrl: Int,
+      var returnValue: Int,
+
       // expression classification (ctrlExpr)
       var evalue: Int,
       var evar: Int,
@@ -38,14 +39,12 @@ object Classify { // classify the machine state w.r.t what step occurs next
       var ecatchmarker: Int,
       var ecollectarg: Int,
 
-      // kont classification (ctrlValue)
-      var kpushto: Int,
-
   ) {
-    def steps = ctrlExpr + ctrlValue
+    def steps = ctrl + returnValue
     def pp: String = {
       List(
-        ("Ctrl:", ctrlExpr),
+        ("ReturnValue", returnValue),
+        ("Ctrl:", ctrl),
         ("- evalue", evalue),
         ("- evar", evar),
         ("- eapp", eapp),
@@ -70,24 +69,20 @@ object Classify { // classify the machine state w.r.t what step occurs next
         ("- elocationtrace", elocationtrace),
         ("- ecollectarg", ecollectarg),
 
-        ("Kont:", ctrlValue),
-        ("- kpushto", kpushto),
       ).map { case (tag, n) => s"$tag : $n" }.mkString("\n")
     }
   }
 
   def newEmptyCounts(): Counts = {
-    Counts(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+    Counts(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
   }
 
   def classifyMachine(machine: Machine, counts: Counts): Unit = {
     if (machine.returnValue != null) {
       // classify a value by the continution it is about to return to
-      counts.ctrlValue += 1
-      val kont = machine.kontStack.get(machine.kontStack.size - 1)
-      classifyKont(kont, counts)
+      counts.returnValue += 1
     } else {
-      counts.ctrlExpr += 1
+      counts.ctrl += 1
       classifyExpr(machine.ctrl, counts)
     }
   }
@@ -120,13 +115,5 @@ object Classify { // classify the machine state w.r.t what step occurs next
       case _:SECollectArg => counts.ecollectarg += 1
     }
   }
-
-  def classifyKont(kont: Kont, counts: Counts): Unit = {
-    kont match {
-      case KPushTo(_, _) => counts.kpushto += 1
-    }
-  }
-
-  final case class ClassifyError(s: String) extends RuntimeException(s, null, false, false)
 
 }
