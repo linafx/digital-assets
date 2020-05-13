@@ -47,9 +47,18 @@ object SExpr {
     }
   }
 
+  /** Collect an evaluted argument; and begin evaluation of the next */
+  final case class SECollectArg(args: util.ArrayList[SValue], next: SExpr) extends SExpr {
+    def execute(machine: Machine): Unit = {
+      args.add(machine.popEnv())
+      machine.ctrl = next
+    }
+  }
+
   /** The function and all arguments have been evaluated. Enter the function */
   final case class SEFun(prim: Prim, args: util.ArrayList[SValue]) extends SExpr {
     def execute(machine: Machine): Unit = {
+      args.add(machine.popEnv())
       machine.enterFullyAppliedFunction(prim, args)
     }
   }
@@ -57,6 +66,7 @@ object SExpr {
   /** The function and some arguments have been evaluated. Construct a PAP from them. */
   final case class SEPAP(prim: Prim, args: util.ArrayList[SValue], arity: Int) extends SExpr {
     def execute(machine: Machine): Unit = {
+      args.add(machine.popEnv())
       machine.returnValue = SPAP(prim, args, arity)
     }
   }

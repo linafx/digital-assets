@@ -624,17 +624,17 @@ object Speedy {
         // check if there are now enough arguments to saturate the function arity
         if (othersLength >= 0) {
           // push a continuation to enter the function
-          machine.pushKont(KFun(prim, extendedArgs))
+          machine.pushKont(KFun(machine, prim, extendedArgs))
         } else {
           // push a continuation to build the PAP
-          machine.pushKont(KPap(prim, extendedArgs, arity))
+          machine.pushKont(KPap(machine, prim, extendedArgs, arity))
         }
 
         // Start evaluating the arguments.
         var i = 1
         while (i < newArgsLimit) {
           val arg = newArgs(newArgsLimit - i)
-          machine.pushKont(KPushTo(extendedArgs, arg))
+          machine.pushKont(KPushTo(machine.env, SECollectArg(extendedArgs,arg)))
           i = i + 1
         }
         machine.ctrl = newArgs(0)
@@ -757,12 +757,12 @@ object Speedy {
     KPushTo(machine.env,SEArgs(args))
   }
 
-  @inline def KFun(prim: Prim, args: util.ArrayList[SValue]): Kont = {
-    KPushTo(args, SEFun(prim, args))
+  @inline def KFun(machine: Machine, prim: Prim, args: util.ArrayList[SValue]): Kont = {
+    KPushTo(machine.env, SEFun(prim, args))
   }
 
-  @inline def KPap(prim: Prim, args: util.ArrayList[SValue], arity: Int): Kont = {
-    KPushTo(args, SEPAP(prim, args, arity))
+  @inline def KPap(machine: Machine, prim: Prim, args: util.ArrayList[SValue], arity: Int): Kont = {
+    KPushTo(machine.env, SEPAP(prim, args, arity))
   }
 
   @inline def KFinished(machine: Machine): Kont = {

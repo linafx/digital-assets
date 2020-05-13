@@ -36,6 +36,7 @@ object Classify { // classify the machine state w.r.t what step occurs next
       var epop: Int,
       var elocationtrace: Int,
       var ecatchmarker: Int,
+      var ecollectarg: Int,
 
       // kont classification (ctrlValue)
       var kpushto: Int,
@@ -67,6 +68,7 @@ object Classify { // classify the machine state w.r.t what step occurs next
         ("- epop", epop),
         ("- ecatchmarker", ecatchmarker),
         ("- elocationtrace", elocationtrace),
+        ("- ecollectarg", ecollectarg),
 
         ("Kont:", ctrlValue),
         ("- kpushto", kpushto),
@@ -75,7 +77,7 @@ object Classify { // classify the machine state w.r.t what step occurs next
   }
 
   def newEmptyCounts(): Counts = {
-    Counts(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+    Counts(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
   }
 
   def classifyMachine(machine: Machine, counts: Counts): Unit = {
@@ -115,6 +117,7 @@ object Classify { // classify the machine state w.r.t what step occurs next
       case _:SEPop => counts.epop += 1
       case _:SELocationTrace => counts.elocationtrace += 1
       case _:SECatchMarker => counts.ecatchmarker += 1
+      case _:SECollectArg => counts.ecollectarg += 1
     }
   }
 

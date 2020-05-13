@@ -73,6 +73,7 @@ object PrettyLightweight { // lightweight pretty printer for CEK machine states
     case SEPop(n) => s"<SEPop:$n>"
     case SELocationTrace(_) => s"<SELocationTrace>"
     case SECatchMarker(_,_,_) => s"<SECatchMarker...>"
+    case SECollectArg(_,_) => s"<SECollectArg...>"
   }
 
   def pp(v: SValue): String = v match {

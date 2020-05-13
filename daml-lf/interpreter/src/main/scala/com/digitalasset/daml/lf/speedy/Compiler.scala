@@ -1012,6 +1012,7 @@ private[lf] final case class Compiler(packages: PackageId PartialFunction Packag
       case x: SEPop => throw CompilationError(s"unexpected expression: $x")
       case x: SELocationTrace => throw CompilationError(s"unexpected expression: $x")
       case x: SECatchMarker => throw CompilationError(s"unexpected expression: $x")
+      case x: SECollectArg => throw CompilationError(s"unexpected expression: $x")
     }
   }
 
@@ -1072,6 +1073,7 @@ private[lf] final case class Compiler(packages: PackageId PartialFunction Packag
         case x: SEPop => throw CompilationError(s"unexpected expression: $x")
         case x: SELocationTrace => throw CompilationError(s"unexpected expression: $x")
         case x: SECatchMarker => throw CompilationError(s"unexpected expression: $x")
+        case x: SECollectArg => throw CompilationError(s"unexpected expression: $x")
       }
     go(expr)
     free
@@ -1160,6 +1162,7 @@ private[lf] final case class Compiler(packages: PackageId PartialFunction Packag
         case x: SEPop => throw CompilationError(s"unexpected expression: $x")
         case x: SELocationTrace => throw CompilationError(s"unexpected expression: $x")
         case x: SECatchMarker => throw CompilationError(s"unexpected expression: $x")
+        case x: SECollectArg => throw CompilationError(s"unexpected expression: $x")
       }
     go(expr)
     expr
