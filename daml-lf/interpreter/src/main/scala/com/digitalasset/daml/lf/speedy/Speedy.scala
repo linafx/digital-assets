@@ -587,127 +587,6 @@ object Speedy {
     }
   }
 
-  def executeApplication(v: SValue, newArgs: Array[SExpr], machine: Machine) = {
-    v match {
-      case SPAP(prim, args, arity) =>
-        val missing = arity - args.size
-        val newArgsLimit = Math.min(missing, newArgs.length)
-
-        // Keep some space free, because both `KFun` and `KCollectArg` add to the list.
-        val extendedArgs = new util.ArrayList[SValue](args.size + newArgsLimit)
-        extendedArgs.addAll(args)
-
-        // Stash away over-applied arguments, if any.
-        val othersLength = newArgs.length - missing
-        if (othersLength > 0) {
-          val others = new Array[SExpr](othersLength)
-          System.arraycopy(newArgs, missing, others, 0, othersLength)
-          machine.pushKont(KArg(others))
-        }
-
-        // check if there are now enough arguments to saturate the function arity
-        if (othersLength >= 0) {
-          // push a continuation to enter the function
-          machine.pushKont(KFun(prim, extendedArgs, arity))
-        } else {
-          // push a continuation to build the PAP
-          machine.pushKont(KPAP(prim, extendedArgs, arity))
-        }
-
-        // Start evaluating the arguments.
-        var i = 1
-        while (i < newArgsLimit) {
-          val arg = newArgs(newArgsLimit - i)
-          machine.pushKont(KCollectArg(extendedArgs,arg))
-          i = i + 1
-        }
-        machine.ctrl = newArgs(0)
-
-      case _ =>
-        crash(s"Applying non-PAP: $v")
-    }
-  }
-
-  /** The scrutinee of a match has been evaluated, now match the alternatives against it. */
-  def matchAlternative(alts: Array[SCaseAlt], v: SValue, machine: Machine) : Unit = {
-    val altOpt = v match {
-      case SBool(b) =>
-        alts.find { alt =>
-          alt.pattern match {
-            case SCPPrimCon(PCTrue) => b
-            case SCPPrimCon(PCFalse) => !b
-            case SCPDefault => true
-            case _ => false
-          }
-        }
-      case SVariant(_, _, rank1, arg) =>
-        alts.find { alt =>
-          alt.pattern match {
-            case SCPVariant(_, _, rank2) if rank1 == rank2 =>
-              machine.pushKont(KPop(1))
-              machine.pushEnv(arg)
-              true
-            case SCPDefault => true
-            case _ => false
-          }
-        }
-      case SEnum(_, _, rank1) =>
-        alts.find { alt =>
-          alt.pattern match {
-            case SCPEnum(_, _, rank2) => rank1 == rank2
-            case SCPDefault => true
-            case _ => false
-          }
-        }
-      case SList(lst) =>
-        alts.find { alt =>
-          alt.pattern match {
-            case SCPNil if lst.isEmpty => true
-            case SCPCons if !lst.isEmpty =>
-              machine.pushKont(KPop(2))
-              val Some((head, tail)) = lst.pop
-              machine.pushEnv(head)
-              machine.pushEnv(SList(tail))
-              true
-            case SCPDefault => true
-            case _ => false
-          }
-        }
-      case SUnit =>
-        alts.find { alt =>
-          alt.pattern match {
-            case SCPPrimCon(PCUnit) => true
-            case SCPDefault => true
-            case _ => false
-          }
-        }
-      case SOptional(mbVal) =>
-        alts.find { alt =>
-          alt.pattern match {
-            case SCPNone if mbVal.isEmpty => true
-            case SCPSome =>
-              mbVal match {
-                case None => false
-                case Some(x) =>
-                  machine.pushKont(KPop(1))
-                  machine.pushEnv(x)
-                  true
-              }
-            case SCPDefault => true
-            case _ => false
-          }
-        }
-      case SContractId(_) | SDate(_) | SNumeric(_) | SInt64(_) | SParty(_) | SText(_) |
-          STimestamp(_) | SStruct(_, _) | STextMap(_) | SGenMap(_) | SRecord(_, _, _) |
-          SAny(_, _) | STypeRep(_) | STNat(_) | _: SPAP | SToken =>
-        crash("Match on non-matchable value")
-    }
-
-    machine.ctrl = altOpt
-      .getOrElse(throw DamlEMatchError(s"No match for $v in ${alts.toList}"))
-      .body
-  }
-
   //
   // Environment
   //
@@ -734,6 +613,129 @@ object Speedy {
     */
 
   type Kont = SExpr
+
+
+  def executeApplication(v: SValue, newArgs: Array[SExpr], machine: Machine) = {
+      v match {
+        case SPAP(prim, args, arity) =>
+          val missing = arity - args.size
+          val newArgsLimit = Math.min(missing, newArgs.length)
+
+          // Keep some space free, because both `KFun` and `KCollectArg` add to the list.
+          val extendedArgs = new util.ArrayList[SValue](args.size + newArgsLimit)
+          extendedArgs.addAll(args)
+
+          // Stash away over-applied arguments, if any.
+          val othersLength = newArgs.length - missing
+          if (othersLength > 0) {
+            val others = new Array[SExpr](othersLength)
+            System.arraycopy(newArgs, missing, others, 0, othersLength)
+            machine.pushKont(KArg(others))
+          }
+
+          // check if there are now enough arguments to saturate the function arity
+          if (othersLength >= 0) {
+            // push a continuation to enter the function
+            machine.pushKont(KFun(prim, extendedArgs, arity))
+          } else {
+            // push a continuation to build the PAP
+            machine.pushKont(KPAP(prim, extendedArgs, arity))
+          }
+
+          // Start evaluating the arguments.
+          var i = 1
+          while (i < newArgsLimit) {
+            val arg = newArgs(newArgsLimit - i)
+            machine.pushKont(KCollectArg(extendedArgs,arg))
+            i = i + 1
+          }
+          machine.ctrl = newArgs(0)
+
+        case _ =>
+          crash(s"Applying non-PAP: $v")
+      }
+  }
+
+  /** The scrutinee of a match has been evaluated, now match the alternatives against it. */
+  def matchAlternative(alts: Array[SCaseAlt], v: SValue, machine: Machine) : Unit = {
+      val altOpt = v match {
+        case SBool(b) =>
+          alts.find { alt =>
+            alt.pattern match {
+              case SCPPrimCon(PCTrue) => b
+              case SCPPrimCon(PCFalse) => !b
+              case SCPDefault => true
+              case _ => false
+            }
+          }
+        case SVariant(_, _, rank1, arg) =>
+          alts.find { alt =>
+            alt.pattern match {
+              case SCPVariant(_, _, rank2) if rank1 == rank2 =>
+                machine.pushKont(KPop(1))
+                machine.pushEnv(arg)
+                true
+              case SCPDefault => true
+              case _ => false
+            }
+          }
+        case SEnum(_, _, rank1) =>
+          alts.find { alt =>
+            alt.pattern match {
+              case SCPEnum(_, _, rank2) => rank1 == rank2
+              case SCPDefault => true
+              case _ => false
+            }
+          }
+        case SList(lst) =>
+          alts.find { alt =>
+            alt.pattern match {
+              case SCPNil if lst.isEmpty => true
+              case SCPCons if !lst.isEmpty =>
+                machine.pushKont(KPop(2))
+                val Some((head, tail)) = lst.pop
+                machine.pushEnv(head)
+                machine.pushEnv(SList(tail))
+                true
+              case SCPDefault => true
+              case _ => false
+            }
+          }
+        case SUnit =>
+          alts.find { alt =>
+            alt.pattern match {
+              case SCPPrimCon(PCUnit) => true
+              case SCPDefault => true
+              case _ => false
+            }
+          }
+        case SOptional(mbVal) =>
+          alts.find { alt =>
+            alt.pattern match {
+              case SCPNone if mbVal.isEmpty => true
+              case SCPSome =>
+                mbVal match {
+                  case None => false
+                  case Some(x) =>
+                    machine.pushKont(KPop(1))
+                    machine.pushEnv(x)
+                    true
+                }
+              case SCPDefault => true
+              case _ => false
+            }
+          }
+        case SContractId(_) | SDate(_) | SNumeric(_) | SInt64(_) | SParty(_) | SText(_) |
+            STimestamp(_) | SStruct(_, _) | STextMap(_) | SGenMap(_) | SRecord(_, _, _) |
+            SAny(_, _) | STypeRep(_) | STNat(_) | _: SPAP | SToken =>
+          crash("Match on non-matchable value")
+      }
+
+      machine.ctrl = altOpt
+        .getOrElse(throw DamlEMatchError(s"No match for $v in ${alts.toList}"))
+        .body
+  }
+
 
   /** Internal exception thrown when a continuation result needs to be returned.
     Or machine execution has reached a final value. */
