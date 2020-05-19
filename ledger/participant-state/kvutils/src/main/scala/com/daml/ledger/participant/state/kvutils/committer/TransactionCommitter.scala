@@ -568,6 +568,8 @@ private[kvutils] class TransactionCommitter(
             .setDetails(details))
       case RejectionReason.InvalidLedgerTime(reason) =>
         builder.setInvalidLedgerTime(InvalidLedgerTime.newBuilder.setDetails(reason))
+      case RejectionReason.GrpcReason(code, details) =>
+        builder.setGrpcReason(GrpcReason.newBuilder.setCode(code.value()).setDetails(details))
     }
     builder
   }

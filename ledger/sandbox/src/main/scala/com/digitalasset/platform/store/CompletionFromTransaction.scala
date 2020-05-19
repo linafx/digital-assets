@@ -41,6 +41,8 @@ private[platform] object CompletionFromTransaction {
         Code.ABORTED
       case _: RejectionReason.SubmitterCannotActViaParticipant =>
         Code.PERMISSION_DENIED
+      case RejectionReason.GrpcReason(code, _description) =>
+        code
     }
   }
 

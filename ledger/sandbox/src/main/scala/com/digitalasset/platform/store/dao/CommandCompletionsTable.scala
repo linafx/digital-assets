@@ -75,6 +75,8 @@ object CommandCompletionsTable {
         Code.ABORTED.value() -> rejection.description
       case _: SubmitterCannotActViaParticipant =>
         Code.PERMISSION_DENIED.value() -> rejection.description
+      case GrpcReason(code, description) =>
+        code.value() -> description
     }
   }
 

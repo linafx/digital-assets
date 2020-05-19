@@ -3,6 +3,8 @@
 
 package com.daml.ledger.participant.state.v1
 
+import io.grpc.Status.{Code => GrpcCode}
+
 /** Reasons for rejections of transaction submission.
   *
   * Used to provide details for [[Update.CommandRejected]].
@@ -75,4 +77,10 @@ object RejectionReason {
   final case class InvalidLedgerTime(reason: String) extends RejectionReason {
     override def description: String = s"Invalid ledger time: $reason"
   }
+
+  /** The rejection reason already specified as a GRPC code and message to
+    * be returned via the ledger api as is.
+    */
+  final case class GrpcReason(code: GrpcCode, description: String) extends RejectionReason
+
 }

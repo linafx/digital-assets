@@ -10,6 +10,7 @@ import com.daml.lf.data.Ref
 import com.daml.lf.data.Time.Timestamp
 import com.google.common.io.BaseEncoding
 import com.google.protobuf.ByteString
+import io.grpc.{Status => GrpcStatus}
 
 import scala.collection.JavaConverters._
 
@@ -205,6 +206,11 @@ object KeyValueConsumption {
           ))
       case DamlTransactionRejectionEntry.ReasonCase.INVALID_LEDGER_TIME =>
         wrap(RejectionReason.InvalidLedgerTime(rejEntry.getInvalidLedgerTime.getDetails))
+      case DamlTransactionRejectionEntry.ReasonCase.GRPC_REASON =>
+        wrap(
+          RejectionReason.GrpcReason(
+            GrpcStatus.fromCodeValue(rejEntry.getGrpcReason.getCode).getCode,
+            rejEntry.getGrpcReason.getDetails))
       case DamlTransactionRejectionEntry.ReasonCase.REASON_NOT_SET =>
         //TODO: Replace with "Unknown reason" error code or something similar
         throw Err.InternalError("transactionRejectionEntryToUpdate: REASON_NOT_SET!")

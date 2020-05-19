@@ -183,6 +183,7 @@ message DamlTransactionRejectionEntry {
     PartyNotKnownOnLedger party_not_known_on_ledger = 7;
     SubmitterCannotActViaParticipant submitter_cannot_act_via_participant = 8;
     InvalidLedgerTime invalid_ledger_time = 9;
+    GrpcReason grpc_reason = 10;
   }
 }
 
@@ -526,6 +527,12 @@ message Invalid {
 // Participant not authorized to submit the request.
 message ParticipantNotAuthorized {
   string details = 1;
+}
+
+// Reason already expressed as GRPC code and message.
+message GrpcReason {
+  int32 code = 1;
+  string details = 2;
 }
 
 // A mismatch in the configuration generation, that is, the
