@@ -3,6 +3,12 @@
 
 package com.daml.transaction.dump
 
+import com.daml.auth.TokenHolder
+import com.daml.ledger.client.configuration.{
+  CommandClientConfiguration,
+  LedgerClientConfiguration,
+  LedgerIdRequirement
+}
 import com.typesafe.scalalogging.StrictLogging
 import scalaz.syntax.show._
 
@@ -25,5 +31,18 @@ object Main extends StrictLogging {
 
   private def main(config: Config): Unit = {
     logger.info(config.shows)
+
+    val tokenHolder = config.accessTokenFile.map(new TokenHolder(_))
+
+    val clientConfig = LedgerClientConfiguration(
+      applicationId = "TransactionDump",
+      ledgerIdRequirement = LedgerIdRequirement("", enabled = false),
+      commandClient = CommandClientConfiguration.default,
+      sslContext = None,
+      token = tokenHolder.flatMap(_.token),
+    )
+
+    logger.info(s"Client config: $clientConfig")
+
   }
 }

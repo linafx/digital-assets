@@ -3,6 +3,8 @@
 
 package com.daml.transaction.dump
 
+import java.nio.file.{Path, Paths}
+
 import com.daml.ledger.api.refinements.ApiTypes.Party
 import scalaz.{OneAnd, Show, Tag}
 import scopt.{Read, RenderingMode}
@@ -16,6 +18,7 @@ final case class Config(
     ledgerPort: Int,
     parties: OneAnd[Set, Party],
     reportInterval: FiniteDuration,
+    accessTokenFile: Option[Path] = None,
 )
 
 object Config {
@@ -25,8 +28,6 @@ object Config {
     parties = OneAnd(Party(""), Set.empty),
     reportInterval = FiniteDuration(0L, java.util.concurrent.TimeUnit.NANOSECONDS))
 
-  private implicit val partyRead: Read[Party] = Tag.subst(implicitly[Read[String]])
-
   private implicit val partyShow: Show[Party] = Tag.subst(implicitly[Show[String]])
 
   @SuppressWarnings(Array("org.wartremover.warts.Any"))
@@ -35,11 +36,11 @@ object Config {
     import scalaz.std.set._
 
     s"Config(ledgerHost=${c.ledgerHost}, ledgerPort=${c.ledgerPort}, parties=${c.parties.shows}, " +
-      s"reportInterval=${c.reportInterval})"
+      s"reportInterval=${c.reportInterval}, accessTokenFile=${c.accessTokenFile})"
   }
 
   @SuppressWarnings(Array("org.wartremover.warts.Any"))
-  private implicit def nonEmptySetRead[A: Read]: Read[OneAnd[Set, A]] = Read.reads { (s: String) =>
+  private implicit def nonEmptySetRead[A: Read]: Read[OneAnd[Set, A]] = Read.reads { s: String =>
     import scalaz.std.iterable._
     import scalaz.syntax.foldable._
 
@@ -56,6 +57,14 @@ object Config {
           else xs
       }
       .reads(s)
+  }
+
+  private implicit val partyRead: Read[Party] = Tag.subst(implicitly[Read[String]])
+
+  private implicit val pathRead: Read[Path] = Read.reads { s: String =>
+    val p = Paths.get(s)
+    if (!p.toFile.canRead) throw new IllegalArgumentException(s"Cannot read from file: $p")
+    else p
   }
 
   def parseConfig(args: Seq[String]): Option[Config] =
@@ -90,5 +99,11 @@ object Config {
         .action((x, c) => c.copy(reportInterval = FiniteDuration(x.length, x.unit)))
         .required()
         .text("Time interval specifying how often to report message rate statistics")
+
+      opt[Path]("access-token-file")
+        .action((x, c) => c.copy(accessTokenFile = Some(x)))
+        .optional()
+        .text(
+          s"Provides the path from which the access token will be read, required to interact with an authenticated ledger")
     }
 }
