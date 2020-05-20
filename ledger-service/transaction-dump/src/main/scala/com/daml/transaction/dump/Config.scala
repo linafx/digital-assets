@@ -4,8 +4,9 @@
 package com.daml.transaction.dump
 
 import com.daml.ledger.api.refinements.ApiTypes.Party
-import scalaz.{OneAnd, Show}
+import scalaz.{OneAnd, Show, Tag}
 import scopt.{Read, RenderingMode}
+import scalaz.std.string._
 
 import scala.concurrent.duration.{Duration, FiniteDuration}
 
@@ -14,7 +15,7 @@ final case class Config(
     ledgerHost: String,
     ledgerPort: Int,
     parties: OneAnd[Set, Party],
-    messageRateInterval: FiniteDuration,
+    reportInterval: FiniteDuration,
 )
 
 object Config {
@@ -22,10 +23,19 @@ object Config {
     ledgerHost = "",
     ledgerPort = -1,
     parties = OneAnd(Party(""), Set.empty),
-    messageRateInterval = FiniteDuration(0L, java.util.concurrent.TimeUnit.NANOSECONDS))
+    reportInterval = FiniteDuration(0L, java.util.concurrent.TimeUnit.NANOSECONDS))
 
-  implicit val showInstance: Show[Config] = Show.shows { c =>
-    s"""Config(ledgerHost="${c.ledgerHost}, ledgerPort=${c.ledgerPort}, parties=${c.parties.toString}, messageRateInterval=${c.messageRateInterval})"""
+  private implicit val partyRead: Read[Party] = Tag.subst(implicitly[Read[String]])
+
+  private implicit val partyShow: Show[Party] = Tag.subst(implicitly[Show[String]])
+
+  @SuppressWarnings(Array("org.wartremover.warts.Any"))
+  implicit val configShow: Show[Config] = Show.shows { c =>
+    import scalaz.syntax.show._
+    import scalaz.std.set._
+
+    s"Config(ledgerHost=${c.ledgerHost}, ledgerPort=${c.ledgerPort}, parties=${c.parties.shows}, " +
+      s"reportInterval=${c.reportInterval})"
   }
 
   @SuppressWarnings(Array("org.wartremover.warts.Any"))
@@ -46,10 +56,6 @@ object Config {
           else xs
       }
       .reads(s)
-  }
-
-  private implicit val partyRead: Read[Party] = Read.reads { (s: String) =>
-    Party(s)
   }
 
   def parseConfig(args: Seq[String]): Option[Config] =
@@ -78,11 +84,11 @@ object Config {
       opt[OneAnd[Set, Party]]("parties")
         .action((x, c) => c.copy(parties = x))
         .required()
-        .text("Set of parties")
+        .text("Sequence of unique party identifiers")
 
-      opt[Duration]("message-rate-interval")
-        .action((x, c) => c.copy(messageRateInterval = FiniteDuration(x.length, x.unit)))
+      opt[Duration]("report-interval")
+        .action((x, c) => c.copy(reportInterval = FiniteDuration(x.length, x.unit)))
         .required()
-        .text("Time interval for message rate calculation")
+        .text("Time interval specifying how often to report message rate statistics")
     }
 }
