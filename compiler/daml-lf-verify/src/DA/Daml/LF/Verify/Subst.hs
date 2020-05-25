@@ -4,6 +4,7 @@
 -- | Term substitions for DAML LF static verification
 module DA.Daml.LF.Verify.Subst
   ( ExprSubst
+  , emptyExprSubst
   , singleExprSubst
   , singleTypeSubst
   , createExprSubst
@@ -19,6 +20,10 @@ import DA.Daml.LF.Ast.Type
 
 -- | Substitution of expressions for expression variables.
 type ExprSubst = Map.Map ExprVarName Expr
+
+-- | Constructs an empty substition.
+emptyExprSubst :: ExprSubst
+emptyExprSubst = Map.empty
 
 -- | Create an expression substitution from a single variable and expression.
 singleExprSubst :: ExprVarName
