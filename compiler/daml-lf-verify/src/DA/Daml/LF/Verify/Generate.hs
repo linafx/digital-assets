@@ -148,10 +148,12 @@ genChoice :: MonadEnv m 'ChoiceGathering
   -- called.
   -> [FieldName]
   -- ^ The list of fields available in the template.
+  -> Expr
+  -- ^ Any preconditions, posed in the template.
   -> TemplateChoice
   -- ^ The choice to be analysed and added.
   -> m ()
-genChoice pac tem this' temFs TemplateChoice{..} = do
+genChoice pac tem this' temFs preExpr TemplateChoice{..} = do
   let self' = chcSelfBinder
       arg' = fst chcArgBinder
   self <- genRenamedVar self'
@@ -163,8 +165,14 @@ genChoice pac tem this' temFs TemplateChoice{..} = do
   extRecEnv this temFs
   argFs <- recTypFields (snd chcArgBinder)
   extRecEnv arg argFs
+  let subst = createExprSubst [(self',EVar self),(this',EVar this),(arg',EVar arg)]
+  -- TODO: Can preconditions perform updates?
+  preOut <- genExpr False
+    $ substituteTm subst
+    $ instPRSelf pac preExpr
+  extCtr (_oExpr preOut)
   expOut <- genExpr True
-    $ substituteTm (createExprSubst [(self',EVar self),(this',EVar this),(arg',EVar arg)])
+    $ substituteTm subst
     $ instPRSelf pac chcUpdate
   let out = if chcConsuming
         then addArchiveUpd tem (fields this) expOut
@@ -189,7 +197,7 @@ genTemplate pac mod Template{..} = do
   let fs = map fst fields
   -- TODO: move this to choice?
   extRecEnvLvl1 fields
-  mapM_ (genChoice pac name tplParam fs) (archive : NM.toList tplChoices)
+  mapM_ (genChoice pac name tplParam fs tplPrecondition) (archive : NM.toList tplChoices)
   where
     archive :: TemplateChoice
     archive = TemplateChoice Nothing (ChoiceName "Archive") True
@@ -472,7 +480,19 @@ genForBind bind body = do
                    `concatUpdateSet` _oUpdate bodyUpdOut)
              , bodyTyp
              , creFs )
-    _ -> error "Impossible: The body of a bind should be an update expression"
+    -- TODO: Temporary hack
+    expr -> do
+      let bodyUpd = UPure (TBuiltin BTUnit) expr
+      (bodyUpdOut, bodyTyp, creFs) <- genUpdate bodyUpd
+      return ( Output
+                 (_oExpr bodyUpdOut)
+                 (_oUpdate bindOut
+                   `concatUpdateSet` bindUpd
+                   `concatUpdateSet` _oUpdate bodyOut
+                   `concatUpdateSet` _oUpdate bodyUpdOut)
+             , bodyTyp
+             , creFs )
+    -- _ -> error "Impossible: The body of a bind should be an update expression"
 
 -- | Refresh and bind the fetched contract id to the given variable. Returns a
 -- substitution, mapping the old id to the refreshed one.
