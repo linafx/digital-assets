@@ -5,6 +5,7 @@
 module DA.Daml.LF.Verify.Subst
   ( ExprSubst
   , emptyExprSubst
+  , concatExprSubst
   , singleExprSubst
   , singleTypeSubst
   , createExprSubst
@@ -24,6 +25,10 @@ type ExprSubst = Map.Map ExprVarName Expr
 -- | Constructs an empty substition.
 emptyExprSubst :: ExprSubst
 emptyExprSubst = Map.empty
+
+-- | Combine two substitions.
+concatExprSubst :: ExprSubst -> ExprSubst -> ExprSubst
+concatExprSubst = Map.union
 
 -- | Create an expression substitution from a single variable and expression.
 singleExprSubst :: ExprVarName
