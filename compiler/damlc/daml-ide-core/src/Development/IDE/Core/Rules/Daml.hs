@@ -516,7 +516,9 @@ generatePackageMapRule opts = do
     defineNoFile $ \GeneratePackageMapIO -> do
         f <- liftIO $ do
             findProjectRoot <- memoIO findProjectRoot
-            generatePackageMap <- memoIO $ \mbRoot -> generatePackageMap (optDamlLfVersion opts) mbRoot (optPackageDbs opts)
+            generatePackageMap <- memoIO $ \mbRoot -> do
+                liftIO $ putStrLn $ "Generating package map for " <> show mbRoot
+                generatePackageMap (optDamlLfVersion opts) mbRoot (optPackageDbs opts)
             pure $ \file -> do
                 mbProjectRoot <- liftIO (findProjectRoot file)
                 liftIO $ generatePackageMap (LSP.toNormalizedFilePath <$> mbProjectRoot)

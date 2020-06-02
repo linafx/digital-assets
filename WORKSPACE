@@ -399,7 +399,7 @@ filegroup(
 # This is used to get ghc-pkg on Linux.
 nixpkgs_package(
     name = "ghc_nix",
-    attribute_path = "ghcStatic",
+    attribute_path = "ghc",
     build_file_content = """
 package(default_visibility = ["//visibility:public"])
 exports_files(glob(["lib/**/*"]))
@@ -422,7 +422,7 @@ common_ghc_flags = [
 
 # Used by Darwin and Linux
 haskell_register_ghc_nixpkgs(
-    attribute_path = "ghcStaticDwarf" if enable_ghc_dwarf else "ghcStatic",
+    attribute_path = "ghcStaticDwarf" if enable_ghc_dwarf else "ghc",
     build_file = "@io_tweag_rules_nixpkgs//nixpkgs:BUILD.pkg",
 
     # -fexternal-dynamic-refs is required so that we produce position-independent
@@ -434,7 +434,7 @@ haskell_register_ghc_nixpkgs(
     # However, we had to disable split-sections for now as it seems to interact very badly
     # with the GHCi linker to the point where :main takes several minutes rather than several seconds.
     compiler_flags = common_ghc_flags + [
-        "-fexternal-dynamic-refs",
+#        "-fexternal-dynamic-refs",
     ] + (["-g3"] if enable_ghc_dwarf else ([
         "-optl-unexported_symbols_list=*",
         "-optc-mmacosx-version-min=10.14",
@@ -446,7 +446,7 @@ haskell_register_ghc_nixpkgs(
         "@com_github_digital_asset_daml//:profiling_build": ["-fprof-auto"],
         "//conditions:default": [],
     },
-    is_static = True,
+    is_static = False,
     locale_archive = "@glibc_locales//:locale-archive",
     nix_file = "//nix:bazel.nix",
     nix_file_deps = nix_ghc_deps,

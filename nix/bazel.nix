@@ -51,6 +51,7 @@ let shared = rec {
       hlint = pkgs.haskell.lib.justStaticExecutables super.hlint;
     };
   };
+  ghc = pkgs.haskell.packages.ghc865.ghc;
   ghcStatic = ghcStaticPkgs.ghc;
   hlint = ghcStaticPkgs.hlint;
 
