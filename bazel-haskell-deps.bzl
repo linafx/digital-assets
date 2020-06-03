@@ -48,9 +48,9 @@ haskell_cabal_binary(
     visibility = ["//visibility:public"],
 )
 """,
-        sha256 = "d58e4d708b14ff332a8a8edad4fa8989cb6a9f518a7c6834e96281ac5f8ff232",
-        strip_prefix = "alex-3.2.4",
-        urls = ["http://hackage.haskell.org/package/alex-3.2.4/alex-3.2.4.tar.gz"],
+        sha256 = "b77c8a1270767c64e2adb21a6e91ee7cd904ba17edae17bc20fd03da5256e0e3",
+        strip_prefix = "alex-3.2.5",
+        urls = ["http://hackage.haskell.org/package/alex-3.2.5/alex-3.2.5.tar.gz"],
     )
 
     http_archive(
@@ -87,9 +87,9 @@ haskell_cabal_binary(
     visibility = ["//visibility:public"],
 )
 """,
-        sha256 = "9094d19ed0db980a34f1ffd58e64c7df9b4ecb3beed22fd9b9739044a8d45f77",
-        strip_prefix = "happy-1.19.11",
-        urls = ["http://hackage.haskell.org/package/happy-1.19.11/happy-1.19.11.tar.gz"],
+        sha256 = "fb9a23e41401711a3b288f93cf0a66db9f97da1ce32ec4fffea4b78a0daeb40f",
+        strip_prefix = "happy-1.19.12",
+        urls = ["http://hackage.haskell.org/package/happy-1.19.12/happy-1.19.12.tar.gz"],
     )
 
     # Standard ghcide (not ghc-lib based) - used on daml's Haskell sources.
@@ -418,6 +418,82 @@ haskell_cabal_library(
     )
 
     http_archive(
+        name = "haskell-src",
+        build_file_content = """
+load("@rules_haskell//haskell:cabal.bzl", "haskell_cabal_library")
+load("@stackage//:packages.bzl", "packages")
+haskell_cabal_library(
+    name = "haskell-src",
+    version = "1.0.3.1",
+    srcs = glob(["**"]),
+    haddock = False,
+    deps = packages["haskell-src"].deps,
+    tools = ["@happy"],
+    verbose = False,
+    visibility = ["//visibility:public"],
+    flags = ["embed-files"],
+)
+""",
+        patch_args = ["-p1"],
+        patches = [
+            "@com_github_digital_asset_daml//bazel_tools:haskell-haskell-src.patch",
+        ],
+        sha256 = "869cc710004c2161470d8a788dab96d2cff054fa106c301be6689109f57e5132",
+        strip_prefix = "haskell-src-1.0.3.1",
+        urls = ["http://hackage.haskell.org/package/haskell-src-1.0.3.1/haskell-src-1.0.3.1.tar.gz"],
+    )
+
+    http_archive(
+        name = "haskell-lsp-types",
+        build_file_content = """
+load("@rules_haskell//haskell:cabal.bzl", "haskell_cabal_library")
+load("@stackage//:packages.bzl", "packages")
+haskell_cabal_library(
+    name = "haskell-lsp-types",
+    version = "0.21.0.0",
+    srcs = glob(["**"]),
+    haddock = False,
+    deps = packages["haskell-lsp-types"].deps,
+    verbose = False,
+    visibility = ["//visibility:public"],
+    flags = ["embed-files"],
+)
+""",
+        patch_args = ["-p2"],
+        patches = [
+            "@com_github_digital_asset_daml//bazel_tools:haskell-haskell-lsp-types.patch",
+        ],
+        sha256 = "22c5cd0a37ddee873146b78cfaa6b8c40f01adb9bf6e6e4e063901bf9385bd74",
+        strip_prefix = "haskell-lsp-types-0.21.0.0",
+        urls = ["http://hackage.haskell.org/package/haskell-lsp-types-0.21.0.0/haskell-lsp-types-0.21.0.0.tar.gz"],
+    )
+
+    http_archive(
+        name = "haskell-lsp",
+        build_file_content = """
+load("@rules_haskell//haskell:cabal.bzl", "haskell_cabal_library")
+load("@stackage//:packages.bzl", "packages")
+haskell_cabal_library(
+    name = "haskell-lsp",
+    version = "0.21.0.0",
+    srcs = glob(["**"]),
+    haddock = False,
+    deps = packages["haskell-lsp"].deps,
+    verbose = False,
+    visibility = ["//visibility:public"],
+    flags = ["embed-files"],
+)
+""",
+        patch_args = ["-p1"],
+        patches = [
+            "@com_github_digital_asset_daml//bazel_tools:haskell-haskell-lsp.patch",
+        ],
+        sha256 = "db6a5f7c7cac3015a7d7bdc820dd91cb5b30b3d21509d9e2ae7d23ce8b7d8945",
+        strip_prefix = "haskell-lsp-0.21.0.0",
+        urls = ["http://hackage.haskell.org/package/haskell-lsp-0.21.0.0/haskell-lsp-0.21.0.0.tar.gz"],
+    )
+
+    http_archive(
         name = "zip",
         build_file_content = """
 load("@rules_haskell//haskell:cabal.bzl", "haskell_cabal_library")
@@ -572,9 +648,6 @@ exports_files(["stack.exe"], visibility = ["//visibility:public"])
             "haddock-library",
             "hashable",
             "haskeline",
-            "haskell-lsp",
-            "haskell-lsp-types",
-            "haskell-src",
             "haskell-src-exts",
             "heaps",
             "hie-bios",
@@ -696,6 +769,9 @@ exports_files(["stack.exe"], visibility = ["//visibility:public"])
             "js-dgtable": "@js_dgtable//:js-dgtable",
             "js-flot": "@js_flot//:js-flot",
             "shake": "@shake//:shake",
+            "haskell-src": "@haskell-src//:haskell-src",
+            "haskell-lsp-types": "@haskell-lsp-types//:haskell-lsp-types",
+            "haskell-lsp": "@haskell-lsp//:haskell-lsp",
             "zip": "@zip//:zip",
         },
     )

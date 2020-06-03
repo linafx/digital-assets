@@ -248,7 +248,7 @@ def da_haskell_repl(**kwargs):
         }),
         experimental_from_binary = ["//nix/..."],
         repl_ghci_args = [
-            "-fexternal-interpreter",
+#            "-fexternal-interpreter",
             "-j",
             "+RTS",
             "-I0",

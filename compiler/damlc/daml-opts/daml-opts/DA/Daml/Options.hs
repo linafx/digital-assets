@@ -31,7 +31,6 @@ import qualified CmdLineParser as Cmd (warnMsg)
 import Data.IORef
 import Data.List
 import Data.Maybe (fromMaybe)
-import DynFlags (parseDynamicFilePragma)
 import qualified Data.Map.Strict as Map
 import qualified Data.Text as T
 import Config (cProjectVersion)
@@ -117,7 +116,7 @@ damlKeywords =
   ]
 
 getDamlGhcSession :: Options -> Action (FilePath -> Action HscEnvEq)
-getDamlGhcSession _options@Options{..} = do
+getDamlGhcSession _options = do
     findProjectRoot <- liftIO $ memoIO findProjectRoot
     pure $ \file -> do
         mbRoot <- liftIO (findProjectRoot file)

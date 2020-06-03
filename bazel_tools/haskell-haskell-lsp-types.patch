@@ -1,0 +1,13 @@
+diff --git a/haskell-lsp-types/haskell-lsp-types.cabal b/haskell-lsp-types/haskell-lsp-types.cabal
+index 55ea1c9..ad3af88 100644
+--- a/haskell-lsp-types/haskell-lsp-types.cabal
++++ b/haskell-lsp-types/haskell-lsp-types.cabal
+@@ -46,7 +46,7 @@ library
+  -- other-extensions:
+   ghc-options:         -Wall
+   -- ghc-options:         -Werror
+-  build-depends:       base >= 4.9 && < 4.14
++  build-depends:       base >= 4.9 && < 4.15
+                      , aeson >=1.2.2.0
+                      , binary
+                      , bytestring

@@ -452,11 +452,11 @@ haskell_register_ghc_nixpkgs(
     nix_file_deps = nix_ghc_deps,
     repl_ghci_args = [
         "-O0",
-        "-fexternal-interpreter",
+#        "-fexternal-interpreter",
         "-Wwarn",
     ],
     repositories = dev_env_nix_repos,
-    version = "8.6.5",
+    version = "8.10.1",
 )
 
 # Used by Windows

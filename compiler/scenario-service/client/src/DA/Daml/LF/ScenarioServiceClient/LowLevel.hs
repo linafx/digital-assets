@@ -59,7 +59,6 @@ import System.Environment
 import System.Exit
 import System.FilePath
 import qualified System.IO
-import System.Process (proc, CreateProcess, readCreateProcessWithExitCode)
 
 import DA.Bazel.Runfiles
 import qualified DA.Daml.LF.Ast as LF
@@ -138,7 +137,7 @@ data ScenarioServiceException = ScenarioServiceException String deriving Show
 instance Exception ScenarioServiceException
 
 validateJava :: Options -> IO ()
-validateJava Options{..} = do
+validateJava _ = do
     getJavaVersion <- liftIO $ javaProc ["-version"]
     -- We could validate the Java version here but Java version strings are annoyingly
     -- inconsistent, e.g. you might get

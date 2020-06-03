@@ -1,7 +1,7 @@
 -- Copyright (c) 2020 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
 
-{-# LANGUAGE TemplateHaskell     #-}
+
 {-# LANGUAGE ApplicativeDo       #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE MultiWayIf #-}
@@ -50,7 +50,7 @@ import qualified Data.ByteString.Char8 as BSC
 import qualified Data.ByteString.Lazy as BSL
 import qualified Data.ByteString.Lazy.Char8 as BSLC
 import qualified Data.ByteString.UTF8 as BSUTF8
-import Data.FileEmbed (embedFile)
+-- import Data.FileEmbed (embedFile)
 import qualified Data.HashSet as HashSet
 import Data.List.Extra
 import qualified Data.List.Split as Split
@@ -60,10 +60,8 @@ import qualified Data.Text.Extended as T
 import Development.IDE.Core.API
 import Development.IDE.Core.Debouncer
 import Development.IDE.Core.IdeState.Daml
-import Development.IDE.Core.RuleTypes.Daml (GetParsedModule(..))
 import Development.IDE.Core.Rules
-import Development.IDE.Core.Rules.Daml (getDalf, getDlintIdeas)
-import Development.IDE.Core.Service (runActionSync)
+import Development.IDE.Core.Rules.Daml (getDlintIdeas)
 import Development.IDE.Core.Shake
 import Development.IDE.GHC.Util (hscEnv, moduleImportPath)
 import Development.IDE.Types.Location
@@ -384,9 +382,7 @@ execLicense :: Command
 execLicense =
   Command License Nothing effect
   where
-    effect = B.putStr licenseData
-    licenseData :: B.ByteString
-    licenseData = $(embedFile "compiler/daml-licenses/licenses/licensing.md")
+    effect = B.putStr ""
 
 execIde :: Telemetry
         -> Debug
