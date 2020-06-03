@@ -62,7 +62,8 @@ instance Show GeneratePackageMapFun where show _ = "GeneratePackageMapFun"
 instance NFData GeneratePackageMapFun where rnf !_ = ()
 -- | This matches how GhcSessionIO is handled in ghcide.
 type instance RuleResult GeneratePackageMapIO = GeneratePackageMapFun
-newtype PackageMap = PackageMap (Map UnitId LF.DalfPackage)
+newtype PackageMap = PackageMap { getPackageMap :: Map UnitId LF.DalfPackage }
+  deriving Show
 instance NFData PackageMap where
     rnf = rwhnf
 type instance RuleResult GeneratePackageMap = PackageMap
