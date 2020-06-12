@@ -59,6 +59,14 @@ substDom :: ExprSubst
   -> [ExprVarName]
 substDom = Map.keys
 
+-- | Remove a variable from the substitution
+removeSubst :: ExprSubst
+  -- ^ The substitution to remove from.
+  -> ExprVarName
+  -- ^ The variable to remove from the substitution.
+  -> ExprSubst
+removeSubst = flip Map.delete
+
 -- | A class covering the data types to which an expression substitution can be applied.
 class SubstTm a where
   -- | Apply an expression substitution.
@@ -94,13 +102,15 @@ instance SubstTm Expr where
     ETmApp e1 e2 -> ETmApp (substituteTm s e1) (substituteTm s e2)
     ETyApp e t -> ETyApp (substituteTm s e) t
     ETmLam (x,t) e -> if x `elem` substDom s
-      then ETmLam (x,t) e
+      then ETmLam (x,t) (substituteTm (removeSubst s x) e)
       else ETmLam (x,t) (substituteTm s e)
     ETyLam (a,k) e -> ETyLam (a,k) (substituteTm s e)
     ECase e cs -> ECase (substituteTm s e)
       $ map (\CaseAlternative{..} -> CaseAlternative altPattern (substituteTm s altExpr)) cs
-    ELet Binding{..} e -> ELet (Binding bindingBinder $ substituteTm s bindingBound)
-      (substituteTm s e)
+    ELet (Binding (var,ty) e1) e2 -> if var `elem` substDom s
+      then let s' = removeSubst s var
+           in ELet (Binding (var,ty) (substituteTm s e1)) (substituteTm s' e2)
+      else ELet (Binding (var,ty) (substituteTm s e1)) (substituteTm s e2)
     ECons t e1 e2 -> ECons t (substituteTm s e1) (substituteTm s e2)
     ESome t e -> ESome t (substituteTm s e)
     EToAny t e -> EToAny t (substituteTm s e)
