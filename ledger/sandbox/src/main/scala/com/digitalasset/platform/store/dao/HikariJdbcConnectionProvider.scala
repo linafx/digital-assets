@@ -9,7 +9,7 @@ import java.util.{Timer, TimerTask}
 
 import com.codahale.metrics.MetricRegistry
 import com.daml.ledger.api.health.{HealthStatus, Healthy, Unhealthy}
-import com.daml.logging.{ContextualizedLogger, LoggingContext}
+import com.daml.logging.{ContextualizedLogger, LoggingContext, ThreadLogger}
 import com.daml.metrics.{DatabaseMetrics, Timed}
 import com.daml.platform.store.DbType
 import com.daml.platform.store.dao.HikariJdbcConnectionProvider._
@@ -98,6 +98,8 @@ object HikariConnection {
 class HikariJdbcConnectionProvider(dataSource: HikariDataSource, healthPoller: Timer)(
     implicit logCtx: LoggingContext
 ) extends JdbcConnectionProvider {
+  private val logger = ContextualizedLogger.get(this.getClass)
+
   private val transientFailureCount = new AtomicInteger(0)
 
   private val checkHealth = new TimerTask {
@@ -121,6 +123,7 @@ class HikariJdbcConnectionProvider(dataSource: HikariDataSource, healthPoller: T
       Unhealthy
 
   override def runSQL[T](databaseMetrics: DatabaseMetrics)(block: Connection => T): T = {
+    ThreadLogger.traceThread("HikariJdbcConnectionProvider.runSQL")
     val conn = dataSource.getConnection()
     conn.setAutoCommit(false)
     try {

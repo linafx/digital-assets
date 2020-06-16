@@ -16,38 +16,25 @@ import com.daml.ledger.WorkflowId
 import com.daml.ledger.api.domain
 import com.daml.ledger.api.domain.{LedgerId, PartyDetails}
 import com.daml.ledger.api.health.HealthStatus
-import com.daml.ledger.participant.state.index.v2.{
-  CommandDeduplicationDuplicate,
-  CommandDeduplicationNew,
-  CommandDeduplicationResult,
-  PackageDetails
-}
+import com.daml.ledger.participant.state.index.v2.{CommandDeduplicationDuplicate, CommandDeduplicationNew, CommandDeduplicationResult, PackageDetails}
 import com.daml.ledger.participant.state.v1._
 import com.daml.lf.archive.Decode
 import com.daml.lf.data.Ref
 import com.daml.lf.data.Ref.{PackageId, Party}
 import com.daml.lf.transaction.Node
 import com.daml.lf.value.Value.ContractId
-import com.daml.logging.{ContextualizedLogger, LoggingContext}
+import com.daml.logging.{ContextualizedLogger, LoggingContext, ThreadLogger}
 import com.daml.metrics.{Metrics, Timed}
 import com.daml.platform.ApiOffset.ApiOffsetConverter
 import com.daml.platform.configuration.ServerRole
 import com.daml.platform.store.Conversions._
 import com.daml.platform.store.SimpleSqlAsVectorOf.SimpleSqlAsVectorOf
 import com.daml.platform.store._
-import com.daml.platform.store.dao.CommandCompletionsTable.{
-  prepareCompletionInsert,
-  prepareRejectionInsert
-}
+import com.daml.platform.store.dao.CommandCompletionsTable.{prepareCompletionInsert, prepareRejectionInsert}
 import com.daml.platform.store.dao.JdbcLedgerDao.{H2DatabaseQueries, PostgresQueries}
 import com.daml.platform.store.dao.PersistenceResponse.Ok
 import com.daml.platform.store.dao.events._
-import com.daml.platform.store.entries.{
-  ConfigurationEntry,
-  LedgerEntry,
-  PackageLedgerEntry,
-  PartyLedgerEntry
-}
+import com.daml.platform.store.entries.{ConfigurationEntry, LedgerEntry, PackageLedgerEntry, PartyLedgerEntry}
 import com.daml.resources.ResourceOwner
 import scalaz.syntax.tag._
 
@@ -107,11 +94,13 @@ private class JdbcLedgerDao(
   /**
     * Defaults to Offset.begin if ledger_end is unset
     */
-  override def lookupLedgerEnd(): Future[Offset] =
+  override def lookupLedgerEnd(): Future[Offset] = {
+    ThreadLogger.traceThread("JdbcLedgerDao.lookupLedgerEnd")
     apiReadDispatcher.executeSql(metrics.daml.index.db.getLedgerEnd) { implicit conn =>
       SQL_SELECT_LEDGER_END
         .as(offset("ledger_end").?.map(_.getOrElse(Offset.beforeBegin)).single)
     }
+  }
 
   private val SQL_SELECT_INITIAL_LEDGER_END = SQL("select ledger_end from parameters")
 
@@ -176,9 +165,11 @@ private class JdbcLedgerDao(
   private def selectLedgerConfiguration(implicit conn: Connection) =
     SQL_SELECT_CURRENT_CONFIGURATION.as(currentConfigurationParser)
 
-  override def lookupLedgerConfiguration(): Future[Option[(Offset, Configuration)]] =
+  override def lookupLedgerConfiguration(): Future[Option[(Offset, Configuration)]] = {
+    ThreadLogger.traceThread("JdbcLedgerDao.lookupLedgerConfiguration")
     apiReadDispatcher.executeSql(metrics.daml.index.db.lookupConfiguration)(implicit conn =>
       selectLedgerConfiguration)
+  }
 
   private val acceptType = "accept"
   private val rejectType = "reject"
@@ -256,6 +247,7 @@ private class JdbcLedgerDao(
       configuration: Configuration,
       rejectionReason: Option[String]
   ): Future[PersistenceResponse] = {
+    ThreadLogger.traceThread("JdbcLedgerDao.storeConfigurationEntry")
     committerDispatcher.executeSql(
       metrics.daml.index.db.storeConfigurationEntryDbMetrics,
       Some(s"submissionId=$submissionId"),
@@ -467,6 +459,7 @@ private class JdbcLedgerDao(
       transaction: CommittedTransaction,
       divulged: Iterable[DivulgedContract],
   ): Future[PersistenceResponse] = {
+    ThreadLogger.traceThread("JdbcLedgerDao.storeTransaction")
     val preparedTransactionInsert =
       Timed.value(
         metrics.daml.index.db.storeTransactionDbMetrics.prepareBatches,
@@ -518,7 +511,8 @@ private class JdbcLedgerDao(
       recordTime: Instant,
       offset: Offset,
       reason: RejectionReason,
-  ): Future[PersistenceResponse] =
+  ): Future[PersistenceResponse] = {
+    ThreadLogger.traceThread("JdbcLedgerDao.storeRejection")
     committerDispatcher.executeSql(metrics.daml.index.db.storeRejectionDbMetrics) { implicit conn =>
       for (info @ SubmitterInfo(submitter, _, commandId, _) <- submitterInfo) {
         stopDeduplicatingCommandSync(domain.CommandId(commandId), submitter)
@@ -527,6 +521,7 @@ private class JdbcLedgerDao(
       updateLedgerEnd(offset)
       Ok
     }
+  }
 
   override def storeInitialState(
       ledgerEntries: Vector[(Offset, LedgerEntry)],
