@@ -82,12 +82,14 @@ private class JdbcLedgerDao(
 
   override def currentHealth(): HealthStatus = apiReadDispatcher.currentHealth()
 
-  override def lookupLedgerId(): Future[Option[LedgerId]] =
+  override def lookupLedgerId(): Future[Option[LedgerId]] = {
+    ThreadLogger.traceThread("JdbcLedgerDao.lookupLedgerId")
     apiReadDispatcher
       .executeSql(metrics.daml.index.db.getLedgerId) { implicit conn =>
         SQL_SELECT_LEDGER_ID
           .as(ledgerString("ledger_id").map(id => LedgerId(id.toString)).singleOpt)
       }
+  }
 
   private val SQL_SELECT_LEDGER_END = SQL("select ledger_end from parameters")
 
@@ -216,7 +218,8 @@ private class JdbcLedgerDao(
 
   override def getConfigurationEntries(
       startExclusive: Offset,
-      endInclusive: Offset): Source[(Offset, ConfigurationEntry), NotUsed] =
+      endInclusive: Offset): Source[(Offset, ConfigurationEntry), NotUsed] = {
+    ThreadLogger.traceThread("JdbcLedgerDao.getConfigurationEntries")
     PaginatingAsyncStream(PageSize) { queryOffset =>
       apiReadDispatcher.executeSql(
         metrics.daml.index.db.loadConfigurationEntries,
@@ -232,6 +235,7 @@ private class JdbcLedgerDao(
             .asVectorOf(configurationEntryParser)
       }
     }
+  }
 
   private val SQL_INSERT_CONFIGURATION_ENTRY =
     SQL(
@@ -324,6 +328,7 @@ private class JdbcLedgerDao(
       offset: Offset,
       partyEntry: PartyLedgerEntry,
   ): Future[PersistenceResponse] = {
+    ThreadLogger.traceThread("JdbcLedgerDao.storePartyEntry")
     committerDispatcher.executeSql(metrics.daml.index.db.storePartyEntryDbMetrics) { implicit conn =>
       updateLedgerEnd(offset)
 
@@ -429,6 +434,7 @@ private class JdbcLedgerDao(
   override def getPartyEntries(
       startExclusive: Offset,
       endInclusive: Offset): Source[(Offset, PartyLedgerEntry), NotUsed] = {
+    ThreadLogger.traceThread("JdbcLedgerDao.getPartyEntries")
     PaginatingAsyncStream(PageSize) { queryOffset =>
       committerDispatcher.executeSql(
         metrics.daml.index.db.loadPartyEntries,
@@ -527,6 +533,7 @@ private class JdbcLedgerDao(
       ledgerEntries: Vector[(Offset, LedgerEntry)],
       newLedgerEnd: Offset,
   ): Future[Unit] = {
+    ThreadLogger.traceThread("JdbcLedgerDao.storeInitialState")
     committerDispatcher
       .executeSql(
         metrics.daml.index.db.storeInitialStateFromScenario,
@@ -610,7 +617,8 @@ private class JdbcLedgerDao(
       "explicit"
     )
 
-  override def getParties(parties: Seq[Party]): Future[List[PartyDetails]] =
+  override def getParties(parties: Seq[Party]): Future[List[PartyDetails]] = {
+    ThreadLogger.traceThread("JdbcLedgerDao.getParties")
     if (parties.isEmpty)
       Future.successful(List.empty)
     else
@@ -621,14 +629,17 @@ private class JdbcLedgerDao(
             .as(PartyDataParser.*)
         }
         .map(_.map(constructPartyDetails))(apiReadExecutionContext)
+  }
 
-  override def listKnownParties(): Future[List[PartyDetails]] =
+  override def listKnownParties(): Future[List[PartyDetails]] = {
+    ThreadLogger.traceThread("JdbcLedgerDao.listKnownParties")
     apiReadDispatcher
       .executeSql(metrics.daml.index.db.loadAllParties) { implicit conn =>
         SQL_SELECT_ALL_PARTIES
           .as(PartyDataParser.*)
       }
       .map(_.map(constructPartyDetails))(apiReadExecutionContext)
+  }
 
   private def constructPartyDetails(data: ParsedPartyData): PartyDetails =
     // TODO: isLocal should be based on equality of participantId reported in an
@@ -659,7 +670,8 @@ private class JdbcLedgerDao(
       "known_since"
     )
 
-  override def listLfPackages: Future[Map[PackageId, PackageDetails]] =
+  override def listLfPackages: Future[Map[PackageId, PackageDetails]] = {
+    ThreadLogger.traceThread("JdbcLedgerDao.listLfPackages")
     apiReadDispatcher
       .executeSql(metrics.daml.index.db.loadPackages) { implicit conn =>
         SQL_SELECT_PACKAGES
@@ -672,8 +684,10 @@ private class JdbcLedgerDao(
               d.size,
               d.knownSince.toInstant,
               d.sourceDescription)).toMap)(apiReadExecutionContext)
+  }
 
-  override def getLfArchive(packageId: PackageId): Future[Option[Archive]] =
+  override def getLfArchive(packageId: PackageId): Future[Option[Archive]] = {
+    ThreadLogger.traceThread("JdbcLedgerDao.getLfArchive")
     apiReadDispatcher
       .executeSql(metrics.daml.index.db.loadArchive, Some(s"pkg id: $packageId")) { implicit conn =>
         SQL_SELECT_PACKAGE
@@ -684,6 +698,7 @@ private class JdbcLedgerDao(
       }
       .map(_.map(data => Archive.parseFrom(Decode.damlLfCodedInputStreamFromBytes(data))))(
         apiReadExecutionContext)
+  }
 
   private val SQL_INSERT_PACKAGE_ENTRY_ACCEPT =
     SQL("""insert into package_entries(ledger_offset, recorded_at, submission_id, typ)
@@ -701,6 +716,7 @@ private class JdbcLedgerDao(
       packages: List[(Archive, PackageDetails)],
       optEntry: Option[PackageLedgerEntry]
   ): Future[PersistenceResponse] = {
+    ThreadLogger.traceThread("JdbcLedgerDao.storePackageEntry")
     committerDispatcher.executeSql(
       metrics.daml.index.db.storePackageEntryDbMetrics,
       Some(s"packages: ${packages.map(_._1.getHash).mkString(", ")}")) { implicit conn =>
@@ -812,7 +828,8 @@ private class JdbcLedgerDao(
       commandId: domain.CommandId,
       submitter: Ref.Party,
       submittedAt: Instant,
-      deduplicateUntil: Instant): Future[CommandDeduplicationResult] =
+      deduplicateUntil: Instant): Future[CommandDeduplicationResult] = {
+    ThreadLogger.traceThread("JdbcLedgerDao.deduplicateCommand")
     commandExectionDbDispatcher.executeSql(metrics.daml.index.db.deduplicateCommandDbMetrics) { implicit conn =>
       val key = deduplicationKey(commandId, submitter)
       // Insert a new deduplication entry, or update an expired entry
@@ -835,6 +852,7 @@ private class JdbcLedgerDao(
         CommandDeduplicationDuplicate(result.deduplicateUntil)
       }
     }
+  }
 
   private val SQL_DELETE_EXPIRED_COMMANDS = SQL("""
       |delete from participant_command_submissions

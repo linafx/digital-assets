@@ -21,7 +21,7 @@ import com.daml.ledger.participant.state.v1._
 import com.daml.lf.data.Ref.Party
 import com.daml.lf.data.{ImmArray, Time}
 import com.daml.lf.transaction.TransactionCommitter
-import com.daml.logging.{ContextualizedLogger, LoggingContext}
+import com.daml.logging.{ContextualizedLogger, LoggingContext, ThreadLogger}
 import com.daml.metrics.Metrics
 import com.daml.platform.ApiOffset.ApiOffsetConverter
 import com.daml.platform.NamedThreadFactory
@@ -190,8 +190,10 @@ private final class SqlLedger(
       submitterInfo: SubmitterInfo,
       transactionMeta: TransactionMeta,
       transaction: SubmittedTransaction,
-  ): Future[SubmissionResult] =
+  ): Future[SubmissionResult] = {
+    ThreadLogger.traceThread("SqlLedger.publishTransaction")
     enqueue { offset =>
+      ThreadLogger.traceThread("SqlLedger.publishTransaction (execute)")
       val transactionId = offset.toApiString
 
       val ledgerTime = transactionMeta.ledgerEffectiveTime.toInstant
@@ -225,7 +227,9 @@ private final class SqlLedger(
           }
         )(DEC)
 
+
     }
+  }
 
   private def enqueue(persist: Offset => Future[Unit]): Future[SubmissionResult] =
     persistenceQueue
@@ -245,7 +249,9 @@ private final class SqlLedger(
       submissionId: SubmissionId,
       party: Party,
       displayName: Option[String]): Future[SubmissionResult] = {
+    ThreadLogger.traceThread("SqlLedger.publishPartyAllocation")
     enqueue { offset =>
+      ThreadLogger.traceThread("SqlLedger.publishPartyAllocation (execute)")
       ledgerDao
         .storePartyEntry(
           offset,
@@ -270,9 +276,11 @@ private final class SqlLedger(
       knownSince: Instant,
       sourceDescription: Option[String],
       payload: List[Archive]): Future[SubmissionResult] = {
+    ThreadLogger.traceThread("SqlLedger.uploadPackages")
     val packages = payload.map(archive =>
       (archive, PackageDetails(archive.getPayload.size().toLong, knownSince, sourceDescription)))
     enqueue { offset =>
+      ThreadLogger.traceThread("SqlLedger.uploadPackages (execute)")
       ledgerDao
         .storePackageEntry(
           offset,
@@ -292,8 +300,10 @@ private final class SqlLedger(
   override def publishConfiguration(
       maxRecordTime: Time.Timestamp,
       submissionId: String,
-      config: Configuration): Future[SubmissionResult] =
+      config: Configuration): Future[SubmissionResult] = {
+    ThreadLogger.traceThread("SqlLedger.publishConfiguration")
     enqueue { offset =>
+      ThreadLogger.traceThread("SqlLedger.publishConfiguration (execute)")
       val recordTime = timeProvider.getCurrentTime
       val mrt = maxRecordTime.toInstant
 
@@ -342,6 +352,7 @@ private final class SqlLedger(
             ()
         }(DEC)
     }
+  }
 }
 
 private final class SqlLedgerFactory(ledgerDao: LedgerDao)(implicit logCtx: LoggingContext) {
