@@ -68,6 +68,8 @@ final class StandaloneApiServer(
     val packageStore = loadDamlPackages()
     preloadPackages(packageStore)
 
+    val executionContexts = ExecutionContexts.fromConfig(commandConfig, config.apiReadThreadPoolSize, metrics)
+
     val owner = for {
       initialConditions <- ResourceOwner.forFuture(() =>
         readService.getLedgerInitialConditions().runWith(Sink.head))
@@ -85,6 +87,8 @@ final class StandaloneApiServer(
           config.eventsPageSize,
           metrics,
           lfValueTranslationCache,
+          apiReadExecutionContext = executionContexts.apiReadExecutionContext,
+          contractReadExecutionContext = executionContexts.monadicCommandExecutionContext
         )
         .map(transformIndexService)
       healthChecks = new HealthChecks(
@@ -110,7 +114,10 @@ final class StandaloneApiServer(
         metrics = metrics,
         healthChecks = healthChecks,
         seedService = SeedService(config.seeding),
-      )(materializer, executionSequencerFactory, logCtx)
+        executionContexts = ExecutionContexts.fromConfig(commandConfig, config.apiReadThreadPoolSize, metrics),
+        materializer,
+        materializer
+      )(executionSequencerFactory, logCtx)
         .map(_.withServices(otherServices))
       apiServer <- new LedgerApiServer(
         apiServicesOwner,

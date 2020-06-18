@@ -5,6 +5,7 @@ package com.daml.platform.apiserver.services
 
 import java.time.{Duration, Instant}
 import java.util.UUID
+import java.util.concurrent.RejectedExecutionException
 
 import akka.stream.Materializer
 import com.daml.api.util.TimeProvider
@@ -13,18 +14,8 @@ import com.daml.ledger.api.domain.{LedgerId, Commands => ApiCommands}
 import com.daml.ledger.api.messages.command.submission.SubmitRequest
 import com.daml.ledger.participant.state.index.v2._
 import com.daml.ledger.participant.state.v1
-import com.daml.ledger.participant.state.v1.SubmissionResult.{
-  Acknowledged,
-  InternalError,
-  NotSupported,
-  Overloaded
-}
-import com.daml.ledger.participant.state.v1.{
-  Configuration,
-  SeedService,
-  SubmissionResult,
-  WriteService
-}
+import com.daml.ledger.participant.state.v1.SubmissionResult.{Acknowledged, InternalError, NotSupported, Overloaded}
+import com.daml.ledger.participant.state.v1.{Configuration, SeedService, SubmissionResult, WriteService}
 import com.daml.lf.crypto
 import com.daml.lf.data.Ref.Party
 import com.daml.lf.transaction.{Transaction => Tx}
@@ -32,6 +23,7 @@ import com.daml.logging.LoggingContext.withEnrichedLoggingContext
 import com.daml.logging.{ContextualizedLogger, LoggingContext}
 import com.daml.metrics.Metrics
 import com.daml.platform.api.grpc.GrpcApiService
+import com.daml.platform.apiserver.ExecutionContexts
 import com.daml.platform.apiserver.execution.{CommandExecutionResult, CommandExecutor}
 import com.daml.platform.server.api.services.domain.CommandSubmissionService
 import com.daml.platform.server.api.services.grpc.GrpcCommandSubmissionService
@@ -42,7 +34,9 @@ import com.daml.timer.Delayed
 import io.grpc.Status
 
 import scala.compat.java8.FutureConverters.CompletionStageOps
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.{Await, ExecutionContext, Future, Promise}
+import scala.concurrent.duration.Duration.Inf
+import scala.util.control.NonFatal
 import scala.util.{Failure, Success, Try}
 
 object ApiSubmissionService {
@@ -60,9 +54,9 @@ object ApiSubmissionService {
       commandExecutor: CommandExecutor,
       configuration: ApiSubmissionService.Configuration,
       metrics: Metrics,
+      executionContexts: ExecutionContexts,
   )(
-      implicit ec: ExecutionContext,
-      mat: Materializer,
+      implicit mat: Materializer,
       logCtx: LoggingContext
   ): GrpcCommandSubmissionService with GrpcApiService =
     new GrpcCommandSubmissionService(
@@ -78,6 +72,7 @@ object ApiSubmissionService {
         commandExecutor,
         configuration,
         metrics,
+        executionContexts
       ),
       ledgerId = ledgerId,
       currentLedgerTime = () => timeProvider.getCurrentTime,
@@ -90,7 +85,6 @@ object ApiSubmissionService {
   final case class Configuration(
       implicitPartyAllocation: Boolean,
   )
-
 }
 
 final class ApiSubmissionService private (
@@ -105,7 +99,8 @@ final class ApiSubmissionService private (
     commandExecutor: CommandExecutor,
     configuration: ApiSubmissionService.Configuration,
     metrics: Metrics,
-)(implicit ec: ExecutionContext, mat: Materializer, logCtx: LoggingContext)
+    executionContexts: ExecutionContexts,
+)(implicit mat: Materializer, logCtx: LoggingContext)
     extends CommandSubmissionService
     with ErrorFactories
     with AutoCloseable {
@@ -124,20 +119,20 @@ final class ApiSubmissionService private (
       .flatMap {
         case CommandDeduplicationNew =>
           recordOnLedger(seed, commands, ledgerConfig)
-            .transform(mapSubmissionResult)
+            .transform(mapSubmissionResult)(executionContexts.monadicCommandExecutionContext)
             .recoverWith {
               case error =>
                 submissionService
                   .stopDeduplicatingCommand(commands.commandId, commands.submitter)
-                  .transform(_ => Failure(error))
-            }
+                  .transform(_ => Failure(error))(executionContexts.monadicCommandExecutionContext)
+            }(executionContexts.monadicCommandExecutionContext)
         case CommandDeduplicationDuplicate(until) =>
           metrics.daml.commands.deduplicatedCommands.mark()
           val reason =
             s"A command with the same command ID ${commands.commandId} and submitter ${commands.submitter} was submitted before. Deduplication window until $until"
           logger.debug(reason)
           Future.failed(Status.ALREADY_EXISTS.augmentDescription(reason).asRuntimeException)
-      }
+      }(executionContexts.monadicCommandExecutionContext)
   }
 
   override def submit(request: SubmitRequest): Future[Unit] =
@@ -148,12 +143,34 @@ final class ApiSubmissionService private (
 
       logger.trace(s"Received composite commands: $commands")
       logger.debug(s"Received composite command let ${commands.commands.ledgerEffectiveTime}.")
-      ledgerConfigProvider.latestConfiguration.fold[Future[Unit]](
-        Future.failed(ErrorFactories.missingLedgerConfig())
-      )(
-        ledgerConfig =>
-          deduplicateAndRecordOnLedger(seedService.nextSeed(), commands, ledgerConfig)
-            .andThen(logger.logErrorsOnCall[Unit])(DirectExecutionContext))
+
+      val promise = Promise[Unit]
+
+      val runnable = new Runnable {
+        override def run(): Unit = {
+          val resultFuture =
+            ledgerConfigProvider.latestConfiguration.fold[Future[Unit]](
+              Future.failed(ErrorFactories.missingLedgerConfig())
+            )(
+              ledgerConfig =>
+                deduplicateAndRecordOnLedger(seedService.nextSeed(), commands, ledgerConfig)
+                  .andThen(logger.logErrorsOnCall[Unit])(DirectExecutionContext))
+          promise.completeWith(resultFuture)
+          // Blocking here to not hop out of the thread pool immediately
+          val _ = Await.ready(resultFuture, Inf)
+        }
+      }
+      try {
+        executionContexts.commandExecution.execute(runnable)
+      } catch {
+        case _: RejectedExecutionException =>
+          logger.error("command queue full. try again later")
+          promise.failure(ErrorFactories.resourceExhausted("Command Execution Slot full"))
+        case NonFatal(other) =>
+          logger.error("other issue", other)
+          promise.failure(ErrorFactories.internal(other.getMessage))
+      }
+      promise.future
     }
 
   private def mapSubmissionResult(result: Try[SubmissionResult])(
@@ -183,7 +200,8 @@ final class ApiSubmissionService private (
       submissionSeed: crypto.Hash,
       commands: ApiCommands,
       ledgerConfig: Configuration,
-  )(implicit logCtx: LoggingContext): Future[SubmissionResult] =
+  )(implicit logCtx: LoggingContext): Future[SubmissionResult] = {
+    implicit val ec: ExecutionContext = executionContexts.monadicCommandExecutionContext
     for {
       res <- commandExecutor.execute(commands, submissionSeed)
       transactionInfo <- res.fold(error => {
@@ -193,10 +211,11 @@ final class ApiSubmissionService private (
       partyAllocationResults <- allocateMissingInformees(transactionInfo.transaction)
       submissionResult <- submitTransaction(transactionInfo, partyAllocationResults, ledgerConfig)
     } yield submissionResult
+  }
 
   private def allocateMissingInformees(
       transaction: Tx.SubmittedTransaction,
-  ): Future[Seq[SubmissionResult]] =
+  )(implicit ec: ExecutionContext): Future[Seq[SubmissionResult]] =
     if (configuration.implicitPartyAllocation) {
       val parties: Set[Party] = transaction.nodes.values.flatMap(_.informeesOfNode).toSet
       partyManagementService.getParties(parties.toSeq).flatMap { partyDetails =>
@@ -243,7 +262,7 @@ final class ApiSubmissionService private (
             else {
               metrics.daml.commands.delayedSubmissions.mark()
               val scalaDelay = scala.concurrent.duration.Duration.fromNanos(submissionDelay.toNanos)
-              Delayed.Future.by(scalaDelay)(submitTransaction(transactionInfo))
+              Delayed.Future.by(scalaDelay)(submitTransaction(transactionInfo))(executionContexts.monadicCommandExecutionContext)
             }
           case TimeProviderType.Static =>
             // In static time mode, record time is always equal to ledger time

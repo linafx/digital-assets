@@ -76,10 +76,12 @@ object ApiServices {
       optTimeServiceBackend: Option[TimeServiceBackend],
       metrics: Metrics,
       healthChecks: HealthChecks,
-      seedService: SeedService
+      seedService: SeedService,
+      executionContexts: ExecutionContexts,
+      apiMaterializer: Materializer,
+      commandMaterializer: Materializer,
   )(
-      implicit mat: Materializer,
-      esf: ExecutionSequencerFactory,
+      implicit esf: ExecutionSequencerFactory,
       logCtx: LoggingContext,
   ) extends ResourceOwner[ApiServices] {
     private val configurationService: IndexConfigurationService = indexService
@@ -101,8 +103,8 @@ object ApiServices {
             configManagementService,
             writeService,
             timeProvider,
-            ledgerConfiguration)
-          services = createServices(ledgerId, ledgerConfigProvider)(mat.system.dispatcher)
+            ledgerConfiguration)(apiMaterializer, logCtx)
+          services = createServices(ledgerId, ledgerConfigProvider, apiMaterializer, commandMaterializer)(apiMaterializer.system.dispatcher)
           _ <- ledgerConfigProvider.ready
         } yield (ledgerConfigProvider, services)
       ) {
@@ -116,7 +118,8 @@ object ApiServices {
           }
       }.map(x => ApiServicesBundle(x._2))
 
-    private def createServices(ledgerId: LedgerId, ledgerConfigProvider: LedgerConfigProvider)(
+    private def createServices(ledgerId: LedgerId, ledgerConfigProvider: LedgerConfigProvider,apiMaterializer: Materializer,
+                               commandMaterializer: Materializer)(
         implicit executionContext: ExecutionContext): List[BindableService] = {
       val commandExecutor = new TimedCommandExecutor(
         new LedgerTimeAwareCommandExecutor(
@@ -148,12 +151,13 @@ object ApiServices {
           partyConfig.implicitPartyAllocation,
         ),
         metrics,
-      )
+        executionContexts,
+      )(commandMaterializer, logCtx)
 
       logger.info(EngineInfo.show)
 
       val apiTransactionService =
-        ApiTransactionService.create(ledgerId, transactionsService)
+        ApiTransactionService.create(ledgerId, transactionsService)(executionContext, apiMaterializer, esf, logCtx)
 
       val apiLedgerIdentityService =
         ApiLedgerIdentityService.create(() => identityService.getLedgerId())
@@ -161,10 +165,10 @@ object ApiServices {
       val apiPackageService = ApiPackageService.create(ledgerId, packagesService)
 
       val apiConfigurationService =
-        ApiLedgerConfigurationService.create(ledgerId, configurationService)
+        ApiLedgerConfigurationService.create(ledgerId, configurationService)(executionContext, esf, apiMaterializer, logCtx)
 
       val apiCompletionService =
-        ApiCommandCompletionService.create(ledgerId, completionsService)
+        ApiCommandCompletionService.create(ledgerId, completionsService)(executionContext, apiMaterializer, esf, logCtx)
 
       // Note: the command service uses the command submission, command completion, and transaction
       // services internally. These connections do not use authorization, authorization wrappers are
@@ -187,10 +191,10 @@ object ApiServices {
         ),
         timeProvider,
         ledgerConfigProvider,
-      )
+      )(executionContext, apiMaterializer, esf, logCtx)
 
       val apiActiveContractsService =
-        ApiActiveContractsService.create(ledgerId, activeContractsService)
+        ApiActiveContractsService.create(ledgerId, activeContractsService)(executionContext, apiMaterializer, esf, logCtx)
 
       val apiTimeServiceOpt =
         optTimeServiceBackend.map { tsb =>
@@ -198,18 +202,18 @@ object ApiServices {
             ApiTimeService.create(
               ledgerId,
               tsb,
-            ),
+            )(executionContext, apiMaterializer, esf, logCtx),
             authorizer
           )
         }
 
       val apiPartyManagementService =
         ApiPartyManagementService
-          .createApiService(partyManagementService, transactionsService, writeService)
+          .createApiService(partyManagementService, transactionsService, writeService)(executionContext, esf, apiMaterializer, logCtx)
 
       val apiPackageManagementService =
         ApiPackageManagementService
-          .createApiService(indexService, transactionsService, writeService, timeProvider)
+          .createApiService(indexService, transactionsService, writeService, timeProvider)(apiMaterializer, logCtx)
 
       val apiConfigManagementService =
         ApiConfigManagementService
@@ -217,11 +221,11 @@ object ApiServices {
             configManagementService,
             writeService,
             timeProvider,
-            ledgerConfiguration)
+            ledgerConfiguration)(apiMaterializer, logCtx)
 
       val apiReflectionService = ProtoReflectionService.newInstance()
 
-      val apiHealthService = new GrpcHealthService(healthChecks)
+      val apiHealthService = new GrpcHealthService(healthChecks)(esf, apiMaterializer, executionContext)
 
       apiTimeServiceOpt.toList :::
         List(

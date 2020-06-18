@@ -62,6 +62,8 @@ final class JdbcIndexerFactory(
         config.eventsPageSize,
         metrics,
         lfValueTranslationCache,
+        null, // never used
+        null, // never used
       )
       _ <- ResourceOwner.forFuture(() => ledgerDao.reset())
       initialLedgerEnd <- ResourceOwner.forFuture(() => initializeLedger(ledgerDao))
@@ -77,6 +79,8 @@ final class JdbcIndexerFactory(
         config.eventsPageSize,
         metrics,
         lfValueTranslationCache,
+        null,
+        null,
       )
       initialLedgerEnd <- ResourceOwner.forFuture(() => initializeLedger(ledgerDao))
     } yield new JdbcIndexer(initialLedgerEnd, config.participantId, ledgerDao, metrics)

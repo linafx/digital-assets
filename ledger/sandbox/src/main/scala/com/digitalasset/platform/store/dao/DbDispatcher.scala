@@ -10,7 +10,6 @@ import com.codahale.metrics.Timer
 import com.daml.ledger.api.health.{HealthStatus, ReportsHealth}
 import com.daml.logging.{ContextualizedLogger, LoggingContext}
 import com.daml.metrics.{DatabaseMetrics, Metrics}
-import com.daml.platform.configuration.ServerRole
 import com.daml.resources.ResourceOwner
 import com.google.common.util.concurrent.ThreadFactoryBuilder
 
@@ -87,14 +86,14 @@ object DbDispatcher {
   private val logger = ContextualizedLogger.get(this.getClass)
 
   def owner(
-      serverRole: ServerRole,
+      poolName: String,
       jdbcUrl: String,
       maxConnections: Int,
       metrics: Metrics,
   )(implicit logCtx: LoggingContext): ResourceOwner[DbDispatcher] =
     for {
       connectionProvider <- HikariJdbcConnectionProvider.owner(
-        serverRole,
+        poolName,
         jdbcUrl,
         maxConnections,
         metrics.registry)
@@ -103,7 +102,7 @@ object DbDispatcher {
           Executors.newFixedThreadPool(
             maxConnections,
             new ThreadFactoryBuilder()
-              .setNameFormat(s"daml.index.db.connection.${serverRole.threadPoolSuffix}-%d")
+              .setNameFormat(s"daml.index.db.connection.$poolName-%d")
               .setUncaughtExceptionHandler((_, e) =>
                 logger.error("Uncaught exception in the SQL executor.", e))
               .build()

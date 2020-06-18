@@ -297,6 +297,10 @@ object Cli {
           )
         )
 
+      opt[Int]("api-worker-pool-size")
+          .optional()
+          .action((workerPoolSize, config) => config.copy(apiReadThreadPoolSize = workerPoolSize))
+
       opt[File]("profile-dir")
         .hidden()
         .optional()

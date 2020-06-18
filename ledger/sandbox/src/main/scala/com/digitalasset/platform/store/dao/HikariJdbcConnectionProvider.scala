@@ -11,19 +11,18 @@ import com.codahale.metrics.MetricRegistry
 import com.daml.ledger.api.health.{HealthStatus, Healthy, Unhealthy}
 import com.daml.logging.{ContextualizedLogger, LoggingContext}
 import com.daml.metrics.{DatabaseMetrics, Timed}
-import com.daml.platform.configuration.ServerRole
 import com.daml.platform.store.DbType
 import com.daml.platform.store.dao.HikariJdbcConnectionProvider._
 import com.daml.resources.{Resource, ResourceOwner}
 import com.daml.timer.RetryStrategy
 import com.zaxxer.hikari.{HikariConfig, HikariDataSource}
 
-import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
+import scala.concurrent.{ExecutionContext, Future}
 import scala.util.control.NonFatal
 
 final class HikariConnection(
-    serverRole: ServerRole,
+    poolName: String,
     jdbcUrl: String,
     minimumIdle: Int,
     maxPoolSize: Int,
@@ -49,7 +48,7 @@ final class HikariConnection(
     config.setMaximumPoolSize(maxPoolSize)
     config.setMinimumIdle(minimumIdle)
     config.setConnectionTimeout(connectionTimeout.toMillis)
-    config.setPoolName(s"$connectionPoolPrefix.${serverRole.threadPoolSuffix}")
+    config.setPoolName(s"$connectionPoolPrefix.$poolName")
     metrics.foreach(config.setMetricRegistry)
 
     // Hikari dies if a database connection could not be opened almost immediately
@@ -75,7 +74,7 @@ object HikariConnection {
   private val ConnectionPoolPrefix: String = "daml.index.db.connection"
 
   def owner(
-      serverRole: ServerRole,
+      poolName: String,
       jdbcUrl: String,
       minimumIdle: Int,
       maxPoolSize: Int,
@@ -85,7 +84,7 @@ object HikariConnection {
       implicit logCtx: LoggingContext
   ): HikariConnection =
     new HikariConnection(
-      serverRole,
+      poolName,
       jdbcUrl,
       minimumIdle,
       maxPoolSize,
@@ -153,7 +152,7 @@ object HikariJdbcConnectionProvider {
   private val HealthPollingSchedule: FiniteDuration = 1.second
 
   def owner(
-      serverRole: ServerRole,
+      poolName: String,
       jdbcUrl: String,
       maxConnections: Int,
       metrics: MetricRegistry,
@@ -161,7 +160,7 @@ object HikariJdbcConnectionProvider {
     for {
       // these connections should never time out as we have the same number of threads as connections
       dataSource <- HikariConnection.owner(
-        serverRole,
+        poolName,
         jdbcUrl,
         maxConnections,
         maxConnections,

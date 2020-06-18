@@ -36,6 +36,8 @@ object ReadOnlySqlLedger {
       eventsPageSize: Int,
       metrics: Metrics,
       lfValueTranslationCache: LfValueTranslation.Cache,
+      apiReadExecutionContext: ExecutionContext,
+      contractReadExecutionContext: ExecutionContext,
   )(implicit mat: Materializer, logCtx: LoggingContext): ResourceOwner[ReadOnlyLedger] =
     for {
       ledgerReadDao <- JdbcLedgerDao.readOwner(
@@ -44,6 +46,8 @@ object ReadOnlySqlLedger {
         eventsPageSize,
         metrics,
         lfValueTranslationCache,
+        apiReadExecutionContext = apiReadExecutionContext,
+        contractReadExecutionContext = contractReadExecutionContext,
       )
       factory = new Factory(ledgerReadDao)
       ledger <- ResourceOwner.forFutureCloseable(() => factory.createReadOnlySqlLedger(ledgerId))

@@ -61,7 +61,10 @@ object SqlLedger {
       startMode: SqlStartMode = SqlStartMode.ContinueIfExists,
       eventsPageSize: Int,
       metrics: Metrics,
-      lfValueTranslationCache: LfValueTranslation.Cache
+      lfValueTranslationCache: LfValueTranslation.Cache,
+      apiReadExecutionContext: ExecutionContext,
+      contractReadExecutionContext: ExecutionContext,
+
   )(implicit mat: Materializer, logCtx: LoggingContext): ResourceOwner[Ledger] =
     for {
       _ <- ResourceOwner.forFuture(() => new FlywayMigrations(jdbcUrl).migrate()(DEC))
@@ -70,7 +73,9 @@ object SqlLedger {
         jdbcUrl,
         eventsPageSize,
         metrics,
-        lfValueTranslationCache)
+        lfValueTranslationCache,
+        apiReadExecutionContext,
+        contractReadExecutionContext)
       ledger <- ResourceOwner.forFutureCloseable(
         () =>
           new SqlLedgerFactory(ledgerDao).createSqlLedger(

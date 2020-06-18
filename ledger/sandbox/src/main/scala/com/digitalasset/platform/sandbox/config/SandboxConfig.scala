@@ -44,6 +44,7 @@ final case class SandboxConfig(
     lfValueTranslationEventCacheConfiguration: caching.Configuration,
     lfValueTranslationContractCacheConfiguration: caching.Configuration,
     profileDir: Option[Path],
+    apiReadThreadPoolSize: Int
 )
 
 object SandboxConfig {
@@ -82,6 +83,7 @@ object SandboxConfig {
       lfValueTranslationEventCacheConfiguration = DefaultLfValueTranslationCacheConfiguration,
       lfValueTranslationContractCacheConfiguration = DefaultLfValueTranslationCacheConfiguration,
       profileDir = None,
+      apiReadThreadPoolSize = 3
     )
 
   lazy val default: SandboxConfig =

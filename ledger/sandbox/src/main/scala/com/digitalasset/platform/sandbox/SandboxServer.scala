@@ -29,7 +29,7 @@ import com.daml.lf.transaction.{
 import com.daml.logging.LoggingContext.newLoggingContext
 import com.daml.logging.{ContextualizedLogger, LoggingContext}
 import com.daml.metrics.Metrics
-import com.daml.platform.apiserver._
+import com.daml.platform.apiserver.{ExecutionContexts, _}
 import com.daml.platform.configuration.PartyConfiguration
 import com.daml.platform.packages.InMemoryPackageStore
 import com.daml.platform.sandbox.SandboxServer._
@@ -69,10 +69,12 @@ object SandboxServer {
         config.metricsReporter,
         config.metricsReportingInterval,
       )
-      actorSystem <- AkkaResourceOwner.forActorSystem(() => ActorSystem(ActorSystemName))
-      materializer <- AkkaResourceOwner.forMaterializer(() => Materializer(actorSystem))
+      apiActorSystem <- AkkaResourceOwner.forActorSystem(() => ActorSystem(ActorSystemName))
+      apiMaterializer <- AkkaResourceOwner.forMaterializer(() => Materializer(apiActorSystem))
+      commandActorSystem <- AkkaResourceOwner.forActorSystem(() => ActorSystem(ActorSystemName + "-command"))
+      commandMaterializer <- AkkaResourceOwner.forMaterializer(() => Materializer(commandActorSystem))
       server <- ResourceOwner
-        .forTryCloseable(() => Try(new SandboxServer(config, materializer, metrics)))
+        .forTryCloseable(() => Try(new SandboxServer(config, apiMaterializer,commandMaterializer, metrics)))
       // Wait for the API server to start.
       _ <- new ResourceOwner[Unit] {
         override def acquire()(implicit executionContext: ExecutionContext): Resource[Unit] =
@@ -83,7 +85,8 @@ object SandboxServer {
     } yield server
 
   final class SandboxState(
-      materializer: Materializer,
+      apiMaterializer: Materializer,
+      commandMaterializer: Materializer,
       metrics: Metrics,
       packageStore: InMemoryPackageStore,
       // nested resource so we can release it independently when restarting
@@ -100,6 +103,7 @@ object SandboxServer {
     private[SandboxServer] def reset(
         newApiServer: (
             Materializer,
+            Materializer,
             Metrics,
             InMemoryPackageStore,
             Port,
@@ -108,9 +112,9 @@ object SandboxServer {
       for {
         currentPort <- port
         _ <- release()
-        replacementApiServer = newApiServer(materializer, metrics, packageStore, currentPort)
+        replacementApiServer = newApiServer(apiMaterializer, commandMaterializer, metrics, packageStore, currentPort)
         _ <- replacementApiServer.asFuture
-      } yield new SandboxState(materializer, metrics, packageStore, replacementApiServer)
+      } yield new SandboxState(apiMaterializer, commandMaterializer, metrics, packageStore, replacementApiServer)
 
     def release()(implicit executionContext: ExecutionContext): Future[Unit] =
       apiServerResource.release()
@@ -119,13 +123,14 @@ object SandboxServer {
 
 final class SandboxServer(
     config: SandboxConfig,
-    materializer: Materializer,
+    apiMaterializer: Materializer,
+    commandMaterializer: Materializer,
     metrics: Metrics,
 ) extends AutoCloseable {
 
   // Only used for testing.
-  def this(config: SandboxConfig, materializer: Materializer) =
-    this(config, materializer, new Metrics(new MetricRegistry))
+  def this(config: SandboxConfig, apiMaterializer: Materializer, commandMaterializer: Materializer) =
+    this(config, apiMaterializer, commandMaterializer, new Metrics(new MetricRegistry))
 
   // NOTE(MH): We must do this _before_ we load the first package.
   config.profileDir match {
@@ -166,9 +171,10 @@ final class SandboxServer(
     // TODO: eliminate the state mutation somehow
     sandboxState = sandboxState.flatMap(
       _.reset(
-        (materializer, metrics, packageStore, port) =>
+        (apiMaterializer, commandMaterializer, metrics, packageStore, port) =>
           buildAndStartApiServer(
-            materializer = materializer,
+            apiMaterializer = apiMaterializer,
+            commandMaterializer = commandMaterializer,
             metrics = metrics,
             packageStore = packageStore,
             startMode = SqlStartMode.AlwaysReset,
@@ -215,15 +221,16 @@ final class SandboxServer(
   }
 
   private def buildAndStartApiServer(
-      materializer: Materializer,
+                                      apiMaterializer: Materializer,
+                                      commandMaterializer: Materializer,
       metrics: Metrics,
       packageStore: InMemoryPackageStore,
       startMode: SqlStartMode,
       currentPort: Option[Port],
   )(implicit logCtx: LoggingContext): Resource[ApiServer] = {
-    implicit val _materializer: Materializer = materializer
-    implicit val actorSystem: ActorSystem = materializer.system
-    implicit val executionContext: ExecutionContext = materializer.executionContext
+//    implicit val _materializer: Materializer = materializer
+    implicit val actorSystem: ActorSystem = apiMaterializer.system
+    implicit val executionContext: ExecutionContext = apiMaterializer.executionContext
 
     val defaultConfiguration = config.ledgerConfig.initialConfiguration
 
@@ -249,6 +256,9 @@ final class SandboxServer(
         metrics = metrics,
       )
 
+    val executionContexts =
+      ExecutionContexts.fromConfig(config.commandConfig, config.apiReadThreadPoolSize, metrics)
+
     val (ledgerType, indexAndWriteServiceResourceOwner) = config.jdbcUrl match {
       case Some(jdbcUrl) =>
         "postgres" -> SandboxIndexAndWriteService.postgres(
@@ -265,7 +275,9 @@ final class SandboxServer(
           packageStore,
           config.eventsPageSize,
           metrics,
-          lfValueTranslationCache
+          lfValueTranslationCache,
+          apiReadExecutionContext = executionContexts.apiReadExecutionContext,
+          contractReadExecutionContext = executionContexts.monadicCommandExecutionContext
         )
 
       case None =>
@@ -319,7 +331,10 @@ final class SandboxServer(
         metrics = metrics,
         healthChecks = healthChecks,
         seedService = seedingService,
-      )(materializer, executionSequencerFactory, logCtx)
+        executionContexts = executionContexts,
+        apiMaterializer = apiMaterializer,
+        commandMaterializer = commandMaterializer,
+      )(executionSequencerFactory, logCtx)
         .map(_.withServices(List(resetService)))
       apiServer <- new LedgerApiServer(
         apiServicesOwner,
@@ -365,13 +380,14 @@ final class SandboxServer(
     newLoggingContext(logging.participantId(participantId)) { implicit logCtx =>
       val packageStore = loadDamlPackages()
       val apiServerResource = buildAndStartApiServer(
-        materializer,
+        apiMaterializer,
+        commandMaterializer,
         metrics,
         packageStore,
         SqlStartMode.ContinueIfExists,
         currentPort = None,
       )
-      Future.successful(new SandboxState(materializer, metrics, packageStore, apiServerResource))
+      Future.successful(new SandboxState(apiMaterializer, commandMaterializer, metrics, packageStore, apiServerResource))
     }
   }
 

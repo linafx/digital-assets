@@ -67,6 +67,8 @@ object SandboxIndexAndWriteService {
       eventsPageSize: Int,
       metrics: Metrics,
       lfValueTranslationCache: LfValueTranslation.Cache,
+      apiReadExecutionContext: ExecutionContext,
+      contractReadExecutionContext: ExecutionContext,
   )(implicit mat: Materializer, logCtx: LoggingContext): ResourceOwner[IndexAndWriteService] =
     SqlLedger
       .owner(
@@ -83,7 +85,9 @@ object SandboxIndexAndWriteService {
         startMode = startMode,
         eventsPageSize = eventsPageSize,
         metrics = metrics,
-        lfValueTranslationCache
+        lfValueTranslationCache = lfValueTranslationCache,
+        apiReadExecutionContext = apiReadExecutionContext,
+        contractReadExecutionContext = contractReadExecutionContext,
       )
       .flatMap(ledger =>
         owner(MeteredLedger(ledger, metrics), participantId, initialConfig, timeProvider))

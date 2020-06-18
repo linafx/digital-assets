@@ -16,6 +16,8 @@ import com.daml.platform.configuration.ServerRole
 import com.daml.platform.store.dao.events.LfValueTranslation
 import com.daml.resources.ResourceOwner
 
+import scala.concurrent.ExecutionContext
+
 object JdbcIndex {
   def owner(
       serverRole: ServerRole,
@@ -26,9 +28,19 @@ object JdbcIndex {
       eventsPageSize: Int,
       metrics: Metrics,
       lfValueTranslationCache: LfValueTranslation.Cache,
+      apiReadExecutionContext: ExecutionContext,
+      contractReadExecutionContext: ExecutionContext,
   )(implicit mat: Materializer, logCtx: LoggingContext): ResourceOwner[IndexService] =
     ReadOnlySqlLedger
-      .owner(serverRole, jdbcUrl, ledgerId, eventsPageSize, metrics, lfValueTranslationCache)
+      .owner(
+        serverRole,
+        jdbcUrl,
+        ledgerId,
+        eventsPageSize,
+        metrics,
+        lfValueTranslationCache,
+        apiReadExecutionContext,
+        contractReadExecutionContext)
       .map { ledger =>
         new LedgerBackedIndexService(MeteredReadOnlyLedger(ledger, metrics), participantId) {
           override def getLedgerConfiguration(): Source[v2.LedgerConfiguration, NotUsed] =

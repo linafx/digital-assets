@@ -4,7 +4,6 @@
 package com.daml.platform.store
 
 import com.daml.logging.{ContextualizedLogger, LoggingContext}
-import com.daml.platform.configuration.ServerRole
 import com.daml.platform.store.FlywayMigrations._
 import com.daml.platform.store.dao.HikariConnection
 import com.daml.resources.ResourceOwner
@@ -59,7 +58,7 @@ class FlywayMigrations(jdbcUrl: String)(implicit logCtx: LoggingContext) {
 
   private def dataSource: ResourceOwner[HikariDataSource] =
     HikariConnection.owner(
-      serverRole = ServerRole.IndexMigrations,
+      "migrations",
       jdbcUrl = jdbcUrl,
       minimumIdle = 2,
       maxPoolSize = 2,
