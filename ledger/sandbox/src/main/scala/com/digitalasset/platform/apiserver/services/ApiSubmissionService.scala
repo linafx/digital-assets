@@ -245,7 +245,6 @@ final class ApiSubmissionService private (
       Future.successful(Seq.empty)
     }
   }
-}
 
   private def submitTransaction(
       transactionInfo: CommandExecutionResult,

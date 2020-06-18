@@ -4,6 +4,7 @@
 package com.daml.platform.sandbox.stores.ledger.sql
 
 import java.time.Instant
+import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicReference
 
 import akka.Done
@@ -23,6 +24,7 @@ import com.daml.lf.transaction.TransactionCommitter
 import com.daml.logging.{ContextualizedLogger, LoggingContext}
 import com.daml.metrics.Metrics
 import com.daml.platform.ApiOffset.ApiOffsetConverter
+import com.daml.platform.NamedThreadFactory
 import com.daml.platform.common.{LedgerIdMismatchException, LedgerIdMode}
 import com.daml.platform.configuration.ServerRole
 import com.daml.platform.packages.InMemoryPackageStore
@@ -125,7 +127,8 @@ private final class SqlLedger(
       }(DEC)
 
   private def createQueue(): PersistentQueue = {
-    implicit val ec: ExecutionContext = DEC
+//    implicit val ec: ExecutionContext = DEC
+    implicit val ec: ExecutionContext = ExecutionContext.fromExecutor(Executors.newSingleThreadExecutor(new NamedThreadFactory("committer")))
 
     val persistenceQueue =
       Source.queue[Offset => Future[Unit]](queueDepth, OverflowStrategy.dropNew)
@@ -144,7 +147,7 @@ private final class SqlLedger(
           .sequence(queue.toIterator.zipWithIndex.map {
             case (persist, i) =>
               val offset = startOffset + i + 1
-              persist(SandboxOffset.toOffset(offset))
+              Future(persist(SandboxOffset.toOffset(offset)))(ec).flatten
           })
           .map { _ =>
             //note that we can have holes in offsets in case of the storing of an entry failed for some reason
