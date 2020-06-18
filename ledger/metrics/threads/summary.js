@@ -14,6 +14,14 @@ if (args.length === 1) {
     console.log("Usage: ./summary.js sandbox.log")
 }
 
+function addSample(map, key1, key2) {
+    const map2 = map.get(key1) || new Map();
+    const value = map2.get(key2) || 0;
+
+    map2.set(key2, value + 1);
+    map.set(key1, map2);
+}
+
 async function run(path) {
     const fileStream = fs.createReadStream(path);
 
@@ -30,8 +38,8 @@ async function run(path) {
         if (found) {
             const [_match, thread, _qualifiedClass, method] = found;
 
-            methodToThreads.set(method, (methodToThreads.get(method) || new Set()).add(thread));
-            threadToMethods.set(thread, (threadToMethods.get(thread) || new Set()).add(method));
+            addSample(methodToThreads, method, thread);
+            addSample(threadToMethods, thread, method);
         }
     }
 
@@ -41,15 +49,17 @@ async function run(path) {
 
     console.log("=== All methods ===");
     methodNames.forEach(method => {
-        const threads = [...methodToThreads.get(method).keys()].sort();
-        console.log(`${method.padEnd(maxMethodLength, " ")} ${threads.join(", ")}`)
+        const threads = methodToThreads.get(method)
+        const threadNames = [...threads.keys()].sort();
+        console.log(`${method.padEnd(maxMethodLength, " ")} ${threadNames.map(thread => `${thread} [${threads.get(thread)}]`).join(", ")}`)
     })
     console.log("");
 
     threadNames.forEach(thread => {
-        const methods = [...threadToMethods.get(thread).keys()].sort();
+        const methods = threadToMethods.get(thread);
+        const methodNames = [...methods.keys()].sort();
         console.log(`=== ${thread} ===`);
-        methods.forEach(method => console.log(method));
+        methodNames.forEach(method => console.log(`${method} [${methods.get(method)}]`));
         console.log("");
     })
 
