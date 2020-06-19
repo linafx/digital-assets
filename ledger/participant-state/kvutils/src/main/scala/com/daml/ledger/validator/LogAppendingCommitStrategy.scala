@@ -40,7 +40,7 @@ class LogAppendingCommitStrategy[Index](
       } else {
         Future.unit
       }
-      envelopedLogEntry <- Future.successful(Envelope.enclose(entry))
+      envelopedLogEntry = Envelope.enclose(entry)
       _ = ledgerDataExporter
         .addToWriteSet(correlationId, List((entryId.toByteString, envelopedLogEntry)))
       index <- ledgerStateOperations
