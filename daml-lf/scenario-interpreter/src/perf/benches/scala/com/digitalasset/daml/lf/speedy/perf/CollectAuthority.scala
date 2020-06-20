@@ -27,6 +27,8 @@ class CollectAuthority {
   }
 }
 
+import com.daml.lf.speedy.SError.SErrorCrash
+
 @State(Scope.Benchmark)
 class CollectAuthorityState {
 
@@ -76,7 +78,8 @@ class CollectAuthorityState {
         case SResultScenarioCommit(_, _, _, callback) => callback(cachedCommit(step))
         case SResultNeedContract(_, _, _, _, callback) => callback(cachedContract(step))
         case SResultFinalValue(v) => finalValue = v
-        case r => crash("bench run: unexpected result from speedy")
+        case SResultError(SErrorCrash(r)) => println(s"Error (type: ${r.getClass.getSimpleName}): $r"); System.exit(1)
+        case r => crash("bench run: unexpected result from speedy: " + r)
       }
     }
   }
