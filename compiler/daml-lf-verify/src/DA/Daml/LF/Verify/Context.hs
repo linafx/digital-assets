@@ -657,6 +657,8 @@ extValEnv :: MonadEnv m 'ValueGathering
   -> m ()
 extValEnv val expr upd = do
   env <- getEnv
+  when (val `HM.member` envVals env) $
+    error $ "Duplicate env: " <> show val
   putEnv $ setEnvVals (HM.insert val (expr, upd) $ envVals env) env
 
 -- | Extends the environment with a new choice.
@@ -678,7 +680,10 @@ extChEnv :: MonadEnv m 'ChoiceGathering
   -> m ()
 extChEnv tc ch self this arg upd typ = do
   env <- getEnv
-  putEnv $ setEnvChoices (HM.insert (UpdChoice tc ch) (ChoiceData self this arg upd typ) $ envChoices env) env
+  let key = UpdChoice tc ch
+  when (key `HM.member` envChoices env) $
+    error $ "Duplicate choice: " <> show key
+  putEnv $ setEnvChoices (HM.insert key (ChoiceData self this arg upd typ) $ envChoices env) env
 
 -- | Extend the environment with a list of new data type definitions.
 extDatsEnv :: MonadEnv m 'ValueGathering
@@ -687,7 +692,13 @@ extDatsEnv :: MonadEnv m 'ValueGathering
   -> m ()
 extDatsEnv hmap = do
   env <- getEnv
-  putEnv $ setEnvDats (hmap `HM.union` envDats env) env
+  putEnv $ setEnvDats (hmap `disjointUnion` envDats env) env
+
+disjointUnion :: (Show k, Show v, Hashable k, Eq k) => HM.HashMap k v -> HM.HashMap k v -> HM.HashMap k v
+disjointUnion m1 m2
+  | HM.null intersection = HM.union m1 m2
+  | otherwise = error ("Union not disjoint: " <> show intersection)
+  where intersection = m1 `HM.intersection` m2
 
 -- | Extend the environment with a refreshed contract id, and the variable to
 -- which the fetched contract is bound. Returns a substitution, mapping the
@@ -715,6 +726,8 @@ extCidEnv b exp var = do
   proj_def <- check_proj_cid exp
   (cid, subst) <- expr2cid (b && null prev && proj_def) exp
   env <- getEnv
+  -- when (cid `HM.member` envCids env) $
+  --  error $ "Duplicated cid: " <> show cid
   putEnv $ setEnvCids (HM.insert cid (var, prev) $ envCids env) env
   return subst
   where
@@ -742,6 +755,8 @@ extPrecond :: MonadEnv m 'ChoiceGathering
   -> m ()
 extPrecond tem precond = do
   env <- getEnv
+  when (tem `HM.member` envPreconds env) $
+    error $ "Duplicate choice: " <> show tem
   putEnv (setEnvPreconds (HM.insert tem precond (envPreconds env)) env)
 
 -- | Extend the environment with additional equality constraints, between a

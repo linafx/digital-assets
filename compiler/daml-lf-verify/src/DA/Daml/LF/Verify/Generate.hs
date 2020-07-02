@@ -215,13 +215,13 @@ genTemplate pac mod Template{..} = do
           tplPrecondition
   extPrecond name preCond
   mapM_ (genChoice name tplParam fields)
-    (archive : NM.toList tplChoices)
+    (NM.toList tplChoices)
   where
-    archive :: TemplateChoice
-    archive = TemplateChoice Nothing (ChoiceName "Archive") True
-      (ENil (TBuiltin BTParty)) (ExprVarName "self")
-      (ExprVarName "arg", TStruct []) (TBuiltin BTUnit)
-      (EUpdate $ UPure (TBuiltin BTUnit) (EBuiltin BEUnit))
+    -- archive :: TemplateChoice
+    -- archive = TemplateChoice Nothing (ChoiceName "Archive") True
+    --   (ENil (TBuiltin BTParty)) (ExprVarName "self")
+    --   (ExprVarName "arg", TStruct []) (TBuiltin BTUnit)
+    --   (EUpdate $ UPure (TBuiltin BTUnit) (EBuiltin BEUnit))
 
 -- | Analyse an expression, and produce an Output storing its (partial)
 -- evaluation result and the set of performed updates.
@@ -489,16 +489,19 @@ genForBind bind body = do
     EUpdate (UFetch tc cid) -> do
       let var0 = fst $ bindingBinder bind
       var1 <- genRenamedVar var0
+      extVarEnv var1
       let subst = exprSubst var0 (EVar var1)
       _ <- bindCids False (Just $ TContractId (TCon tc)) cid (EVar var1) Nothing
       return (emptyUpdateSet, subst)
     EUpdate upd -> do
       (updOut, updTyp, creFs) <- genUpdate upd
+      -- wtf?
       this <- genRenamedVar (ExprVarName "this")
       subst <- bindCids True updTyp (EVar $ fst $ bindingBinder bind) (EVar this) creFs
       return (_oUpdate updOut, subst)
     _ -> return (emptyUpdateSet, mempty)
-  extVarEnv (fst $ bindingBinder bind)
+  -- wtf?
+  -- extVarEnv (fst $ bindingBinder bind)
   bodyOut <- genExpr False $ applySubstInExpr subst body
   let bodyUpd = case _oExpr bodyOut of
         EUpdate bodyUpd -> bodyUpd
