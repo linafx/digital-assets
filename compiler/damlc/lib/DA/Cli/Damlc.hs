@@ -259,7 +259,7 @@ cmdRepl numProcessors =
             <$> projectOpts "daml build"
             <*> optionsParser numProcessors (EnableScenarioService False) (pure Nothing)
             <*> strOption (long "script-lib" <> value "daml-script" <> internal)
-            -- ^ This is useful for tests and `bazel run`.
+            -- This is useful for tests and `bazel run`.
             <*> many (strArgument (help "DAR to load in the repl" <> metavar "DAR"))
             <*> strOption (long "ledger-host" <> help "Host of the ledger API")
             <*> strOption (long "ledger-port" <> help "Port of the ledger API")
