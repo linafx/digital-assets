@@ -36,6 +36,7 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Text as T
 import Config (cProjectVersion)
 import Development.Shake (Action)
+import Development.IDE.Core.Rules (toIdeResult)
 import Development.IDE.Core.RuleTypes.Daml
 import Development.IDE.Core.Shake
 import Development.IDE.Types.Location
@@ -116,12 +117,13 @@ damlKeywords =
   , "preconsuming", "postconsuming", "with", "choice", "template", "key", "maintainer"
   ]
 
-getDamlGhcSession :: Options -> Action (FilePath -> Action HscEnvEq)
+getDamlGhcSession :: Options -> Action (FilePath -> Action (IdeResult HscEnvEq))
 getDamlGhcSession _options@Options{..} = do
     findProjectRoot <- liftIO $ memoIO findProjectRoot
     pure $ \file -> do
         mbRoot <- liftIO (findProjectRoot file)
-        useNoFile_ (DamlGhcSession $ toNormalizedFilePath' <$> mbRoot)
+        env <- useNoFile_ (DamlGhcSession $ toNormalizedFilePath' <$> mbRoot)
+        pure $ toIdeResult (Right env)
 
 -- | Find the daml.yaml given a starting file or directory.
 findProjectRoot :: FilePath -> IO (Maybe FilePath)
