@@ -191,9 +191,9 @@ writeIfacesAndHie ifDir files =
         tcms <- usesE TypeCheck files
         fmap concat $ forM (zip files tcms) $ \(file, tcm) -> do
             session <- lift $ hscEnv <$> use_ GhcSession file
-            liftIO $ writeTcm session tcm
+            liftIO $ writeTcm session tcm file
   where
-    writeTcm session tcm =
+    writeTcm session tcm file =
         do
             let fp =
                     fromNormalizedFilePath ifDir </>
@@ -206,6 +206,7 @@ writeIfacesAndHie ifDir files =
                 (hsc_dflags session)
                 ifaceFp
                 (hm_iface $ tmrModInfo tcm)
+            hs_src <- BS.readFile (fromNormalizedFilePath file)
             hieFile <-
                 liftIO $
                 runHsc session $
@@ -213,6 +214,7 @@ writeIfacesAndHie ifDir files =
                     (pm_mod_summary $ tm_parsed_module $ tmrModule tcm)
                     (fst $ tm_internals_ $ tmrModule tcm)
                     (fromJust $ tm_renamed_source $ tmrModule tcm)
+                    hs_src
             writeHieFile hieFp hieFile
             pure [toNormalizedFilePath' ifaceFp, toNormalizedFilePath' hieFp]
 
