@@ -10,7 +10,7 @@ packages:
   - github: digital-asset/hlint
     commit: "3e78bce69749b22a80fec1e8eb853cc0c100c18e"
     sha256: "cf39f2b378485afc77ffdad4dbb057d5d9b4dfc5a38c76ddc44e920e537fb0fa"
-  - ghc-check-0.5.0.1
+  - ghc-check-0.3.0.1
   - ghc-lib-parser-ex-8.8.5.8
   - bytestring-nums-0.3.6
   - extra-1.7.1
