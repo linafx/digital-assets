@@ -6,15 +6,12 @@ module Development.IDE.Core.Rules.Daml
     ) where
 
 import Outputable (showSDoc)
-import TcIface (typecheckIface)
 import LoadIface (readIface)
 import TidyPgm
-import DynFlags
 import SrcLoc
 import qualified GHC
 import qualified Module as GHC
 import GhcMonad
-import Data.IORef
 import qualified Proto3.Suite             as Proto
 import DA.Daml.LF.Proto3.DecodeV1
 import DA.Daml.LF.Proto3.EncodeV1
@@ -34,6 +31,7 @@ import Development.IDE.GHC.Warnings
 import Development.IDE.Core.OfInterest
 import Development.IDE.GHC.Util
 import Development.IDE.Types.Logger hiding (Priority)
+import Development.IDE.Types.Options (IdeDefer(..))
 import DA.Daml.Options
 import DA.Daml.Options.Packaging.Metadata
 import DA.Daml.Options.Types
@@ -64,7 +62,6 @@ import "ghc-lib" GHC hiding (typecheckModule, Succeeded)
 import "ghc-lib-parser" Module (stringToUnitId, UnitId(..), DefUnitId(..))
 import Safe
 import System.Environment
-import System.IO
 import System.IO.Error
 import System.Directory.Extra as Dir
 import System.FilePath
@@ -287,55 +284,11 @@ generateDalfRule =
                 let diags = LF.checkModule world lfVersion dalf
                 in second (dalf <$) (diagsToIdeResult file diags)
 
--- TODO Share code with typecheckModule in ghcide. The environment needs to be setup
--- slightly differently but we can probably factor out shared code here.
-ondiskTypeCheck :: HscEnv -> [(ModSummary, ModIface)] -> ParsedModule -> IO ([FileDiagnostic], Maybe TcModuleResult)
-ondiskTypeCheck hsc deps pm = do
-    fmap (either (, Nothing) (second Just)) $
-      runGhcEnv hsc $
-      catchSrcErrors "typecheck" $ do
-        let mss = map fst deps
-        session <- getSession
-        setSession session { hsc_mod_graph = mkModuleGraph mss }
-        let installedModules  = map (GHC.InstalledModule (thisInstalledUnitId $ hsc_dflags session) . moduleName . ms_mod) mss
-            installedFindResults = zipWith (\ms im -> InstalledFound (ms_location ms) im) mss installedModules
-        -- We have to create a new IORef here instead of modifying the existing IORef as
-        -- it is shared between concurrent compilations.
-        prevFinderCache <- liftIO $ readIORef $ hsc_FC session
-        let newFinderCache =
-                foldl'
-                    (\fc (im, ifr) -> GHC.extendInstalledModuleEnv fc im ifr) prevFinderCache
-                    $ zip installedModules installedFindResults
-        newFinderCacheVar <- liftIO $ newIORef $! newFinderCache
-        modifySession $ \s -> s { hsc_FC = newFinderCacheVar }
-        -- Currently GetDependencies returns things in topological order so A comes before B if A imports B.
-        -- We need to reverse this as GHC gets very unhappy otherwise and complains about broken interfaces.
-        -- Long-term we might just want to change the order returned by GetDependencies
-        mapM_ (uncurry loadDepModule) (reverse deps)
-        (warnings, tcm) <- withWarnings "typecheck" $ \tweak ->
-            GHC.typecheckModule pm { pm_mod_summary = tweak (pm_mod_summary pm) }
-        tcm <- mkTcModuleResult tcm
-        pure (map snd warnings, tcm)
-
-loadDepModule :: GhcMonad m => ModSummary -> ModIface -> m ()
-loadDepModule ms iface = do
-    hsc <- getSession
-    -- The fixIO here is crucial and matches what GHC does. Otherwise GHC will fail
-    -- to find identifiers in the interface and explode.
-    -- For more details, look at hscIncrementalCompile and Note [Knot-tying typecheckIface] in GHC.
-    details <- liftIO $ fixIO $ \details -> do
-        let hsc' = hsc { hsc_HPT = addToHpt (hsc_HPT hsc) (moduleName mod) (HomeModInfo iface details Nothing) }
-        initIfaceLoad hsc' (typecheckIface iface)
-    let mod_info = HomeModInfo iface details Nothing
-    modifySession $ \e ->
-        e { hsc_HPT = addToHpt (hsc_HPT e) (moduleName mod) mod_info }
-    where mod = ms_mod ms
-
 -- TODO Share code with compileModule in ghcide. Given that this is fairly mechanical, this is not critical
 -- but still worth doing in the long-term.
 ondiskDesugar :: HscEnv -> TypecheckedModule -> IO ([FileDiagnostic], Maybe CoreModule)
 ondiskDesugar hsc tm =
-    fmap (either (, Nothing) (second Just)) $
+    fmap (either (, Nothing) (second Just) . snd) $
     runGhcEnv hsc $
         catchSrcErrors "compile" $ do
             session <- getSession
@@ -385,10 +338,10 @@ generateSerializedDalfRule options =
             pm <- use_ GetParsedModule file
             deps <- uses_ ReadInterface files
             hsc <- hscEnv <$> use_ GhcSession file
-            (diags, mbRes) <- liftIO $ ondiskTypeCheck hsc deps pm
+            (diags, mbRes) <- liftIO $ typecheckModule (IdeDefer False) hsc [(ms, (mi, Nothing)) | (ms, mi) <- deps] pm
             case mbRes of
                 Nothing -> pure (diags, Nothing)
-                Just tm -> fmap (first (diags ++)) $ do
+                Just (_, tm) -> fmap (first (diags ++)) $ do
                     liftIO $ writeIfaceFile
                       (hsc_dflags hsc)
                       (fromNormalizedFilePath $ hiFileName file)
@@ -560,7 +513,7 @@ damlGhcSessionRule opts@Options{..} = do
             GHC.getSession
         pkg <- liftIO $ generatePackageState optDamlLfVersion mbProjectRoot optPackageDbs optPackageImports
         dflags <- liftIO $ checkDFlags opts $ setPackageDynFlags pkg $ hsc_dflags env
-        hscEnv <- liftIO $ newHscEnvEq env{hsc_dflags = dflags}
+        hscEnv <- liftIO $ newHscEnvEq env{hsc_dflags = dflags} []
         -- In the IDE we do not care about the cache value here but for
         -- incremental builds we need an early cutoff.
         pure (Just "", ([], Just hscEnv))
