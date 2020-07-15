@@ -781,9 +781,10 @@ execDocTest opts files =
           withDamlIdeState opts { optScenarioService = EnableScenarioService False }
               logger (const $ pure ()) $ \ideState -> runActionSync ideState $ do
           pmS <- catMaybes <$> uses GetParsedModule files'
+          let modNames = map (moduleName . ms_mod . pm_mod_summary) pmS
           -- This is horrible but we do not have a way to change the import paths in a running
           -- IdeState at the moment.
-          pure $ nubOrd $ mapMaybe (uncurry moduleImportPath) (zip files' pmS)
+          pure $ nubOrd $ mapMaybe (uncurry moduleImportPath) (zip files' modNames)
       opts <- pure opts { optImportPath = importPaths <> optImportPath opts, optHaddock = Haddock True }
       withDamlIdeState opts logger diagnosticsLogger $ \ideState ->
           docTest ideState files'
