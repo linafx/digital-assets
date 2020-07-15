@@ -17,9 +17,9 @@ load("@os_info//:os_info.bzl", "is_windows")
 load("@dadew//:dadew.bzl", "dadew_tool_home")
 load("@rules_haskell//haskell:cabal.bzl", "stack_snapshot")
 
-GHCIDE_REV = "9b6e7122516f9de9b0ba20cd37d59c58a4d634ec"
-GHCIDE_SHA256 = "e125fc97f35b418918cd29d4d70b36e46bde506d1669426d6802d8531fe3e9ac"
-GHCIDE_VERSION = "0.1.0"
+GHCIDE_REV = "4149ab539d736328e29957c7eee752e0413fdd40"
+GHCIDE_SHA256 = "e32cba41d392d17743354b7a54c4b367939cc59fa6d7f060a8ad0d5b6e3e8af3"
+GHCIDE_VERSION = "0.2.0"
 JS_JQUERY_VERSION = "3.3.1"
 JS_DGTABLE_VERSION = "0.5.2"
 JS_FLOT_VERSION = "0.8.3"
@@ -58,6 +58,7 @@ deps = [
     "@stackage//:ghc",
     "@stackage//:ghc-boot",
     "@stackage//:ghc-boot-th",
+    "@stackage//:ghc-check",
     "@stackage//:haddock-library",
     "@stackage//:hashable",
     "@stackage//:haskell-lsp",
@@ -464,6 +465,7 @@ exports_files(["stack.exe"], visibility = ["//visibility:public"])
             "ghc",
             "ghc-boot",
             "ghc-boot-th",
+            "ghc-check",
             "ghc-lib",
             "ghc-lib-parser",
             "ghc-lib-parser-ex",
