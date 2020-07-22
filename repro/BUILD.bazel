@@ -1,0 +1,64 @@
+load(":sh.bzl", "sh_inline_test")
+
+sh_binary(
+    name = "script",
+    srcs = ["script.sh"],
+)
+
+sh_binary(
+    name = "wrapper",
+    # ERROR: ... in srcs attribute of sh_binary rule //repro:wrapper: you must specify exactly one file in 'srcs'
+    srcs = [":script"],
+)
+
+genrule(
+    name = "genrule",
+    srcs = [":script"],
+    outs = ["genrule.txt"],
+    # ERROR: ... in cmd attribute of genrule rule //repro:genrule: label '//repro:script' in $(location) expression expands to more than one file, please use $(locations //repro:script) instead.  Files (at most 5 shown) are: [repro/script, repro/script.sh]
+    # cmd = "echo $(rootpath :script) > $(OUTS)",
+    # LINUX - NO ERROR
+    #   repro/script repro/script.sh
+    # WINDOWS - NO ERROR
+    #   repro/script repro/script.exe repro/script.sh
+    cmd = "echo $(rootpaths :script) > $(OUTS)",
+)
+
+# LINUX - NO ERROR
+#   ARG repro/script
+#   LOC .../execroot/com_github_digital_asset_daml/bazel-out/k8-opt/bin/repro/test.runfiles/com_github_digital_asset_daml/repro/script
+# WINDOWS - NO ERROR
+#   ARG repro/script.exe
+#   LOC .../execroot/com_github_digital_asset_daml/bazel-out/x64_windows-opt/bin/repro/script.exe
+sh_test(
+    name = "test",
+    srcs = ["test.sh"],
+    deps = ["@bazel_tools//tools/bash/runfiles"],
+    data = [":script"],
+    args = ["$(rootpath :script)"],
+)
+
+cc_binary(
+    name = "runner",
+    srcs = ["runner.c"],
+)
+
+sh_inline_test(
+    name = "inline-test",
+    # ERROR: ... in _sh_inline_script rule //repro:inline-test_script: label '//repro:script' in $(location) expression expands to more than one file, please use $(locations //repro:script) instead.  Files (at most 5 shown) are: [repro/script, repro/script.sh]
+    # cmd = "$$(rlocation $$TEST_WORKSPACE/$(rootpath :script))",
+    # LINUX - NO ERROR
+    #   runner rootpath repro/runner
+    #   script rootpaths repro/script repro/script.sh
+    #   Hello from script.sh
+    # WINDOWS - ERROR
+    #   runner rootpath repro/runner.exe
+    #   script rootpaths repro/script repro/script.exe repro/script.sh
+    #   ERROR: %1 is not a valid Win32 application.
+    cmd = """\
+echo runner rootpath $(rootpath :runner)
+echo script rootpaths $(rootpaths :script)
+$$(rlocation $$TEST_WORKSPACE/$(rootpath :runner)) $$(rlocation $$TEST_WORKSPACE/$(rootpaths :script))
+""",
+    data = [":runner", ":script"],
+)
