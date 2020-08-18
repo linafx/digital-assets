@@ -1,4 +1,4 @@
-// Copyright (c) 2020 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+// Copyright (c) 2021 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
 package com.daml.lf.speedy
@@ -30,21 +30,11 @@ final case class ScenarioRunner(
     partyNameMangler: (String => String) = identity) {
   var ledger: ScenarioLedger = ScenarioLedger.initialLedger(Time.Timestamp.Epoch)
 
-  import scala.util.{Try, Success, Failure}
-
   def run(): Either[(SError, ScenarioLedger), (Double, Int, ScenarioLedger, SValue)] =
-    handleUnsafe(runUnsafe) match {
+    ScenarioRunner.handleUnsafe(runUnsafe) match {
       case Left(err) => Left((err, ledger))
       case Right(t) => Right(t)
     }
-
-  private def handleUnsafe[T](unsafe: => T): Either[SError, T] = {
-    Try(unsafe) match {
-      case Failure(SRunnerException(err)) => Left(err)
-      case Failure(other) => throw other
-      case Success(t) => Right(t)
-    }
-  }
 
   private def runUnsafe(): (Double, Int, ScenarioLedger, SValue) = {
     // NOTE(JM): Written with an imperative loop and exceptions for speed
@@ -163,7 +153,7 @@ final case class ScenarioRunner(
       committers: Set[Party],
       cbMissing: Unit => Boolean,
       cbPresent: ContractInst[Tx.Value[ContractId]] => Unit): Either[SError, Unit] =
-    handleUnsafe(lookupContractUnsafe(acoid, committers, cbMissing, cbPresent))
+    ScenarioRunner.handleUnsafe(lookupContractUnsafe(acoid, committers, cbMissing, cbPresent))
 
   private def lookupContractUnsafe(
       acoid: ContractId,
@@ -207,7 +197,7 @@ final case class ScenarioRunner(
       committers: Set[Party],
       canContinue: SKeyLookupResult => Boolean,
   ): Either[SError, Unit] =
-    handleUnsafe(lookupKeyUnsafe(gk, committers, canContinue))
+    ScenarioRunner.handleUnsafe(lookupKeyUnsafe(gk, committers, canContinue))
 
   private def lookupKeyUnsafe(
       gk: GlobalKey,
@@ -265,6 +255,8 @@ final case class ScenarioRunner(
 
 object ScenarioRunner {
 
+  import scala.util.{Try, Success, Failure}
+
   @deprecated("can be used only by sandbox classic.", since = "1.4.0")
   def getScenarioLedger(
       engine: Engine,
@@ -298,6 +290,14 @@ object ScenarioRunner {
       case _: Ast.DDataType =>
         throw new RuntimeException(
           s"Requested scenario $scenarioRef is a data type, not a definition")
+    }
+  }
+
+  private[speedy] def handleUnsafe[T](unsafe: => T): Either[SError, T] = {
+    Try(unsafe) match {
+      case Failure(SRunnerException(err)) => Left(err)
+      case Failure(other) => throw other
+      case Success(t) => Right(t)
     }
   }
 }
