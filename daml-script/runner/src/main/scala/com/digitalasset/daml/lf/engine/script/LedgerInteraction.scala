@@ -392,15 +392,19 @@ class IdeClient(val compiledPackages: CompiledPackages) extends ScriptLedgerClie
     while (result == null) {
       machine.run() match {
         case SResultNeedContract(coid, tid @ _, committers, cbMissing, cbPresent) =>
-          ScenarioRunner.lookupContract(ledger, coid, committers, cbMissing, cbPresent).left.foreach {
-            err =>
+          ScenarioRunner
+            .lookupContract(ledger, coid, committers, cbMissing, cbPresent)
+            .left
+            .foreach { err =>
               result = Failure(err)
-          }
+            }
         case SResultNeedKey(keyWithMaintainers, committers, cb) =>
-          ScenarioRunner.lookupKey(ledger, keyWithMaintainers.globalKey, committers, cb).left.foreach {
-            err =>
+          ScenarioRunner
+            .lookupKey(ledger, keyWithMaintainers.globalKey, committers, cb)
+            .left
+            .foreach { err =>
               result = Failure(err)
-          }
+            }
         case SResultFinalValue(SUnit) =>
           machine.ptx.finish(
             machine.outputTransactionVersions,
