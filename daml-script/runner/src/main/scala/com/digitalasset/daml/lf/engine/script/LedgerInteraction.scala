@@ -333,15 +333,15 @@ class IdeClient(val compiledPackages: CompiledPackages) extends ScriptLedgerClie
     inputValueVersions = value.ValueVersions.DevOutputVersions,
     outputTransactionVersions = transaction.TransactionVersions.DevOutputVersions,
   )
-  val scenarioRunner = ScenarioRunner(machine)
+  var ledger: ScenarioLedger = ScenarioLedger.initialLedger(Time.Timestamp.Epoch)
   private var allocatedParties: Map[String, PartyDetails] = Map()
 
   override def query(party: SParty, templateId: Identifier)(
       implicit ec: ExecutionContext,
       mat: Materializer): Future[Seq[ScriptLedgerClient.ActiveContract]] = {
-    val acs = scenarioRunner.ledger.query(
+    val acs = ledger.query(
       view = ScenarioLedger.ParticipantView(party.value),
-      effectiveAt = scenarioRunner.ledger.currentTime)
+      effectiveAt = ledger.currentTime)
     // Filter to contracts of the given template id.
     val filtered = acs.collect {
       case (cid, Value.ContractInst(tpl, arg, _)) if tpl == templateId => (cid, arg)
@@ -389,12 +389,12 @@ class IdeClient(val compiledPackages: CompiledPackages) extends ScriptLedgerClie
     while (result == null) {
       machine.run() match {
         case SResultNeedContract(coid, tid @ _, committers, cbMissing, cbPresent) =>
-          ScenarioRunner.lookupContract(scenarioRunner.ledger, coid, committers, cbMissing, cbPresent).left.foreach {
+          ScenarioRunner.lookupContract(ledger, coid, committers, cbMissing, cbPresent).left.foreach {
             err =>
               result = Failure(err)
           }
         case SResultNeedKey(keyWithMaintainers, committers, cb) =>
-          ScenarioRunner.lookupKey(scenarioRunner.ledger, keyWithMaintainers.globalKey, committers, cb).left.foreach {
+          ScenarioRunner.lookupKey(ledger, keyWithMaintainers.globalKey, committers, cb).left.foreach {
             err =>
               result = Failure(err)
           }
@@ -420,16 +420,16 @@ class IdeClient(val compiledPackages: CompiledPackages) extends ScriptLedgerClie
               }
               ScenarioLedger.commitTransaction(
                 committer = party.value,
-                effectiveAt = scenarioRunner.ledger.currentTime,
+                effectiveAt = ledger.currentTime,
                 optLocation = machine.commitLocation,
                 tx = tx,
-                l = scenarioRunner.ledger
+                l = ledger
               ) match {
                 case Left(fas) =>
                   // Capture the error and exit.
                   result = Failure(ScenarioErrorCommitError(fas))
                 case Right(commitResult) =>
-                  scenarioRunner.ledger = commitResult.newLedger
+                  ledger = commitResult.newLedger
                   // Clear the ledger
                   machine.returnValue = null
                   machine.clearCommit
@@ -450,7 +450,7 @@ class IdeClient(val compiledPackages: CompiledPackages) extends ScriptLedgerClie
           // Capture the error and exit.
           result = Failure(err)
         case SResultNeedTime(callback) =>
-          callback(scenarioRunner.ledger.currentTime)
+          callback(ledger.currentTime)
         case SResultNeedPackage(pkg, callback @ _) =>
           result = Failure(
             new RuntimeException(
@@ -491,7 +491,7 @@ class IdeClient(val compiledPackages: CompiledPackages) extends ScriptLedgerClie
   // All parties known to the ledger. This may include parties that were not
   // allocated explicitly, e.g. parties created by `partyFromText`.
   private def getLedgerParties(): Iterable[Ref.Party] = {
-    scenarioRunner.ledger.ledgerData.nodeInfos.values.flatMap(_.disclosures.keys)
+    ledger.ledgerData.nodeInfos.values.flatMap(_.disclosures.keys)
   }
 
   override def allocateParty(partyIdHint: String, displayName: String)(
@@ -531,19 +531,19 @@ class IdeClient(val compiledPackages: CompiledPackages) extends ScriptLedgerClie
       implicit ec: ExecutionContext,
       esf: ExecutionSequencerFactory,
       mat: Materializer): Future[Time.Timestamp] = {
-    Future.successful(scenarioRunner.ledger.currentTime)
+    Future.successful(ledger.currentTime)
   }
 
   override def setStaticTime(time: Time.Timestamp)(
       implicit ec: ExecutionContext,
       esf: ExecutionSequencerFactory,
       mat: Materializer): Future[Unit] = {
-    val diff = time.micros - scenarioRunner.ledger.currentTime.micros
+    val diff = time.micros - ledger.currentTime.micros
     // ScenarioLedger only provides pass, so we have to check the difference.
     if (diff < 0) {
       Future.failed(new RuntimeException("Time cannot be set backwards"))
     } else {
-      scenarioRunner.ledger = scenarioRunner.ledger.passTime(diff)
+      ledger = ledger.passTime(diff)
       Future.unit
     }
   }
