@@ -323,16 +323,6 @@ class IdeClient(val compiledPackages: CompiledPackages) extends ScriptLedgerClie
     speedy.InitialSeeding.TransactionSeed(crypto.Hash.hashPrivateKey(s"script-service"))
 
   // Machine for scenario expressions.
-  val machine = Machine(
-    compiledPackages,
-    submissionTime = Time.Timestamp.Epoch,
-    initialSeeding = txSeeding,
-    expr = null,
-    globalCids = Set.empty,
-    committers = Set.empty,
-    inputValueVersions = value.ValueVersions.DevOutputVersions,
-    outputTransactionVersions = transaction.TransactionVersions.DevOutputVersions,
-  )
   var ledger: ScenarioLedger = ScenarioLedger.initialLedger(Time.Timestamp.Epoch)
   private var allocatedParties: Map[String, PartyDetails] = Map()
 
@@ -377,14 +367,27 @@ class IdeClient(val compiledPackages: CompiledPackages) extends ScriptLedgerClie
     compiledPackages.compiler.unsafeCompile(cmds)
   }
 
+  def createMachine(expr: SExpr, committers: Set[Ref.Party]): Machine = {
+    Machine(
+      compiledPackages,
+      submissionTime = Time.Timestamp.Epoch,
+      initialSeeding = txSeeding,
+      expr = expr,
+      globalCids = Set.empty,
+      committers = committers,
+      inputValueVersions = value.ValueVersions.DevOutputVersions,
+      outputTransactionVersions = transaction.TransactionVersions.DevOutputVersions,
+    )
+  }
+
   override def submit(party: SParty, commands: List[ScriptLedgerClient.Command])(
       implicit ec: ExecutionContext,
       mat: Materializer)
     : Future[Either[StatusRuntimeException, Seq[ScriptLedgerClient.CommandResult]]] = {
-    machine.returnValue = null
-    val translated = translateCommands(commands)
-    machine.setExpressionToEvaluate(SEApp(translated, Array(SEValue.Token)))
-    machine.committers = Set(party.value)
+    val machine = createMachine(
+      expr = SEApp(translateCommands(commands), Array(SEValue.Token)),
+      committers = Set(party.value),
+    )
     var result: Try[Either[StatusRuntimeException, Seq[ScriptLedgerClient.CommandResult]]] = null
     while (result == null) {
       machine.run() match {

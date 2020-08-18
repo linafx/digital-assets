@@ -205,12 +205,13 @@ class Context(val contextId: Context.ContextId, languageVersion: LanguageVersion
     )
     val client = new IdeClient(compiledPackages)
     val participants = Participants(Some(client), Map.empty, Map.empty)
+    val machine = client.createMachine(SExpr.SEValue.Unit, Set.empty)
     runner.runWithClients(participants).transform {
-      case Success(v) => Success(Some((client.ledger, client.machine, Right(v))))
+      case Success(v) => Success(Some((client.ledger, machine, Right(v))))
       case Failure(e: SError) =>
         // SError are the errors that should be handled and displayed as
         // failed partial transactions.
-        Success(Some((client.ledger, client.machine, Left(e))))
+        Success(Some((client.ledger, machine, Left(e))))
       case Failure(e) => Failure(e)
     }
   }
