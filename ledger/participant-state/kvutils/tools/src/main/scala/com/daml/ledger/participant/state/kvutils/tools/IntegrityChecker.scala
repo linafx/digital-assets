@@ -11,11 +11,12 @@ import akka.stream.Materializer
 import com.codahale.metrics.{ConsoleReporter, MetricRegistry}
 import com.daml.ledger.participant.state.kvutils
 import com.daml.ledger.participant.state.kvutils.KeyValueCommitting
-import com.daml.ledger.participant.state.kvutils.export.FileBasedLedgerDataExporter.{
+import com.daml.ledger.participant.state.kvutils.export.{
+  Deserialization,
+  NoOpLedgerDataExporter,
   SubmissionInfo,
   WriteSet
 }
-import com.daml.ledger.participant.state.kvutils.export.{NoopLedgerDataExporter, Serialization}
 import com.daml.ledger.validator.LedgerStateOperations.{Key, Value}
 import com.daml.ledger.validator.batch.{
   BatchedSubmissionValidator,
@@ -46,7 +47,7 @@ class IntegrityChecker[LogResult](commitStrategySupport: CommitStrategySupport[L
       new KeyValueCommitting(engine, metrics),
       new ConflictDetection(metrics),
       metrics,
-      NoopLedgerDataExporter,
+      NoOpLedgerDataExporter,
     )
     val (reader, commitStrategy, queryableWriteSet) = commitStrategySupport.createComponents()
     processSubmissions(input, submissionValidator, reader, commitStrategy, queryableWriteSet)
@@ -142,7 +143,7 @@ class IntegrityChecker[LogResult](commitStrategySupport: CommitStrategySupport[L
       .getOrElse(commitStrategySupport.explainMismatchingValue(key, expectedValue, actualValue))
 
   private def readSubmissionAndOutputs(input: DataInputStream): (SubmissionInfo, WriteSet) = {
-    val (submissionInfo, writeSet) = Serialization.readEntry(input)
+    val (submissionInfo, writeSet) = Deserialization.deserializeEntry(input)
     println(
       s"Read submission correlationId=${submissionInfo.correlationId} submissionEnvelopeSize=${submissionInfo.submissionEnvelope
         .size()} writeSetSize=${writeSet.size}")

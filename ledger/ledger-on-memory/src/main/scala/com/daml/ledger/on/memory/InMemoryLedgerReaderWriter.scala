@@ -11,6 +11,7 @@ import com.daml.caching.Cache
 import com.daml.ledger.api.health.{HealthStatus, Healthy}
 import com.daml.ledger.participant.state.kvutils.DamlKvutils.{DamlStateKey, DamlStateValue}
 import com.daml.ledger.participant.state.kvutils.api._
+import com.daml.ledger.participant.state.kvutils.export.LedgerDataExporter
 import com.daml.ledger.participant.state.kvutils.{Bytes, KeyValueCommitting}
 import com.daml.ledger.participant.state.v1.{LedgerId, Offset, ParticipantId, SubmissionResult}
 import com.daml.ledger.validator._
@@ -90,7 +91,7 @@ object InMemoryLedgerReaderWriter {
           stateValueCache,
           dispatcher,
           state,
-          engine
+          engine,
         ).acquire()
       } yield readerWriter
     }
@@ -110,26 +111,26 @@ object InMemoryLedgerReaderWriter {
       extends ResourceOwner[KeyValueLedger] {
     override def acquire()(
         implicit executionContext: ExecutionContext
-    ): Resource[KeyValueLedger] = {
-      val keyValueCommitting =
-        new KeyValueCommitting(
+    ): Resource[KeyValueLedger] =
+      for {
+        ledgerDataExporter <- LedgerDataExporter.Owner.acquire()
+        keyValueCommitting = new KeyValueCommitting(
           engine,
           metrics,
           inStaticTimeMode = needStaticTimeModeFor(timeProvider))
-      val validator = BatchedSubmissionValidator[Index](
-        BatchedSubmissionValidatorFactory.defaultParametersFor(
-          batchingLedgerWriterConfig.enableBatching),
-        keyValueCommitting,
-        new ConflictDetection(metrics),
-        metrics
-      )
-      val committer =
-        BatchedValidatingCommitter[Index](
+        validator = BatchedSubmissionValidator[Index](
+          BatchedSubmissionValidatorFactory.defaultParametersFor(
+            batchingLedgerWriterConfig.enableBatching),
+          keyValueCommitting,
+          new ConflictDetection(metrics),
+          metrics,
+          ledgerDataExporter,
+        )
+        committer = BatchedValidatingCommitter[Index](
           () => timeProvider.getCurrentTime,
           validator,
           stateValueCache)
-      val readerWriter =
-        new InMemoryLedgerReaderWriter(
+        readerWriter = new InMemoryLedgerReaderWriter(
           participantId,
           ledgerId,
           dispatcher,
@@ -137,14 +138,13 @@ object InMemoryLedgerReaderWriter {
           committer,
           metrics
         )
-      // We need to generate batched submissions for the validator in order to improve throughput.
-      // Hence, we have a BatchingLedgerWriter collect and forward batched submissions to the
-      // in-memory committer.
-      val batchingLedgerWriter = newLoggingContext { implicit logCtx =>
-        BatchingLedgerWriter(batchingLedgerWriterConfig, readerWriter)
-      }
-      Resource.successful(createKeyValueLedger(readerWriter, batchingLedgerWriter))
-    }
+        // We need to generate batched submissions for the validator in order to improve throughput.
+        // Hence, we have a BatchingLedgerWriter collect and forward batched submissions to the
+        // in-memory committer.
+        batchingLedgerWriter = newLoggingContext { implicit logCtx =>
+          BatchingLedgerWriter(batchingLedgerWriterConfig, readerWriter)
+        }
+      } yield createKeyValueLedger(readerWriter, batchingLedgerWriter)
   }
 
   private def needStaticTimeModeFor(timeProvider: TimeProvider): Boolean =
