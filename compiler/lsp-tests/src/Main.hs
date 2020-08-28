@@ -44,13 +44,7 @@ main = do
     scriptDarPath <- locateRunfiles $
         mainWorkspace </> "daml-script" </> "daml" </> "daml-script.dar"
     let run s = withTempDir $ \dir -> runSessionWithConfig conf (damlcPath <> " ide --scenarios=no") fullCaps' dir s
-        runScenarios s
-            -- We are currently seeing issues with GRPC FFI calls which make everything
-            -- that uses the scenario service extremely flaky and forces us to disable it on
-            -- CI. Once https://github.com/digital-asset/daml/issues/1354 is fixed we can
-            -- also run scenario tests on Windows.
-            | isWindows = pure ()
-            | otherwise = withTempDir $ \dir -> runSessionWithConfig conf (damlcPath <> " ide --scenarios=yes") fullCaps' dir s
+        runScenarios s = withTempDir $ \dir -> runSessionWithConfig conf (damlcPath <> " ide --scenarios=yes") fullCaps' dir s
     defaultMain $ testGroup "LSP"
         [ diagnosticTests run runScenarios
         , requestTests run runScenarios
@@ -560,8 +554,7 @@ scriptTests damlcPath scriptDarPath = testGroup "scripts"
           closeDoc main'
     ]
   where
-    run s | isWindows = pure ()
-          | otherwise = withTempDir $ \dir -> do
+    run s = withTempDir $ \dir -> do
         copyFile scriptDarPath (dir </> "daml-script.dar")
         writeFileUTF8 (dir </> "daml.yaml") $ unlines
             [ "sdk-version: " <> sdkVersion
