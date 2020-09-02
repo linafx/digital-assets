@@ -3,12 +3,11 @@
 
 package com.daml.ledger.participant.state.kvutils.tools
 
-import java.io.{BufferedInputStream, DataInputStream}
-import java.nio.file.{Files, Paths}
+import java.nio.file.Paths
 import java.util.concurrent.Executors
 
 import com.daml.dec.DirectExecutionContext
-import com.daml.ledger.participant.state.kvutils.export.LedgerDataExporter
+import com.daml.ledger.participant.state.kvutils.export.{LedgerDataExporter, v3}
 
 import scala.concurrent.{ExecutionContext, ExecutionContextExecutorService}
 
@@ -27,12 +26,12 @@ object IntegrityCheckV2 {
     val executionContext: ExecutionContextExecutorService =
       ExecutionContext.fromExecutorService(
         Executors.newFixedThreadPool(sys.runtime.availableProcessors()))
-    val ledgerDumpStream = new DataInputStream(new BufferedInputStream(Files.newInputStream(path)))
+    val importer = v3.ProtobufBasedLedgerDataImporter(path)
     new IntegrityChecker(LogAppendingCommitStrategySupport)
-      .run(ledgerDumpStream)(executionContext)
+      .run(importer)(executionContext)
       .andThen {
         case _ =>
-          ledgerDumpStream.close()
+          importer.close()
           executionContext.shutdown()
       }(DirectExecutionContext)
       .failed
