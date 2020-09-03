@@ -147,12 +147,13 @@ packagingTests = testGroup "packaging"
         callCommandSilent $ unwords ["daml", "new", tmpDir </> "data-dependency"]
         withCurrentDirectory (tmpDir </> "data-dependency") $ callCommandSilent "daml build -o data-dependency.dar"
         createDirectoryIfMissing True (tmpDir </> "proj")
+        putStrLn =<< readFileUTF8 (tmpDir </> "data-dependency" </> "daml.yaml")
         writeFileUTF8 (tmpDir </> "proj" </> "daml.yaml") $ unlines
           [ "sdk-version: " <> sdkVersion
           , "name: proj"
           , "version: 0.0.1"
           , "source: ."
-          , "dependencies: [daml-prim, daml-stdlib, daml-script, daml-trigger]"
+          , "dependencies: [daml-prim, daml-stdlib, daml-script]"
           , "data-dependencies: [" <> show (tmpDir </> "data-dependency" </> "data-dependency.dar") <> "]"
           ]
         writeFileUTF8 (tmpDir </> "proj" </> "A.daml") $ unlines
