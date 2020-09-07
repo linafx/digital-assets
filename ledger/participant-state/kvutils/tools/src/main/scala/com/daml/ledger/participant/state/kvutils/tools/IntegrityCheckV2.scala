@@ -7,7 +7,7 @@ import java.nio.file.Paths
 import java.util.concurrent.Executors
 
 import com.daml.dec.DirectExecutionContext
-import com.daml.ledger.participant.state.kvutils.export.{LedgerDataExporter, v3}
+import com.daml.ledger.participant.state.kvutils.export.{LedgerDataExporter, v2}
 
 import scala.concurrent.{ExecutionContext, ExecutionContextExecutorService}
 
@@ -26,7 +26,7 @@ object IntegrityCheckV2 {
     val executionContext: ExecutionContextExecutorService =
       ExecutionContext.fromExecutorService(
         Executors.newFixedThreadPool(sys.runtime.availableProcessors()))
-    val importer = v3.ProtobufBasedLedgerDataImporter(path)
+    val importer = v2.ProtobufBasedLedgerDataImporter(path)
     new IntegrityChecker(LogAppendingCommitStrategySupport)
       .run(importer)(executionContext)
       .andThen {
