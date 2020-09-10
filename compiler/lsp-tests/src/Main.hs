@@ -869,8 +869,9 @@ includePathTests damlc = testGroup "include-path"
 
 multiPackageTests :: FilePath -> TestTree
 multiPackageTests damlc
-  | isWindows = testGroup "multi-package (skipped)" [] -- see issue #4904
-  | otherwise = testGroup "multi-package"
+--  | isWindows = testGroup "multi-package (skipped)" [] -- see issue #4904
+--  | otherwise
+  = testGroup "multi-package"
     [ testCaseSteps "IDE in root directory" $ \step -> withTempDir $ \dir -> do
           step "build a"
           createDirectoryIfMissing True (dir </> "a")
@@ -907,7 +908,7 @@ multiPackageTests damlc
           writeFileUTF8 (dir </> "daml.yaml") $ unlines
               [ "sdk-version: " <> sdkVersion
               ]
-          withCurrentDirectory dir $ runSessionWithConfig conf (damlc <> " ide --scenarios=yes") fullCaps' dir $ do
+          withCurrentDirectory dir $ runSessionWithConfig conf (damlc <> " ide --debug --scenarios=yes") fullCaps' dir $ do
               docA <- openDoc ("a" </> "A.daml") "daml"
               Just fpA <- pure $ uriToFilePath (docA ^. uri)
               r <- getHover docA (Position 2 0)
@@ -974,7 +975,7 @@ multiPackageTests damlc
           -- When run in the project directory, the IDE will take care of initializing
           -- the package db so we do not need to build.
           step "run language server"
-          withCurrentDirectory (dir </> "b") $ runSessionWithConfig conf (damlc <> " ide --scenarios=yes") fullCaps' (dir </> "b") $ do
+          withCurrentDirectory (dir </> "b") $ runSessionWithConfig conf (damlc <> " ide --debug --scenarios=yes") fullCaps' (dir </> "b") $ do
               -- We cannot open files in a here but we can open files in b
               docB <- openDoc "B.daml" "daml"
               Just escapedFpB <- pure $ escapeURIString isUnescapedInURIComponent <$> uriToFilePath (docB ^. uri)
