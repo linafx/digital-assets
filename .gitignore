@@ -67,3 +67,6 @@ out
 # Visual Studio Code
 .vscode
 
+# Coverage reporting
+report/
+
