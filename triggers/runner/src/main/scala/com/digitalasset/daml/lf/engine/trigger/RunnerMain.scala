@@ -7,6 +7,8 @@ import java.io.File
 
 import akka.actor.ActorSystem
 import akka.stream._
+import com.daml.logging.{LoggingContextOf}
+import LoggingContextOf.{label, newLoggingContext}
 import com.daml.auth.TokenHolder
 import com.daml.daml_lf_dev.DamlLf
 import com.daml.grpc.adapter.AkkaExecutionSequencerPool
@@ -45,24 +47,30 @@ object RunnerMain {
     }
   }
 
+  def getRunner(f : File, id: String) = {
+        val encodedDar: Dar[(PackageId, DamlLf.ArchivePayload)] =
+          DarReader().readArchiveFromFile(f).get
+        val dar: Dar[(PackageId, Package)] = encodedDar.map {
+          case (pkgId, pkgArchive) => Decode.readArchivePayload(pkgId, pkgArchive)
+        }
+    val triggerId: Identifier =
+      Identifier(dar.main._1, QualifiedName.assertFromString(id))
+
+    val darMap = dar.all.toMap
+    val compiledPackages = MyCompiledPackages(darMap).right.get
+    val trigger = Trigger.fromIdentifier(compiledPackages, triggerId) match {
+      case Left(err) => throw new RuntimeException(s"Invalid trigger: $err")
+      case Right(trigger) => trigger
+    }
+    (trigger, compiledPackages)
+  }
+
   def main(args: Array[String]): Unit = {
 
     RunnerConfig.parse(args) match {
       case None => sys.exit(1)
       case Some(config) => {
-        val encodedDar: Dar[(PackageId, DamlLf.ArchivePayload)] =
-          DarReader().readArchiveFromFile(config.darPath.toFile).get
-        val dar: Dar[(PackageId, Package)] = encodedDar.map {
-          case (pkgId, pkgArchive) => Decode.readArchivePayload(pkgId, pkgArchive)
-        }
-
-        if (config.listTriggers) {
-          listTriggers(config.darPath.toFile, dar)
-          sys.exit(0)
-        }
-
-        val triggerId: Identifier =
-          Identifier(dar.main._1, QualifiedName.assertFromString(config.triggerIdentifier))
+        val (trigger, compiledPackages) = getRunner(config.darPath.toFile, config.triggerIdentifier)
 
         val system: ActorSystem = ActorSystem("TriggerRunner")
         implicit val materializer: Materializer = Materializer(system)
@@ -91,14 +99,11 @@ object RunnerMain {
             config.ledgerPort,
             clientConfig,
           )(ec, sequencer)
-
-          _ <- Runner.run(
-            dar,
-            triggerId,
-            client,
-            config.timeProviderType.getOrElse(RunnerConfig.DefaultTimeProviderType),
-            config.applicationId,
-            config.ledgerParty)
+          runner =       newLoggingContext(label[Trigger], trigger.loggingExtension) { implicit lc =>
+        new Runner(compiledPackages, trigger, client, config.timeProviderType.getOrElse(RunnerConfig.DefaultTimeProviderType), config.applicationId, config.ledgerParty)
+          }
+          (acs, offset) <- runner.queryACS()
+          _ <- runner.runWithACS(acs, offset)._2
         } yield ()
 
         flow.onComplete(_ => system.terminate())

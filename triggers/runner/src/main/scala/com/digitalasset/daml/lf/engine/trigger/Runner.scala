@@ -18,7 +18,7 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.duration._
 import com.daml.api.util.TimeProvider
-import com.daml.lf.{CompiledPackages, PureCompiledPackages}
+import com.daml.lf.{CompiledPackages}
 import com.daml.lf.archive.Dar
 import com.daml.lf.data.ImmArray
 import com.daml.lf.data.Ref._
@@ -507,7 +507,7 @@ object Runner extends StrictLogging {
       party: String
   )(implicit materializer: Materializer, executionContext: ExecutionContext): Future[SValue] = {
     val darMap = dar.all.toMap
-    val compiledPackages = PureCompiledPackages(darMap).right.get
+    val compiledPackages = MyCompiledPackages(darMap).right.get
     val trigger = Trigger.fromIdentifier(compiledPackages, triggerId) match {
       case Left(err) => throw new RuntimeException(s"Invalid trigger: $err")
       case Right(trigger) => trigger
