@@ -53,6 +53,9 @@ object Server {
       )
     }
 
+    def concatQuery(a: Uri.Query, b: Uri.Query): Uri.Query =
+      Uri.Query(a.toSeq ++ b.toSeq: _*)
+
     import JsonProtocol._
 
     implicit val unmarshal: Unmarshaller[String, Uri] = Unmarshaller.strict(Uri(_))
@@ -64,10 +67,13 @@ object Server {
             .as[Request.Authorize](Request.Authorize) {
               request =>
                 val authorizationCode = UUID.randomUUID()
-                val params =
+                // We must retain any previous query parameters of the redirect
+                // URI. See https://tools.ietf.org/html/rfc6749#section-3.1.2 .
+                val params = concatQuery(
+                  request.redirectUri.query(),
                   Response
                     .Authorize(code = authorizationCode.toString, state = request.state)
-                    .toQuery
+                    .toQuery)
                 requests += (authorizationCode -> toPayload(request))
                 // We skip any actual consent screen since this is only intended for testing and
                 // this is outside of the scope of the trigger service anyway.
