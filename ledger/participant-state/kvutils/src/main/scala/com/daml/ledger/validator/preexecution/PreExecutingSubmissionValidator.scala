@@ -6,12 +6,7 @@ package com.daml.ledger.validator.preexecution
 import com.daml.ledger.participant.state.kvutils.DamlKvutils.{DamlStateKey, DamlSubmission}
 import com.daml.ledger.participant.state.kvutils.KeyValueCommitting.PreExecutionResult
 import com.daml.ledger.participant.state.kvutils.api.LedgerReader
-import com.daml.ledger.participant.state.kvutils.{
-  Bytes,
-  DamlStateMapWithFingerprints,
-  Envelope,
-  KeyValueCommitting
-}
+import com.daml.ledger.participant.state.kvutils.{Bytes, DamlStateMapWithFingerprints, Envelope, KeyValueCommitting}
 import com.daml.ledger.participant.state.v1.ParticipantId
 import com.daml.ledger.validator.batch.BatchedSubmissionValidator
 import com.daml.ledger.validator.preexecution.PreExecutionCommitResult.ReadSet
@@ -19,6 +14,7 @@ import com.daml.ledger.validator.{StateKeySerializationStrategy, ValidationFaile
 import com.daml.logging.LoggingContext.newLoggingContext
 import com.daml.logging.{ContextualizedLogger, LoggingContext}
 import com.daml.metrics.{Metrics, Timed}
+import com.daml.lf.data.SeqTrack
 
 import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future}
@@ -38,27 +34,33 @@ class PreExecutingSubmissionValidator[WriteSet](
       correlationId: String,
       submittingParticipantId: ParticipantId,
       ledgerStateReader: DamlLedgerStateReaderWithFingerprints,
+      t: Option[SeqTrack]
   )(implicit executionContext: ExecutionContext): Future[PreExecutionOutput[WriteSet]] =
     newLoggingContext("correlationId" -> correlationId) { implicit loggingContext =>
+      t.foreach(_.startStep("decode submission"))
       Timed.timedAndTrackedFuture(
         metrics.daml.kvutils.submission.validator.validatePreExecute,
         metrics.daml.kvutils.submission.validator.validatePreExecuteRunning,
         for {
           decodedSubmission <- decodeSubmission(submissionEnvelope)
+          _ = t.foreach(_.startStep("fetch submission"))
           fetchedInputs <- fetchSubmissionInputs(decodedSubmission, ledgerStateReader)
+          preexecTrack = t.map(_.startSeq("preexec submission"))
           preExecutionResult <- preExecuteSubmission(
             decodedSubmission,
             submittingParticipantId,
-            fetchedInputs)
+            fetchedInputs, preexecTrack)
+          _ = t.foreach(_.startStep("log entry id"))
           logEntryId = BatchedSubmissionValidator.bytesToLogEntryId(submissionEnvelope)
           inputState = fetchedInputs.map { case (key, (value, _)) => key -> value }
+          wst = t.map(_.startSeq("generating write-sets"))
           generatedWriteSets <- Timed.future(
             metrics.daml.kvutils.submission.validator.generateWriteSets,
             commitStrategy.generateWriteSets(
               submittingParticipantId,
               logEntryId,
               inputState,
-              preExecutionResult)
+              preExecutionResult, wst)
           )
         } yield {
           PreExecutionOutput(
@@ -122,13 +124,13 @@ class PreExecutingSubmissionValidator[WriteSet](
   private def preExecuteSubmission(
       submission: DamlSubmission,
       submittingParticipantId: ParticipantId,
-      inputState: DamlStateMapWithFingerprints)(
+      inputState: DamlStateMapWithFingerprints, t: Option[SeqTrack])(
       implicit executionContext: ExecutionContext): Future[PreExecutionResult] = Future {
     committer.preExecuteSubmission(
       LedgerReader.DefaultConfiguration,
       submission,
       submittingParticipantId,
-      inputState.mapValues { case (value, _) => value })
+      inputState.mapValues { case (value, _) => value }, t)
   }
 
   private[preexecution] def generateReadSet(

@@ -69,7 +69,7 @@ class PreExecutingValidatingCommitter[LogResult](
                 ledgerStateOperations,
                 valueToFingerprint),
               keySerializationStrategy,
-            )
+            ), None
           )
         submissionResult <- retry {
           case PostExecutionFinalizer.ConflictDetectedException => true

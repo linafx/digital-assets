@@ -61,7 +61,7 @@ class PreExecutingSubmissionValidatorSpec extends AsyncWordSpec with Matchers wi
           anEnvelope(expectedReadSet.keySet),
           aCorrelationId,
           aParticipantId,
-          ledgerStateReader)
+          ledgerStateReader, None)
         .map { actual =>
           actual.minRecordTime shouldBe expectedMinRecordTime
           actual.maxRecordTime shouldBe expectedMaxRecordTime
@@ -83,7 +83,7 @@ class PreExecutingSubmissionValidatorSpec extends AsyncWordSpec with Matchers wi
           anEnvelope(expectedReadSet.keySet),
           aCorrelationId,
           aParticipantId,
-          ledgerStateReader)
+          ledgerStateReader, None)
         .map { actual =>
           val expectedSortedReadSet = expectedReadSet
             .map {
@@ -110,7 +110,7 @@ class PreExecutingSubmissionValidatorSpec extends AsyncWordSpec with Matchers wi
           Envelope.enclose(aBatchedSubmission),
           aCorrelationId,
           aParticipantId,
-          mock[DamlLedgerStateReaderWithFingerprints])
+          mock[DamlLedgerStateReaderWithFingerprints], None)
         .failed
         .map {
           case ValidationError(actualReason) =>
@@ -126,7 +126,7 @@ class PreExecutingSubmissionValidatorSpec extends AsyncWordSpec with Matchers wi
           anInvalidEnvelope,
           aCorrelationId,
           aParticipantId,
-          mock[DamlLedgerStateReaderWithFingerprints])
+          mock[DamlLedgerStateReaderWithFingerprints], None)
         .failed
         .map {
           case ValidationError(actualReason) =>
@@ -143,7 +143,7 @@ class PreExecutingSubmissionValidatorSpec extends AsyncWordSpec with Matchers wi
           anEnvelopedDamlLogEntry,
           aCorrelationId,
           aParticipantId,
-          mock[DamlLedgerStateReaderWithFingerprints])
+          mock[DamlLedgerStateReaderWithFingerprints], None)
         .failed
         .map {
           case ValidationError(actualReason) =>

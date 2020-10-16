@@ -16,18 +16,11 @@ import com.daml.lf.archive.Decode
 import com.daml.lf.archive.Reader.ParseError
 import com.daml.lf.crypto
 import com.daml.lf.data.Ref.{PackageId, Party}
+import com.daml.lf.data.SeqTrack
 import com.daml.lf.data.Time.Timestamp
 import com.daml.lf.engine.{Blinding, Engine}
 import com.daml.lf.language.Ast
-import com.daml.lf.transaction.{
-  BlindingInfo,
-  GlobalKey,
-  GlobalKeyWithMaintainers,
-  Node,
-  NodeId,
-  SubmittedTransaction,
-  Transaction => Tx
-}
+import com.daml.lf.transaction.{BlindingInfo, GlobalKey, GlobalKeyWithMaintainers, Node, NodeId, SubmittedTransaction, Transaction => Tx}
 import com.daml.lf.value.Value
 import com.daml.lf.value.Value.ContractId
 import com.daml.metrics.Metrics
@@ -50,7 +43,8 @@ private[kvutils] class TransactionCommitter(
     defaultConfig: Configuration,
     engine: Engine,
     override protected val metrics: Metrics,
-    inStaticTimeMode: Boolean
+    inStaticTimeMode: Boolean,
+    t: Option[SeqTrack] = None
 ) extends Committer[DamlTransactionEntrySummary] {
   override protected val committerName = "transaction"
 
@@ -90,6 +84,7 @@ private[kvutils] class TransactionCommitter(
   /** Reject duplicate commands
     */
   private[committer] def deduplicateCommand: Step = (commitContext, transactionEntry) => {
+    t.foreach(_.startStep("deduplicateCommand"))
     commitContext.getRecordTime
       .map { recordTime =>
         val dedupKey = commandDedupKey(transactionEntry.submitterInfo)
@@ -133,6 +128,7 @@ private[kvutils] class TransactionCommitter(
     * party is unallocated.
     */
   private def authorizeSubmitter: Step = (commitContext, transactionEntry) => {
+    t.foreach(_.startStep("authorizeSubmitter"))
     commitContext.get(partyStateKey(transactionEntry.submitter)) match {
       case Some(partyAllocation) =>
         if (partyAllocation.getParty.getParticipantId == commitContext.getParticipantId)
@@ -160,6 +156,7 @@ private[kvutils] class TransactionCommitter(
   /** Validate ledger effective time and the command's time-to-live. */
   private[committer] def validateLedgerTime: Step =
     (commitContext, transactionEntry) => {
+      t.foreach(_.startStep("validateLedgerTime"))
       val (_, config) = getCurrentConfiguration(defaultConfig, commitContext.inputs, logger)
       val timeModel = config.timeModel
 
@@ -209,23 +206,26 @@ private[kvutils] class TransactionCommitter(
 
   /** Validate the submission's conformance to the DAML model */
   private def validateModelConformance: Step =
-    (commitContext, transactionEntry) =>
+    (commitContext, transactionEntry) => {
+      val tt = t.map(_.startSeq("validateModelConformance !"))
       metrics.daml.kvutils.committer.transaction.interpretTimer.time(() => {
         // Pull all keys from referenced contracts. We require this for 'fetchByKey' calls
         // which are not evidenced in the transaction itself and hence the contract key state is
         // not included in the inputs.
-        lazy val knownKeys: Map[DamlContractKey, Value.ContractId] =
-          commitContext.inputs.collect {
-            case (key, Some(value))
-                if value.hasContractState
-                  && value.getContractState.hasContractKey
-                  && contractIsActiveAndVisibleToSubmitter(
-                    transactionEntry,
-                    value.getContractState) =>
-              value.getContractState.getContractKey -> Conversions.stateKeyToContractId(key)
-          }
+        tt.foreach(_.startStep("prep"))
+        val knownKeys: Map[DamlContractKey, Value.ContractId] =
+        commitContext.inputs.collect {
+          case (key, Some(value))
+            if value.hasContractState
+              && value.getContractState.hasContractKey
+              && contractIsActiveAndVisibleToSubmitter(
+              transactionEntry,
+              value.getContractState) =>
+            value.getContractState.getContractKey -> Conversions.stateKeyToContractId(key)
+        }
 
-        engine
+        tt.foreach(_.startStep("engine validate"))
+        val validateResult = engine
           .validate(
             transactionEntry.submitter,
             SubmittedTransaction(transactionEntry.transaction),
@@ -233,12 +233,29 @@ private[kvutils] class TransactionCommitter(
             commitContext.getParticipantId,
             transactionEntry.submissionTime,
             transactionEntry.submissionSeed,
+            tt
+          ).consume(
+            x => {
+              tt.foreach(_.startStep("lookup contract"))
+              val r = lookupContract(transactionEntry, commitContext.inputs)(x)
+              tt.foreach(_.startStep("engine validate"))
+              r
+            },
+            x => {
+              tt.foreach(_.startStep("lookup package"))
+              val r = lookupPackage(transactionEntry, commitContext.inputs)(x)
+              tt.foreach(_.startStep("engine validate"))
+              r
+            },
+            x => {
+              tt.foreach(_.startStep("lookup key"))
+              val r = lookupKey(commitContext.inputs, knownKeys)(x)
+              tt.foreach(_.startStep("engine validate"))
+              r
+            },
           )
-          .consume(
-            lookupContract(transactionEntry, commitContext.inputs),
-            lookupPackage(transactionEntry, commitContext.inputs),
-            lookupKey(commitContext.inputs, knownKeys),
-          )
+        tt.foreach(_.startStep("folding final"))
+        validateResult
           .fold(
             err =>
               reject[DamlTransactionEntrySummary](
@@ -247,15 +264,17 @@ private[kvutils] class TransactionCommitter(
             _ => StepContinue[DamlTransactionEntrySummary](transactionEntry)
           )
       })
-
+    }
   /** Validate the submission's conformance to the DAML model */
   private def blind: Step =
     (commitContext, transactionEntry) => {
+      t.foreach(_.startStep("blind"))
       val blindingInfo = Blinding.blind(transactionEntry.transaction)
       buildFinalResult(commitContext, transactionEntry, blindingInfo)
     }
 
   private def validateContractKeys: Step = (commitContext, transactionEntry) => {
+    t.foreach(_.startStep("validateContractKeys"))
     val damlState = commitContext.inputs
       .collect { case (k, Some(v)) => k -> v } ++ commitContext.getOutputs
     val startingKeys = damlState.collect {
@@ -340,6 +359,7 @@ private[kvutils] class TransactionCommitter(
 
   /** Check that all informee parties mentioned of a transaction are allocated. */
   private def checkInformeePartiesAllocation: Step = (commitContext, transactionEntry) => {
+    t.foreach(_.startStep("checkInformeePartiesAllocation"))
     def foldInformeeParties(tx: Tx.Transaction, init: Boolean)(
         f: (Boolean, String) => Boolean
     ): Boolean =

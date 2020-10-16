@@ -203,6 +203,7 @@ class Engine(val config: EngineConfig = EngineConfig.Stable) {
       participantId: Ref.ParticipantId,
       submissionTime: Time.Timestamp,
       submissionSeed: crypto.Hash,
+      t: Option[SeqTrack] = None
   ): Result[Unit] = {
     //reinterpret
     for {
@@ -215,6 +216,7 @@ class Engine(val config: EngineConfig = EngineConfig.Stable) {
         submissionSeed,
       )
       (rtx, _) = result
+      _ = t.foreach(_.startStep("validating result tx tree"))
       validationResult <- if (tx.transaction isReplayedBy rtx.transaction) {
         ResultDone.Unit
       } else {

@@ -3,15 +3,12 @@
 
 package com.daml.ledger.validator.preexecution
 
-import com.daml.ledger.participant.state.kvutils.DamlKvutils.{
-  DamlLogEntryId,
-  DamlStateKey,
-  DamlStateValue
-}
+import com.daml.ledger.participant.state.kvutils.DamlKvutils.{DamlLogEntryId, DamlStateKey, DamlStateValue}
 import com.daml.ledger.participant.state.kvutils.Fingerprint
 import com.daml.ledger.participant.state.kvutils.KeyValueCommitting.PreExecutionResult
 import com.daml.ledger.participant.state.v1.ParticipantId
 import com.daml.ledger.validator.LedgerStateOperations.Key
+import com.daml.lf.data.SeqTrack
 
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -31,5 +28,6 @@ trait PreExecutingCommitStrategy[WriteSet] {
       logEntryId: DamlLogEntryId,
       inputState: Map[DamlStateKey, Option[DamlStateValue]],
       preExecutionResult: PreExecutionResult,
+      t: Option[SeqTrack] = None
   )(implicit executionContext: ExecutionContext): Future[PreExecutionCommitResult[WriteSet]]
 }

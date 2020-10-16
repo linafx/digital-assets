@@ -22,6 +22,7 @@ import com.daml.lf.transaction.{TransactionCoder, TransactionOuterClass}
 import com.daml.lf.value.ValueOuterClass
 import com.daml.metrics.Metrics
 import org.slf4j.LoggerFactory
+import com.daml.lf.data.SeqTrack
 
 import scala.collection.JavaConverters._
 
@@ -110,8 +111,9 @@ class KeyValueCommitting private[daml] (
       submission: DamlSubmission,
       participantId: ParticipantId,
       inputState: DamlStateMap,
+      t: Option[SeqTrack] = None
   ): PreExecutionResult =
-    createCommitter(engine, defaultConfig, submission).runWithPreExecution(
+    createCommitter(engine, defaultConfig, submission, t).runWithPreExecution(
       submission,
       participantId,
       inputState,
@@ -121,6 +123,7 @@ class KeyValueCommitting private[daml] (
       engine: Engine,
       defaultConfig: Configuration,
       submission: DamlSubmission,
+      t: Option[SeqTrack] = None
   ): SubmissionExecutor =
     submission.getPayloadCase match {
       case DamlSubmission.PayloadCase.PACKAGE_UPLOAD_ENTRY =>
@@ -135,7 +138,7 @@ class KeyValueCommitting private[daml] (
         new ConfigCommitter(defaultConfig, maximumRecordTime, metrics)
 
       case DamlSubmission.PayloadCase.TRANSACTION_ENTRY =>
-        new TransactionCommitter(defaultConfig, engine, metrics, inStaticTimeMode)
+        new TransactionCommitter(defaultConfig, engine, metrics, inStaticTimeMode, t)
 
       case DamlSubmission.PayloadCase.PAYLOAD_NOT_SET =>
         throw Err.InvalidSubmission("DamlSubmission payload not set")

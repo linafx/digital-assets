@@ -13,6 +13,6 @@ final class StateSerializationStrategy(keyStrategy: StateKeySerializationStrateg
   def serializeState(state: Map[DamlStateKey, DamlStateValue]): SortedMap[Key, Value] =
     state.map {
       case (key, value) =>
-        (keyStrategy.serializeStateKey(key), Envelope.enclose(value))
+        (keyStrategy.serializeStateKey(key), Envelope.enclose(value/*, value.hasArchive */))
     }(breakOut)
 }
