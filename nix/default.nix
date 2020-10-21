@@ -137,10 +137,6 @@ in rec {
     sphinx-build      = sphinx;
     sphinx-quickstart = sphinx;
 
-    sphinx-autobuild = import ./tools/sphinx-autobuild/requirements.nix {
-      inherit pkgs;
-    };
-
     sphinx183 = bazel_dependencies.sphinx183-exts;
 
     convert = bazel_dependencies.imagemagick;
