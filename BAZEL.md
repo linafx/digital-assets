@@ -245,7 +245,7 @@ The first import of the project might fail due to a resolution error of the
 `bazel` binary. In order to solve this, configure the Bazel plugin settings
 with the location of the `bazel` binary, 
 by setting _Preferences_ → _Bazel Settings_ → _Bazel binary location_ 
-to `./dev-env/bin/bazel`.
+to `./dev-env/out/bazel/bin/bazel`.
 
 Now, re-trigger a sync of the workspace (IntelliJ Action: 
 _Sync project with BUILD files_). This process will take a while.
@@ -256,7 +256,7 @@ _Sync project with BUILD files_). This process will take a while.
 
 DAML downloads the version of the JDK it uses from Nix. A symlink will be
 created by the dev-env utilities (make sure you've set these up) in
-_dev-env/jdk_.
+_dev-env/out/jdk_.
 
 TO configure IntelliJ to use this JDK:
 
