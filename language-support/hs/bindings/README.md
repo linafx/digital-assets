@@ -47,13 +47,18 @@ Also, in the instructions below we export the `daml-ledger` package to `/tmp` wh
     git submodule update --init
     make
     make prefix=/usr/local/grpc install
+    
+## Install Nix
+
+Follow the instructions from the [Nix manual][].
+
+[Nix manual]: https://nixos.org/manual/nix/
 
 ## Clone daml repo, and export the daml-ledger package
 
     cd /tmp
     git clone https://github.com/digital-asset/daml.git
     cd daml
-    eval $(dev-env/bin/dade-assist)
     language-support/hs/bindings/export-package.sh /tmp
 
 ## Write a DAML Ledger App in Haskell (or copy one!), and build it
