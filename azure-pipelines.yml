@@ -118,7 +118,7 @@ jobs:
           is_release: variables.is_release
       - bash: |
           set -euo pipefail
-          eval "$(./dev-env/bin/dade-assist)"
+          source dev-env/load.sh
           bazel build //release:release
           ./bazel-bin/release/release --release-dir "$(mktemp -d)"
         condition: and(succeeded(), ne(variables['is_release'], 'true'))
@@ -543,7 +543,7 @@ jobs:
         var_name: bash_lib
     - bash: |
         set -euo pipefail
-        eval "$(./dev-env/bin/dade-assist)"
+        source dev-env/load.sh
 
         source $(bash_lib)
 
@@ -633,7 +633,7 @@ jobs:
           sudo mkdir -p /nix
           sudo chown $USER /nix
           curl -sSfL https://nixos.org/releases/nix/nix-2.3.3/install | bash
-          eval "$(dev-env/bin/dade-assist)"
+          source dev-env/load.sh
           GCS_KEY=$(mktemp)
           cleanup () {
               rm -f $GCS_KEY
@@ -718,7 +718,7 @@ jobs:
       - bash: |
           set -euo pipefail
 
-          eval "$(./dev-env/bin/dade-assist)"
+          source dev-env/load.sh
           source $(bash_lib)
 
           REPORT=$(mktemp)

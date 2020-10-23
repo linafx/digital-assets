@@ -4,7 +4,8 @@
 
 set -euo pipefail
 
-eval "$("$(dirname "$0")/dev-env/bin/dade-assist")"
+cd "$(dirname "${BASH_SOURCE[0]}")"
+source dev-env/load.sh
 
 execution_log_postfix=${1:-}
 
@@ -24,7 +25,7 @@ fi
 # Note that lsof returns a non-zero exit code if there is no match.
 SANDBOX_PID="$(lsof -ti tcp:6865 || true)"
 if [ -n "$SANDBOX_PID" ]; then
-    kill "$SANDBOX_PID"
+  kill "$SANDBOX_PID"
 fi
 
 # Bazel test only builds targets that are dependencies of a test suite so do a full build first.
@@ -41,7 +42,7 @@ export POSTGRESQL_PASSWORD=''
 function start_postgresql() {
   mkdir -p "$POSTGRESQL_DATA_DIR"
   bazel run -- @postgresql_dev_env//:initdb --auth=trust --encoding=UNICODE --locale=en_US.UTF-8 --username="$POSTGRESQL_USERNAME" "$POSTGRESQL_DATA_DIR"
-  eval "echo \"$(cat ci/postgresql.conf)\"" > "$POSTGRESQL_DATA_DIR/postgresql.conf"
+  eval "echo \"$(cat ci/postgresql.conf)\"" >"$POSTGRESQL_DATA_DIR/postgresql.conf"
   bazel run -- @postgresql_dev_env//:pg_ctl -w --pgdata="$POSTGRESQL_DATA_DIR" --log="$POSTGRESQL_LOG_FILE" start || {
     if [[ -f "$POSTGRESQL_LOG_FILE" ]]; then
       echo >&2 'PostgreSQL logs:'

@@ -7,7 +7,7 @@ parameters:
 steps:
 - bash: |
     set -euo pipefail
-    eval "$(dev-env/bin/dade assist)"
+    source dev-env/load.sh
     COMMIT_TITLE=$(git log --pretty=format:%s -n1)
     COMMIT_LINK="<https://dev.azure.com/digitalasset/daml/_build/results?buildId=$(Build.BuildId)|$COMMIT_TITLE>"
     if [ "$(Agent.JobStatus)" != "Succeeded" ]; then

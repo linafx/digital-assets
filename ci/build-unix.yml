@@ -45,7 +45,7 @@ steps:
 
   - bash: |
       set -euo pipefail
-      eval "$(./dev-env/bin/dade-assist)"
+      source dev-env/load.sh
 
       mkdir -p ~/.jfrog
       cleanup() {
@@ -71,7 +71,7 @@ steps:
                    eq('${{parameters.name}}', 'linux'))
   - bash: |
       set -euo pipefail
-      eval "$(./dev-env/bin/dade-assist)"
+      source dev-env/load.sh
 
       TARBALL=daml-sdk-${{parameters.release_tag}}-${{parameters.name}}.tar.gz
       cp bazel-bin/release/sdk-release-tarball.tar.gz $(Build.StagingDirectory)/$TARBALL

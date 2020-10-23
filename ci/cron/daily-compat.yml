@@ -89,7 +89,7 @@ jobs:
           var_name: bash_lib
       - bash: |
           set -euo pipefail
-          eval "$(dev-env/bin/dade assist)"
+          source dev-env/load.sh
           source $(bash_lib)
 
           BASELINE="cebc26af88efef4a7c81c62b0c14353f829b755e"
@@ -137,7 +137,7 @@ jobs:
           var_name: bash_lib
       - bash: |
           set -euo pipefail
-          eval "$(dev-env/bin/dade assist)"
+          source dev-env/load.sh
           source $(bash_lib)
 
           SCENARIOS="\
@@ -189,7 +189,7 @@ jobs:
           var_name: bash_lib
       - bash: |
           set -euo pipefail
-          eval "$(dev-env/bin/dade assist)"
+          source dev-env/load.sh
 
           bazel build //ci/cron:cron
           bazel-bin/ci/cron/cron check --bash-lib $(bash_lib) --gcp-creds "$GCRED"

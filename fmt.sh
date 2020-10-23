@@ -7,9 +7,8 @@
 # Usage: ./fmt.sh [--test]
 set -euo pipefail
 
-cd "$(dirname "$0")"
-# load the dev-env
-eval "$(dev-env/bin/dade-assist)"
+cd "$(dirname "${BASH_SOURCE[0]}")"
+source dev-env/load.sh
 
 ## Config ##
 is_test=
@@ -28,7 +27,7 @@ run() {
   echo "$ ${*%Q}"
   "$@"
   ret=$?
-  if [[ $is_test = 1 && $ret -gt 0 ]]; then
+  if [[ $is_test == 1 && $ret -gt 0 ]]; then
     log "command failed with return $ret"
     log
     log "run ./fmt.sh to fix the issue"
@@ -41,33 +40,33 @@ run() {
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    -h | --help)
-      cat <<USAGE
+  -h | --help)
+    cat <<USAGE
 Usage: ./fmt.sh [options]
 
 Options:
   -h, --help: shows this help
   --test:     only test for formatting changes, used by CI
 USAGE
-      exit
-      ;;
-    --test)
-      shift
-      is_test=1
-      scalafmt_args+=(--test)
-      dade_copyright_arg=check
-      buildifier_target=//:buildifier
-      ;;
-    --diff)
-      shift
-      merge_base="$(git merge-base origin/master HEAD)"
-      scalafmt_args+=('--mode=diff' "--diff-branch=${merge_base}")
-      hlint_diff=true
-      ;;
-    *)
-      echo "fmt.sh: unknown argument $1" >&2
-      exit 1
-      ;;
+    exit
+    ;;
+  --test)
+    shift
+    is_test=1
+    scalafmt_args+=(--test)
+    dade_copyright_arg=check
+    buildifier_target=//:buildifier
+    ;;
+  --diff)
+    shift
+    merge_base="$(git merge-base origin/master HEAD)"
+    scalafmt_args+=('--mode=diff' "--diff-branch=${merge_base}")
+    hlint_diff=true
+    ;;
+  *)
+    echo "fmt.sh: unknown argument $1" >&2
+    exit 1
+    ;;
   esac
 done
 
