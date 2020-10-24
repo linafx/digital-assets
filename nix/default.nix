@@ -207,7 +207,6 @@ in rec {
     semver = pkgs.callPackage ./tools/semver-tool {};
     osht = pkgs.callPackage ./tools/osht {};
     bats = pkgs.callPackage ./tools/bats {};
-    dade-test-sh = pkgs.callPackage ./tools/dade-test-sh {};
 
     undmg = pkgs.undmg;
     jfrog = pkgs.callPackage ./tools/jfrog-cli {};
@@ -288,12 +287,5 @@ in rec {
   environment = {
     ghc = bazel_dependencies.ghc;
     cabal2nix = tools.cabal2nix;
-  };
-
-  dade = {
-    tools-list = pkgs.runCommand "tools-list" {
-      ts = builtins.concatStringsSep " " (builtins.attrNames tools);
-      preferLocalBuild = true;
-    } "echo $ts > $out";
   };
 }
