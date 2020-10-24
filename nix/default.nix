@@ -182,6 +182,9 @@ in rec {
     wget = pkgs.wget;
     grpcurl = pkgs.grpcurl;
 
+    # Version control
+    git = pkgs.git;
+
     # String mangling tooling.
     base64 = pkgs.coreutils;
     bc = pkgs.bc;

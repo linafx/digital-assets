@@ -1,14 +1,15 @@
-#!/usr/bin/env bash
+#!/usr/bin/env nix-shell
+#!nix-shell --pure -i bash ./shell.nix
 # Copyright (c) 2020 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
+
 # Run formatters and linter, anything platform-independent and quick
 #
 # Usage: ./fmt.sh [--test]
+
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
-source dev-env/load.sh
 
 ## Config ##
 is_test=
@@ -105,7 +106,7 @@ echo "\
 "
 
 # Check for correct copyrights
-run dade-copyright-headers "$dade_copyright_arg" .
+run ./dev-env/bin/dade-copyright-headers "$dade_copyright_arg" .
 
 # We do test hlint via Bazel rules but we run it separately
 # to get linting failures early.
