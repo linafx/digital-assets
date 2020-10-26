@@ -818,9 +818,10 @@ convertExpr :: Env -> GHC.Expr Var -> ConvertM LF.Expr
 convertExpr env0 e = do
     (e, args) <- go env0 e []
     let appArg e (mbSrcSpan, arg) =
-            mkEApp (maybe id (ELocation . convRealSrcSpan) mbSrcSpan e) <$> convertArg env0 arg
+            mkEApp (maybe id (eLocation . convRealSrcSpan) mbSrcSpan e) <$> convertArg env0 arg
     foldlM appArg e args
   where
+    eLocation _ e = e
     -- NOTE(MH): We collect all arguments to functions in a list such that
     -- we have access to them when converting functions. This is necessary to
     -- inline fully applied record constructors instead of going through a
@@ -829,7 +830,7 @@ convertExpr env0 e = do
     go env (Tick (SourceNote srcSpan _) x) args = case args of
         [] -> do
             x <- convertExpr env x
-            pure (ELocation (convRealSrcSpan srcSpan) x, [])
+            pure (eLocation (convRealSrcSpan srcSpan) x, [])
         (_, arg):args -> go env x ((Just srcSpan, arg):args)
     go env (Tick _ x) args = go env x args
     go env (x `App` y) args

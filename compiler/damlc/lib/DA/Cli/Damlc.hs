@@ -153,6 +153,7 @@ cmdCompile numProcessors =
         <*> optionsParser numProcessors (EnableScenarioService False) optPackageName
         <*> optWriteIface
         <*> optional (strOption $ long "iface-dir" <> metavar "IFACE_DIR" <> help "Directory for interface files")
+        <*> detailOpt
 
     optWriteIface =
         fmap WriteInterface $
@@ -217,10 +218,12 @@ cmdInspect =
     <> fullDesc
   where
     jsonOpt = switch $ long "json" <> help "Output the raw Protocol Buffer structures as JSON"
-    detailOpt =
-        fmap (maybe DA.Pretty.prettyNormal DA.Pretty.PrettyLevel) $
-            optional $ option auto $ long "detail" <> metavar "LEVEL" <> help "Detail level of the pretty printed output (default: 0)"
     cmd = execInspect <$> inputFileOptWithExt ".dalf or .dar" <*> outputFileOpt <*> jsonOpt <*> detailOpt
+
+detailOpt :: Parser DA.Pretty.PrettyLevel
+detailOpt =
+    fmap (maybe DA.Pretty.prettyNormal DA.Pretty.PrettyLevel) $
+        optional $ option auto $ long "detail" <> metavar "LEVEL" <> help "Detail level of the pretty printed output (default: 0)"
 
 cmdVisual :: Mod CommandFields Command
 cmdVisual =
@@ -489,8 +492,8 @@ execIde telemetry (Debug debug) enableScenarioService options =
 -- | Whether we should write interface files during `damlc compile`.
 newtype WriteInterface = WriteInterface Bool
 
-execCompile :: FilePath -> FilePath -> Options -> WriteInterface -> Maybe FilePath -> Command
-execCompile inputFile outputFile opts (WriteInterface writeInterface) mbIfaceDir =
+execCompile :: FilePath -> FilePath -> Options -> WriteInterface -> Maybe FilePath -> DA.Pretty.PrettyLevel -> Command
+execCompile inputFile outputFile opts (WriteInterface writeInterface) mbIfaceDir lvl =
   Command Compile (Just projectOpts) effect
   where
     projectOpts = ProjectOpts Nothing (ProjectCheck "" False)
@@ -518,7 +521,8 @@ execCompile inputFile outputFile opts (WriteInterface writeInterface) mbIfaceDir
             dalf <- liftIO $ mbErr "ERROR: Compilation failed." mbDalf
             liftIO $ write dalf
     write bs
-      | outputFile == "-" = putStrLn $ render Colored $ DA.Pretty.pretty bs
+      | outputFile == "-" =
+        writeOutput outputFile $ render Colored $ DA.Pretty.pPrintPrec lvl 0 bs
       | otherwise = do
         createDirectoryIfMissing True $ takeDirectory outputFile
         B.writeFile outputFile $ Archive.encodeArchive bs
