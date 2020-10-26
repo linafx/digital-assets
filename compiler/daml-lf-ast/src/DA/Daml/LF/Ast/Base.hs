@@ -233,8 +233,8 @@ data BuiltinExpr
   -- Polymorphic functions
   | BEError                      -- :: ∀a. Text -> a
   | BEEqualGeneric               -- :: ∀t. t -> t -> Bool
-  | BELessGeneric                -- :: ∀t. t -> t -> Bool   
-  | BELessEqGeneric              -- :: ∀t. t -> t -> Bool   
+  | BELessGeneric                -- :: ∀t. t -> t -> Bool
+  | BELessEqGeneric              -- :: ∀t. t -> t -> Bool
   | BEGreaterGeneric             -- :: ∀t. t -> t -> Bool
   | BEGreaterEqGeneric           -- :: ∀t. t -> t -> Bool
   | BEEqual      !BuiltinType    -- :: t -> t -> Bool, where t is the builtin type
@@ -340,7 +340,7 @@ data BuiltinExpr
 
 
 data Binding = Binding
-  { bindingBinder :: !(ExprVarName, Type)
+  { bindingBinder :: !(ExprVarName, Maybe Type)
   , bindingBound  :: !Expr
   }
   deriving (Eq, Data, Generic, NFData, Ord, Show)

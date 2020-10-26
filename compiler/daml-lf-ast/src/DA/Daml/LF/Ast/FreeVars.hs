@@ -122,7 +122,7 @@ freeVarsStep = \case
 
     goBinding :: BindingF FreeVars -> FreeVars -> FreeVars
     goBinding (BindingF (x, t) e1) e2 =
-        freeVarsInType t <> e1 <> bindExprVar x e2
+        maybe mempty freeVarsInType t <> e1 <> bindExprVar x e2
 
     goUpdate :: UpdateF FreeVars -> FreeVars
     goUpdate = \case

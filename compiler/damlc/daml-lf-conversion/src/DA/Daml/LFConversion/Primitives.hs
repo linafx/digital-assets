@@ -18,7 +18,7 @@ convertPrim :: Version -> String -> Type -> Expr
 convertPrim _ "UPure" (a1 :-> TUpdate a2) | a1 == a2 =
     ETmLam (varV1, a1) $ EUpdate $ UPure a1 $ EVar varV1
 convertPrim _ "UBind" (t1@(TUpdate a1) :-> t2@(a2 :-> TUpdate b1) :-> TUpdate b2) | a1 == a2, b1 == b2 =
-    ETmLam (varV1, t1) $ ETmLam (varV2, t2) $ EUpdate $ UBind (Binding (varV3, a1) (EVar varV1)) (EVar varV2 `ETmApp` EVar varV3)
+    ETmLam (varV1, t1) $ ETmLam (varV2, t2) $ EUpdate $ UBind (Binding (varV3, Just a1) (EVar varV1)) (EVar varV2 `ETmApp` EVar varV3)
 convertPrim _ "UAbort" (TText :-> t@(TUpdate a)) =
     ETmLam (varV1, TText) $ EUpdate (UEmbedExpr a (EBuiltin BEError `ETyApp` t `ETmApp` EVar varV1))
 convertPrim _ "UGetTime" (TUpdate TTimestamp) =
@@ -28,7 +28,7 @@ convertPrim _ "UGetTime" (TUpdate TTimestamp) =
 convertPrim _ "SPure" (a1 :-> TScenario a2) | a1 == a2 =
     ETmLam (varV1, a1) $ EScenario $ SPure a1 $ EVar varV1
 convertPrim _ "SBind" (t1@(TScenario a1) :-> t2@(a2 :-> TScenario b1) :-> TScenario b2) | a1 == a2, b1 == b2 =
-    ETmLam (varV1, t1) $ ETmLam (varV2, t2) $ EScenario $ SBind (Binding (varV3, a1) (EVar varV1)) (EVar varV2 `ETmApp` EVar varV3)
+    ETmLam (varV1, t1) $ ETmLam (varV2, t2) $ EScenario $ SBind (Binding (varV3, Just a1) (EVar varV1)) (EVar varV2 `ETmApp` EVar varV3)
 convertPrim _ "SAbort" (TText :-> t@(TScenario a)) =
     ETmLam (varV1, TText) $ EScenario (SEmbedExpr a (EBuiltin BEError `ETyApp` t `ETmApp` EVar varV1))
 convertPrim _ "SCommit" (t1@TParty :-> t2@(TUpdate a1) :-> TScenario a2) | a1 == a2 =
@@ -304,7 +304,7 @@ convertPrim _ "UFetchByKey"
     | ty2 == TCon template =
     ETmLam (mkVar "key", key) $
     EUpdate $ UBind
-        (Binding (mkVar "res", TStruct
+        (Binding (mkVar "res", Just $ TStruct
             [ (FieldName "contractId", ty1)
             , (FieldName "contract", ty2)])
             (EUpdate $ UFetchByKey (RetrieveByKey template (EVar $ mkVar "key"))))

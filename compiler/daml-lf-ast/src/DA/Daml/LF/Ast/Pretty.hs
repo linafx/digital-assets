@@ -314,8 +314,12 @@ pPrintAndKind lvl prec (v, k)
   | otherwise = pPrintPrec lvl 0 v
 
 pPrintAndType :: Pretty a => PrettyLevel -> Rational -> (a, Type) -> Doc ann
-pPrintAndType lvl prec (x, t)
-  | levelHasTypes lvl = maybeParens (prec > precBinding) $
+pPrintAndType lvl prec (x, t) = pPrintAndMbType lvl prec (x, Just t)
+
+pPrintAndMbType :: Pretty a => PrettyLevel -> Rational -> (a, Maybe Type) -> Doc ann
+pPrintAndMbType lvl prec (x, mbT)
+  | Just t <- mbT
+  , levelHasTypes lvl = maybeParens (prec > precBinding) $
       pPrintPrec lvl 0 x <-> docHasType <-> type_ (pPrintPrec lvl 0 t)
   | otherwise = pPrintPrec lvl 0 x
 
@@ -339,7 +343,7 @@ instance Pretty CaseAlternative where
 
 instance Pretty Binding where
   pPrintPrec lvl _prec (Binding binder expr) =
-    hang (pPrintAndType lvl precBinding binder <-> "=") 2 (pPrintPrec lvl 0 expr)
+    hang (pPrintAndMbType lvl precBinding binder <-> "=") 2 (pPrintPrec lvl 0 expr)
 
 pPrintTyArg :: PrettyLevel -> Type -> Doc ann
 pPrintTyArg lvl t

@@ -473,7 +473,7 @@ simplifyExpr = fmap fst . cata go'
       -- NOTE(MH): This also works when `x` is free in `e2` since let-bindings
       -- are _not_ recursive.
       ETmAppF (stripLoc -> ETmLam (x, t) e1, s0) (e2, s2) ->
-        go world $ ELetF (BindingF (x, t) (e2, s2)) (e1, s1)
+        go world $ ELetF (BindingF (x, Just t) (e2, s2)) (e1, s1)
         where
           s1 = infoUnstepETmapp x s0
 

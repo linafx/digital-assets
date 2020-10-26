@@ -48,7 +48,7 @@ data ExprF expr
   | ETypeRepF !Type
   deriving (Foldable, Functor, Traversable)
 
-data BindingF expr = BindingF !(ExprVarName, Type) !expr
+data BindingF expr = BindingF !(ExprVarName, Maybe Type) !expr
   deriving (Foldable, Functor, Traversable)
 
 data UpdateF expr

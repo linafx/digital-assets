@@ -103,6 +103,12 @@ alphaType' env = \case
         TSynApp s2 ts2 -> s1 == s2 && onList (alphaType' env) ts1 ts2
         _ -> False
 
+alphaMbType' :: AlphaEnv -> Maybe Type -> Maybe Type -> Bool
+alphaMbType' _ Nothing Nothing = True
+alphaMbType' env (Just t1) (Just t2) = alphaType' env t1 t2
+alphaMbType' _ Nothing (Just _) = False
+alphaMbType' _ (Just _) Nothing = False
+
 alphaTypeConApp :: AlphaEnv -> TypeConApp -> TypeConApp -> Bool
 alphaTypeConApp env (TypeConApp c1 ts1) (TypeConApp c2 ts2) =
     c1 == c2 && onList (alphaType' env) ts1 ts2
@@ -215,7 +221,7 @@ alphaExpr' env = \case
 
 alphaBinding :: AlphaEnv -> Binding -> Binding -> (AlphaEnv -> Bool) -> Bool
 alphaBinding env (Binding (x1,t1) e1) (Binding (x2,t2) e2) k =
-    alphaType' env t1 t2 && alphaExpr' env e1 e2 && k (bindExprVar x1 x2 env)
+    alphaMbType' env t1 t2 && alphaExpr' env e1 e2 && k (bindExprVar x1 x2 env)
 
 alphaCase :: AlphaEnv -> CaseAlternative -> CaseAlternative -> Bool
 alphaCase env (CaseAlternative p1 e1) (CaseAlternative p2 e2) =

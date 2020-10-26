@@ -678,7 +678,7 @@ decodeCaseAlt LF1.CaseAlt{..} = do
 decodeBinding :: LF1.Binding -> Decode Binding
 decodeBinding (LF1.Binding mbBinder mbBound) =
   Binding
-    <$> mayDecode "bindingBinder" mbBinder decodeVarWithType
+    <$> mayDecode "bindingBinder" mbBinder decodeVarWithMbType
     <*> mayDecode "bindingBound" mbBound decodeExpr
 
 decodeTypeVarWithKind :: LF1.TypeVarWithKind -> Decode (TypeVarName, Kind)
@@ -692,6 +692,13 @@ decodeVarWithType LF1.VarWithType{..} =
   (,)
     <$> decodeName ExprVarName varWithTypeVar
     <*> mayDecode "varWithTypeType" varWithTypeType decodeType
+
+decodeVarWithMbType :: LF1.VarWithType -> Decode (ExprVarName, Maybe Type)
+decodeVarWithMbType LF1.VarWithType{..} =
+  (,)
+    <$> decodeName ExprVarName varWithTypeVar
+    <*> traverse decodeType varWithTypeType
+
 
 decodePrimLit :: LF1.PrimLit -> Decode BuiltinExpr
 decodePrimLit (LF1.PrimLit mbSum) = mayDecode "primLitSum" mbSum $ \case

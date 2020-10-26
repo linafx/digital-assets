@@ -440,9 +440,12 @@ typeOfCase scrut (CaseAlternative patn0 rhs0:alts) = do
   pure rhsType
 
 typeOfLet :: MonadGamma m => Binding -> Expr -> m Type
-typeOfLet (Binding (var, typ0) expr) body = do
-  checkType typ0 KStar
-  typ1 <- checkExpr' expr typ0
+typeOfLet (Binding (var, mbTyp) expr) body = do
+  typ1 <- case mbTyp of
+    Just typ0 -> do
+      checkType typ0 KStar
+      checkExpr' expr typ0
+    Nothing -> typeOf expr
   introExprVar var typ1 (typeOf body)
 
 checkCons :: MonadGamma m => Type -> Expr -> Expr -> m ()
@@ -462,10 +465,14 @@ checkPure typ expr = do
   checkExpr expr typ
 
 typeOfBind :: MonadGamma m => Binding -> Expr -> m Type
-typeOfBind (Binding (var, typ) bound) body = do
-  checkType typ KStar
-  checkExpr bound (TUpdate typ)
-  bodyType <- introExprVar var typ (typeOf body)
+typeOfBind (Binding (var, mbTyp) bound) body = do
+  updTyp1 <- case mbTyp of
+    Just typ0 -> do
+      checkType typ0 KStar
+      checkExpr' bound (TUpdate typ0)
+    Nothing -> typeOf bound
+  typ1 <- match _TUpdate (EExpectedUpdateType updTyp1) updTyp1
+  bodyType <- introExprVar var typ1 (typeOf body)
   _ :: Type <- match _TUpdate (EExpectedUpdateType bodyType) bodyType
   pure bodyType
 
@@ -532,10 +539,14 @@ typeOfUpdate = \case
 typeOfScenario :: MonadGamma m => Scenario -> m Type
 typeOfScenario = \case
   SPure typ expr -> checkPure typ expr $> TScenario typ
-  SBind (Binding (var, typ) bound) body -> do
-    checkType typ KStar
-    checkExpr bound (TScenario typ)
-    bodyType <- introExprVar var typ (typeOf body)
+  SBind (Binding (var, mbTyp) bound) body -> do
+    sceTyp1 <- case mbTyp of
+      Just typ0 -> do
+        checkType typ0 KStar
+        checkExpr' bound (TScenario typ0)
+      Nothing -> typeOf bound
+    typ1 <- match _TScenario (EExpectedScenarioType sceTyp1) sceTyp1
+    bodyType <- introExprVar var typ1 (typeOf body)
     _ :: Type <- match _TScenario (EExpectedScenarioType bodyType) bodyType
     pure bodyType
   SCommit typ party update -> do

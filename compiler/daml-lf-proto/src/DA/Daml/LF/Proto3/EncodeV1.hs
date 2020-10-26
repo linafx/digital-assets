@@ -244,9 +244,12 @@ encodeTypeVarsWithKinds =
     encodeList $ \(name, kind) -> P.TypeVarWithKind <$> encodeName unTypeVarName name <*> (Just <$> encodeKind kind)
 
 encodeExprVarWithType :: (ExprVarName, Type) -> Encode P.VarWithType
-encodeExprVarWithType (name, typ) = do
+encodeExprVarWithType (name, typ) = encodeExprVarWithMbType (name, Just typ)
+
+encodeExprVarWithMbType :: (ExprVarName, Maybe Type) -> Encode P.VarWithType
+encodeExprVarWithMbType (name, mbTyp) = do
     varWithTypeVar <- encodeName unExprVarName name
-    varWithTypeType <- encodeType typ
+    varWithTypeType <- traverse encodeType' mbTyp
     pure P.VarWithType{..}
 
 ------------------------------------------------------------------------
@@ -707,7 +710,7 @@ encodeScenario = fmap (P.Scenario . Just) . \case
 
 encodeBinding :: Binding -> Encode P.Binding
 encodeBinding (Binding binder bound) = do
-    bindingBinder <- Just <$> encodeExprVarWithType binder
+    bindingBinder <- Just <$> encodeExprVarWithMbType binder
     bindingBound <- encodeExpr bound
     pure P.Binding{..}
 

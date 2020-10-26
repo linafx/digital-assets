@@ -161,7 +161,7 @@ applySubstInExpr subst@Subst{..} = \case
         (map (applySubstInAlternative subst) alts)
     ELet (Binding (x, t) e1) e2 ->
         substWithBoundExprVar subst x $ \ subst' x' ->
-            ELet (Binding (x', applySubstInType subst t) (applySubstInExpr subst e1))
+            ELet (Binding (x', fmap (applySubstInType subst) t) (applySubstInExpr subst e1))
                 (applySubstInExpr subst' e2)
     ENil t -> ENil
         (applySubstInType subst t)
@@ -221,7 +221,7 @@ applySubstInUpdate subst = \case
         (applySubstInExpr subst e)
     UBind (Binding (x, t) e1) e2 ->
         substWithBoundExprVar subst x $ \ subst' x' ->
-            UBind (Binding (x', applySubstInType subst t) (applySubstInExpr subst e1))
+            UBind (Binding (x', fmap (applySubstInType subst) t) (applySubstInExpr subst e1))
                 (applySubstInExpr subst' e2)
     UCreate templateName e -> UCreate
         templateName
@@ -258,7 +258,7 @@ applySubstInScenario subst = \case
         (applySubstInExpr subst e)
     SBind (Binding (x,t) e1) e2 ->
         substWithBoundExprVar subst x $ \ subst' x' ->
-            SBind (Binding (x', applySubstInType subst t) (applySubstInExpr subst e1))
+            SBind (Binding (x', fmap (applySubstInType subst) t) (applySubstInExpr subst e1))
                 (applySubstInExpr subst' e2)
     SCommit t e1 e2 -> SCommit
         (applySubstInType subst t)

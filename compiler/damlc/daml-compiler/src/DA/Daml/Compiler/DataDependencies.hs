@@ -1052,7 +1052,7 @@ refsFromDFunBody = \case
     LF.ETyApp a b -> refsFromDFunBody a <> refsFromType b
     LF.ETmApp a b -> refsFromDFunBody a <> refsFromDFunBody b
     LF.EVal val -> pure (RValue val)
-    LF.ELet (LF.Binding (_, ty) a) b -> refsFromType ty <> refsFromDFunBody a <> refsFromDFunBody b
+    LF.ELet (LF.Binding (_, ty) a) b -> maybe DL.empty refsFromType ty <> refsFromDFunBody a <> refsFromDFunBody b
     LF.EBuiltin _ -> mempty
     LF.EVar _ -> mempty
     t -> error ("Unhandled expression type in dictionary function body: " <> show t)
