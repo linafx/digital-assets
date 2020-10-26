@@ -106,6 +106,7 @@ data Options = Options
   -- ^ Whether we should enable the of interest rule that automatically compiles all
   -- modules to DALFs or not. This is required in the IDE but we can disable it
   -- in other cases, e.g., daml-docs.
+  , optSimplify2 :: Bool
   } deriving Show
 
 newtype IncrementalBuild = IncrementalBuild { getIncrementalBuild :: Bool }
@@ -193,6 +194,7 @@ defaultOptions mbVersion =
         , optIncrementalBuild = IncrementalBuild False
         , optIgnorePackageMetadata = IgnorePackageMetadata False
         , optEnableOfInterestRule = True
+        , optSimplify2 = False
         }
 
 getBaseDir :: IO FilePath

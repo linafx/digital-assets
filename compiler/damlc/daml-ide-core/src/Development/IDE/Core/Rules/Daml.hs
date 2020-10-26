@@ -93,6 +93,7 @@ import qualified DA.Daml.LF.PrettyScenario as LF
 import qualified DA.Daml.LF.Proto3.Archive as Archive
 import qualified DA.Daml.LF.ScenarioServiceClient as SS
 import qualified DA.Daml.LF.Simplifier as LF
+import qualified DA.Daml.LF.Simplifier2 as LF2
 import qualified DA.Daml.LF.TypeChecker as LF
 import qualified DA.Pretty as Pretty
 import SdkVersion (damlStdlib)
@@ -242,8 +243,8 @@ priorityGenerateDalf = priorityGenerateCore
 
 -- Generates the DALF for a module without adding serializability information
 -- or type checking it.
-generateRawDalfRule :: Rules ()
-generateRawDalfRule =
+generateRawDalfRule :: Options -> Rules ()
+generateRawDalfRule opts =
     define $ \GenerateRawDalf file -> do
         lfVersion <- getDamlLfVersion
         (coreDiags, mbCore) <- generateCore (RunSimplifier False) file
@@ -264,7 +265,8 @@ generateRawDalfRule =
                             WhnfPackage pkg <- use_ GeneratePackageDeps file
                             pkgs <- getExternalPackages file
                             let world = LF.initWorldSelf pkgs pkg
-                            return ([], Just $ LF.simplifyModule world lfVersion v)
+                            let simplifyModule = if optSimplify2 opts then LF2.simplifyModule else LF.simplifyModule
+                            return ([], Just $ simplifyModule world lfVersion v)
 
 getExternalPackages :: NormalizedFilePath -> Action [LF.ExternalPackage]
 getExternalPackages file = do
@@ -1213,7 +1215,7 @@ modIsInternal m = moduleNameString (moduleName m) `elem` internalModules
 
 damlRule :: Options -> Rules ()
 damlRule opts = do
-    generateRawDalfRule
+    generateRawDalfRule opts
     generateDalfRule
     generateSerializedDalfRule opts
     readSerializedDalfRule

@@ -275,9 +275,14 @@ optionsParser numProcessors enableScenarioService parsePkgName = do
     let optEnableOfInterestRule = True
     optCppPath <- optCppPath
     optEnableScripts <- enableScriptsOpt
+    optSimplify2 <- simplify2Opt
 
     return Options{..}
   where
+    simplify2Opt :: Parser Bool
+    simplify2Opt =
+      flag False True (long "simplify2" <> internal)
+
     optImportPath :: Parser [FilePath]
     optImportPath =
         many $
