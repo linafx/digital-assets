@@ -165,6 +165,7 @@ in rec {
     # Build tools
 
     bazel = pkgs.writeScriptBin "bazel" (''
+      #!/usr/bin/env bash
       # Set the JAVA_HOME to our JDK
       export JAVA_HOME=${jdk.home}
       export GIT_SSL_CAINFO="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
