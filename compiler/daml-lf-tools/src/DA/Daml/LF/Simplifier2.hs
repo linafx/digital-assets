@@ -1,10 +1,13 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternSynonyms #-}
 module DA.Daml.LF.Simplifier2 (
     simplifyModule
 ) where
 
+import Control.Lens
 import Control.Monad.State.Strict
 import DA.Daml.LF.Ast
+import qualified  DA.Daml.LF.Ast.Subst as Subst
 import Data.Bifunctor
 import Data.Functor.Foldable
 import Data.Map.Strict (Map)
@@ -35,7 +38,7 @@ freshTmVar = FreshM $ do
 simplifyModule :: World -> Version -> Module -> Module
 simplifyModule world _version m = runFreshM $ do
     let worldForAnf = extendWorldSelf m world
-    dsAnf <- NM.traverse (onBody anfExpr worldForAnf) (moduleValues m)
+    dsAnf <- NM.traverse (onBody (anfExpr Map.empty) worldForAnf) (moduleValues m)
     m <- pure m{moduleValues = dsAnf}
     let worldForInline = extendWorldSelf m world
     dsInline <- NM.traverse (onBody inlineExpr worldForInline) (moduleValues m)
@@ -79,6 +82,14 @@ inline env e0 = case e0 of
             -> ELet b <$> inline (iIntroLambda x (n, dvalBody d) env) e2
         ETyLam{} -> handleLetLam b e2
         ETmLam{} -> handleLetLam b e2
+        EApp{} -> case handleApp e1 of
+            Just e1' -> do
+                let fvs = Map.map fst (iLambdas env) `Map.union` Map.fromSet (const 0) (iFreeVars env)
+                -- TODO(MH): We don't need a full ANF transformation here but
+                -- only the lifting of the outermost lets and the alpha renaming.
+                e0' <- anfExpr fvs (iWorld env) (ELet (Binding (x, t) e1') e2)
+                inline env e0'
+            Nothing -> ELet b <$> inline (iIntroTmVar x env) e2
         _ -> ELet <$> (Binding (x, t) <$> inline env e1) <*> inline (iIntroTmVar x env) e2
     ETmLam (x, t) e1 -> ETmLam (x, t) <$> inline (iIntroTmVar x env) e1
     ETyLam (t, k) e1 -> ETyLam (t, k) <$> inline env e1
@@ -86,23 +97,37 @@ inline env e0 = case e0 of
         let handleAlt (CaseAlternative p e2) =
                 CaseAlternative p <$> inline (iIntroTmVars (fvPattern p) env) e2
         ECase <$> inline env e1 <*> traverse handleAlt as
-    ETmApp{} -> handleApp
-    ETyApp{} -> handleApp
+    EApp{}
+        | Just e0' <- handleApp e0 -> do
+            let fvs = Map.map fst (iLambdas env) `Map.union` Map.fromSet (const 0) (iFreeVars env)
+            -- TODO(MH): We don't need a full ANF transformation here but
+            -- only the alpha renaming.
+            e0'' <- anfExpr fvs (iWorld env) e0'
+            inline env e0''
     _ -> pure e0
   where
     handleLetLam (Binding (x, t) e1) e2 = do
         e1' <- inline env e1
         let n = syntacticArity e1'
         ELet (Binding (x, t) e1') <$> inline (iIntroLambda x (n, e1') env) e2
-    handleApp = do
-        let (f, as) = takeEApps e0
+    handleApp e0 =
+        let (f, as) = takeEApps e0 in
         case f of
             EVar x
                 | Just (n, e1) <- Map.lookup x (iLambdas env)
                 , n == length as -- TODO(MH): Check that we never have more than `n` args.
-                -> pure (mkEApps e1 as)
-            _ -> pure e0
-
+                -> Just (apply e1 as)
+            _ -> Nothing
+    apply :: Expr -> [Arg] -> Expr
+    apply e0 as = case as of
+        [] -> e0
+        TmArg e1:as -> case e0 of
+            ETmLam (x, t) e2 -> ELet (Binding (x, Just t) e1) (apply e2 as)
+            _ -> error $ "type or arity error: applying expr " ++ show e1 ++ " to " ++ show e0
+        TyArg t1:as -> case e0 of
+            -- TODO(MH): Repeated substitution is not efficient.
+            ETyLam (v, _) e1 -> apply (Subst.applySubstInExpr (Subst.typeSubst v t1) e1) as
+            _ -> error $ "type or arity error: applying type " ++ show t1 ++ " to " ++ show e0
 
 iIntroTmVar :: ExprVarName -> InlineEnv -> InlineEnv
 iIntroTmVar x env = env{iFreeVars = Set.insert x (iFreeVars env)}
@@ -126,10 +151,10 @@ data AnfEnv = AnfEnv
     , world :: World
     }
 
-anfExpr :: World -> Expr -> FreshM Expr
-anfExpr world e =
+anfExpr :: Map ExprVarName Int -> World -> Expr -> FreshM Expr
+anfExpr fvs world e =
     let env0 = AnfEnv
-            { freeVars = Map.empty
+            { freeVars = fvs
             , renamings = Map.empty
             , world = world
             }
@@ -286,6 +311,11 @@ fvPattern p = case p of
     CPNone -> Set.empty
     CPSome x -> Set.singleton x
     CPDefault -> Set.empty
+
+pattern EApp :: Expr -> Arg -> Expr
+pattern EApp fun arg <- (matching _EApp -> Right (fun, arg))
+  where
+    EApp fun arg = mkEApp fun arg
 
 -- | Monadic version of mapAccumL
 mapAccumLM :: forall t m acc x y. (Traversable t, Monad m) =>
