@@ -26,8 +26,8 @@ import com.daml.ledger.client.services.identity.LedgerIdentityClient
 import com.daml.ledger.client.services.pkg.PackageClient
 import com.daml.ledger.client.services.transactions.TransactionClient
 import io.grpc.netty.NettyChannelBuilder
-import io.grpc.stub.AbstractStub
-import io.grpc.{Channel, ManagedChannel}
+import io.grpc.stub.{AbstractStub, MetadataUtils}
+import io.grpc.{Channel, ManagedChannel, Metadata}
 
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -94,8 +94,11 @@ object LedgerClient {
     }
   }
 
-  private[client] def stub[A <: AbstractStub[A]](stub: A, token: Option[String]): A =
-    token.fold(stub)(LedgerCallCredentials.authenticatingStub(stub, _))
+  private[client] def stub[A <: AbstractStub[A]](stub: A, token: Option[String], metadata: Metadata = new Metadata()): A = {
+    // Setting metadata first, ensures that the token takes precedence
+    val metadataStub = MetadataUtils.attachHeaders(stub, metadata)
+    token.fold(metadataStub)(LedgerCallCredentials.authenticatingStub(metadataStub, _))
+  }
 
   /**
     * A convenient shortcut to build a [[LedgerClient]], use [[fromBuilder]] for a more
