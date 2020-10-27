@@ -15,36 +15,47 @@ import qualified Data.NameMap as NM
 import qualified Data.Set as Set
 import qualified Data.Text.Extended as T
 
+data FreshState = FreshState
+    { tmVarCounter :: Int
+    }
+
+newtype FreshM a = FreshM{unFreshM :: State FreshState a}
+    deriving (Functor, Applicative, Monad)
+
+runFreshM :: FreshM a -> a
+runFreshM act = evalState (unFreshM act) FreshState
+    { tmVarCounter = 0
+    }
+
+freshTmVar :: FreshM ExprVarName
+freshTmVar = FreshM $ do
+    n <- state (\st -> let k = tmVarCounter st + 1 in (k, st{tmVarCounter = k}))
+    pure (ExprVarName ("$v" <> T.show n))
+
+simplifyModule :: World -> Version -> Module -> Module
+simplifyModule world _version m = runFreshM $ do
+    let worldForAnf = extendWorldSelf m world
+    dsAnf <- NM.traverse (onBody anfExpr worldForAnf) (moduleValues m)
+    let mAnf = m{moduleValues = dsAnf}
+    pure mAnf
+  where
+    onBody :: (World -> Expr -> FreshM Expr) -> World -> DefValue -> FreshM DefValue
+    onBody f world d = do
+        e <- f world (dvalBody d)
+        pure d{dvalBody = e}
+
+------------------------------------------------------------
+-- ANF TRANSFORMATION
+------------------------------------------------------------
+
 data AnfEnv = AnfEnv
     { freeVars :: Map ExprVarName Int -- arity of the free variable
     , renamings :: Map ExprVarName ExprVarName
     , world :: World
     }
 
-data FreshState = FreshState
-    { tmVarCounter :: Int
-    }
-
-type FreshM = State FreshState
-
-freshTmVar :: FreshM ExprVarName
-freshTmVar = do
-    n <- state (\st -> let k = tmVarCounter st + 1 in (k, st{tmVarCounter = k}))
-    pure (ExprVarName ("$v" <> T.show n))
-
-simplifyModule :: World -> Version -> Module -> Module
-simplifyModule world version m = runFreshM $ do
-    let world' = extendWorldSelf m world
-    ds <- NM.traverse (simplifyDefValue world' version) (moduleValues m)
-    pure m{moduleValues = ds}
-
-simplifyDefValue :: World -> Version -> DefValue -> FreshM DefValue
-simplifyDefValue world version d = do
-    e <- simplifyExpr world version (dvalBody d)
-    pure d{dvalBody = e}
-
-simplifyExpr :: World -> Version -> Expr -> FreshM Expr
-simplifyExpr world _ e =
+anfExpr :: World -> Expr -> FreshM Expr
+anfExpr world e =
     let env0 = AnfEnv
             { freeVars = Map.empty
             , renamings = Map.empty
@@ -52,12 +63,6 @@ simplifyExpr world _ e =
             }
     in
     fst <$> anf env0 e
-
-
-runFreshM :: FreshM a -> a
-runFreshM act = evalState act FreshState
-    { tmVarCounter = 0
-    }
 
 anf :: AnfEnv -> Expr -> FreshM (Expr, Int)
 anf env e0 = do
@@ -184,6 +189,10 @@ isAtomic e = case e of
     ENil{} -> True
     ENone{} -> True
     _ -> False
+
+------------------------------------------------------------
+-- UTILITIES
+------------------------------------------------------------
 
 arity :: Expr -> Int
 arity e0 = case e0 of
