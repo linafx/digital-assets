@@ -36,13 +36,85 @@ simplifyModule :: World -> Version -> Module -> Module
 simplifyModule world _version m = runFreshM $ do
     let worldForAnf = extendWorldSelf m world
     dsAnf <- NM.traverse (onBody anfExpr worldForAnf) (moduleValues m)
-    let mAnf = m{moduleValues = dsAnf}
-    pure mAnf
+    m <- pure m{moduleValues = dsAnf}
+    let worldForInline = extendWorldSelf m world
+    dsInline <- NM.traverse (onBody inlineExpr worldForInline) (moduleValues m)
+    m <- pure m{moduleValues = dsInline}
+    pure m
   where
     onBody :: (World -> Expr -> FreshM Expr) -> World -> DefValue -> FreshM DefValue
     onBody f world d = do
         e <- f world (dvalBody d)
         pure d{dvalBody = e}
+
+------------------------------------------------------------
+-- INLINER
+------------------------------------------------------------
+
+data InlineEnv = InlineEnv
+    { iFreeVars :: Set ExprVarName
+    , iLambdas :: Map ExprVarName (Int, Expr) -- this is a subset of iFreeVars
+    , iWorld :: World
+    }
+
+inlineExpr :: World -> Expr -> FreshM Expr
+inlineExpr world e = do
+    let env0 = InlineEnv
+            { iFreeVars = Set.empty
+            , iLambdas = Map.empty
+            , iWorld = world
+            }
+    inline env0 e
+
+inline :: InlineEnv -> Expr -> FreshM Expr
+inline env e0 = case e0 of
+    ELet b@(Binding (x, t) e1) e2 -> case e1 of
+        EVar y
+            | Just lam <- Map.lookup y (iLambdas env)
+            -> ELet b <$> inline (iIntroLambda x lam env) e2
+        EVal q
+            | Right d <- lookupValue q (iWorld env)
+            , let n = syntacticArity (dvalBody d)
+            , n > 0
+            -> ELet b <$> inline (iIntroLambda x (n, dvalBody d) env) e2
+        ETyLam{} -> handleLetLam b e2
+        ETmLam{} -> handleLetLam b e2
+        _ -> ELet <$> (Binding (x, t) <$> inline env e1) <*> inline (iIntroTmVar x env) e2
+    ETmLam (x, t) e1 -> ETmLam (x, t) <$> inline (iIntroTmVar x env) e1
+    ETyLam (t, k) e1 -> ETyLam (t, k) <$> inline env e1
+    ECase e1 as -> do
+        let handleAlt (CaseAlternative p e2) =
+                CaseAlternative p <$> inline (iIntroTmVars (fvPattern p) env) e2
+        ECase <$> inline env e1 <*> traverse handleAlt as
+    ETmApp{} -> handleApp
+    ETyApp{} -> handleApp
+    _ -> pure e0
+  where
+    handleLetLam (Binding (x, t) e1) e2 = do
+        e1' <- inline env e1
+        let n = syntacticArity e1'
+        ELet (Binding (x, t) e1') <$> inline (iIntroLambda x (n, e1') env) e2
+    handleApp = do
+        let (f, as) = takeEApps e0
+        case f of
+            EVar x
+                | Just (n, e1) <- Map.lookup x (iLambdas env)
+                , n == length as -- TODO(MH): Check that we never have more than `n` args.
+                -> pure (mkEApps e1 as)
+            _ -> pure e0
+
+
+iIntroTmVar :: ExprVarName -> InlineEnv -> InlineEnv
+iIntroTmVar x env = env{iFreeVars = Set.insert x (iFreeVars env)}
+
+iIntroTmVars :: Set ExprVarName -> InlineEnv -> InlineEnv
+iIntroTmVars xs env = env{iFreeVars = xs `Set.union` iFreeVars env}
+
+iIntroLambda :: ExprVarName -> (Int, Expr) -> InlineEnv -> InlineEnv
+iIntroLambda x lam env = env
+    { iFreeVars = Set.insert x (iFreeVars env)
+    , iLambdas = Map.insert x lam (iLambdas env)
+    }
 
 ------------------------------------------------------------
 -- ANF TRANSFORMATION
@@ -78,9 +150,10 @@ anf' env e = case e of
     EVal q -> do
         let n = case lookupValue q (world env) of
                 Left _ -> 0
-                Right d -> arity (dvalBody d)
+                Right d -> runtimeArity (dvalBody d)
         pure ([], e, n)
     ETmLam (x, t) e0 -> do
+        -- FIXME(MH): Rename `x` if it is bound already.
         (e1, n) <- anf (introVar x 0 env) e0
         pure ([], ETmLam (x, t) e1, n+1)
     ETyLam (t, k) e0 -> do
@@ -98,17 +171,7 @@ anf' env e = case e of
         pure (bs1 ++ [Binding (x', t) e1'] ++ bs2, e2', 0)
     ECase e0 as0 -> do
         anfAtomic env e0 $ \_ bs e1 _ -> do
-            let fvPat p = case p of
-                    CPVariant _ _ x -> Set.singleton x
-                    CPEnum _ _ -> Set.empty
-                    CPUnit -> Set.empty
-                    CPBool _ -> Set.empty
-                    CPNil -> Set.empty
-                    CPCons x y -> Set.fromList [x, y]
-                    CPNone -> Set.empty
-                    CPSome x -> Set.singleton x
-                    CPDefault -> Set.empty
-            let anfAlt (CaseAlternative p e) = first (CaseAlternative p) <$> anf (introVars0 (fvPat p) env) e
+            let anfAlt (CaseAlternative p e) = first (CaseAlternative p) <$> anf (introVars0 (fvPattern p) env) e
             (as1, ns) <- unzip <$> traverse anfAlt as0
             pure (bs, ECase e1 as1, if null ns then 0 else minimum ns)
     ETyApp{} -> handleApp
@@ -194,21 +257,35 @@ isAtomic e = case e of
 -- UTILITIES
 ------------------------------------------------------------
 
-arity :: Expr -> Int
-arity e0 = case e0 of
-    ETyLam{} -> countLams e0
-    ETmLam{} -> countLams e0
-    ELet _ e1 -> arity e1
-    ELocation _ e1 -> arity e1
+-- | Lower bound on the arity of the expression once it has been evaluated.
+runtimeArity :: Expr -> Int
+runtimeArity e0 = case e0 of
+    ETyLam{} -> syntacticArity e0
+    ETmLam{} -> syntacticArity e0
+    ELet _ e1 -> runtimeArity e1
+    ELocation _ e1 -> runtimeArity e1
     -- TODO(MH): Take partially applied top-level values into account
     _ -> 0
 
-countLams :: Expr -> Int
-countLams e0 = case e0 of
-    ETmLam _ e1 -> countLams e1 + 1
-    ETyLam _ e1 -> countLams e1 + 1
-    ELocation _ e1 -> countLams e1
+-- | Number of leading lambdas of the expression.
+syntacticArity :: Expr -> Int
+syntacticArity e0 = case e0 of
+    ETmLam _ e1 -> syntacticArity e1 + 1
+    ETyLam _ e1 -> syntacticArity e1 + 1
+    ELocation _ e1 -> syntacticArity e1
     _ -> 0
+
+fvPattern :: CasePattern -> Set ExprVarName
+fvPattern p = case p of
+    CPVariant _ _ x -> Set.singleton x
+    CPEnum _ _ -> Set.empty
+    CPUnit -> Set.empty
+    CPBool _ -> Set.empty
+    CPNil -> Set.empty
+    CPCons x y -> Set.fromList [x, y]
+    CPNone -> Set.empty
+    CPSome x -> Set.singleton x
+    CPDefault -> Set.empty
 
 -- | Monadic version of mapAccumL
 mapAccumLM :: forall t m acc x y. (Traversable t, Monad m) =>
