@@ -177,26 +177,21 @@ anf' env e = case e of
                 Left _ -> 0
                 Right d -> runtimeArity (dvalBody d)
         pure ([], e, n)
-    ETmLam (x, t) e0 -> do
-        -- FIXME(MH): Rename `x` if it is bound already.
-        (e1, n) <- anf (aIntroTmVar x 0 env) e0
+    ETmLam (x, t) e0 -> aIntroTmVar env x 0 $ \env x -> do
+        (e1, n) <- anf env e0
         pure ([], ETmLam (x, t) e1, n+1)
     ETyLam (t, k) e0 -> do
         (e1, n) <- anf env e0
         pure ([], ETyLam (t, k) e1, n)
     ELet (Binding (x, t) e1) e2 -> do
         (bs1, e1', n) <- anf' env e1
-        (x', env') <- if x `Map.member` aBoundVars env
-            then do
-                x' <- freshTmVar
-                pure (x', aIntroRenaming x x' (aIntroTmVar x' n env))
-            else
-                pure (x, aIntroTmVar x n env)
-        (bs2, e2', _) <- anf' env' e2
-        pure (bs1 ++ [Binding (x', t) e1'] ++ bs2, e2', 0)
+        aIntroTmVar env x n $ \env x -> do
+            (bs2, e2', _) <- anf' env e2
+            pure (bs1 ++ [Binding (x, t) e1'] ++ bs2, e2', 0)
     ECase e0 as0 -> do
         anfAtomic env e0 $ \_ bs e1 _ -> do
-            let anfAlt (CaseAlternative p e) = first (CaseAlternative p) <$> anf (aIntroTmVars0 (patternVars p) env) e
+            let anfAlt (CaseAlternative p e) =
+                    aIntroPattern env p $ \env p -> first (CaseAlternative p) <$> anf env e
             (as1, ns) <- unzip <$> traverse anfAlt as0
             pure (bs, ECase e1 as1, if null ns then 0 else minimum ns)
     ETyApp{} -> handleApp
@@ -235,8 +230,9 @@ anf' env e = case e of
                 pure (bs, e1, k - length as1)
             else do
                 x <- freshTmVar
-                (bs', e2, _) <- anf' (aIntroTmVar x 0 env) (mkEApps (EVar x) zs1)
-                pure (bs ++ [Binding (x, Nothing) e1] ++ bs', e2, 0)
+                aIntroTmVar env x 0 $ \env x -> do
+                    (bs', e2, _) <- anf' env (mkEApps (EVar x) zs1)
+                    pure (bs ++ [Binding (x, Nothing) e1] ++ bs', e2, 0)
 
 anfAtomic :: AnfEnv -> Expr -> (AnfEnv -> [Binding] -> Expr -> Int -> FreshM a) -> FreshM a
 anfAtomic env e0 cont = do
@@ -245,7 +241,8 @@ anfAtomic env e0 cont = do
         cont env bs e1 n
     else do
         x <- freshTmVar
-        cont (aIntroTmVar x n env) (bs ++ [Binding (x, Nothing) e1]) (EVar x) n
+        aIntroTmVar env x n $ \env x -> do
+        cont env (bs ++ [Binding (x, Nothing) e1]) (EVar x) n
 
 anfMany :: Traversable t => AnfEnv -> t Expr -> FreshM ([Binding], t Expr)
 anfMany env e0s = do
@@ -261,14 +258,30 @@ anfArgs env a0s = do
     (_, bsa1s) <- mapAccumLM step env a0s
     pure (concatMap fst bsa1s, fmap snd bsa1s)
 
-aIntroTmVar :: ExprVarName -> Int -> AnfEnv -> AnfEnv
-aIntroTmVar x n env = env{aBoundVars = Map.insert x n (aBoundVars env)}
+aIntroTmVar :: AnfEnv -> ExprVarName -> Int -> (AnfEnv -> ExprVarName -> FreshM a) -> FreshM a
+aIntroTmVar env x n cont
+    | x `Map.member` aBoundVars env = do
+        y <- freshTmVar
+        let env' = env
+                { aBoundVars = Map.insert y n (aBoundVars env)
+                , aRenamings = Map.insert x y (aRenamings env)
+                }
+        cont env' y
+    | otherwise = do
+        let env' = env{aBoundVars = Map.insert x n (aBoundVars env)}
+        cont env' x
 
-aIntroTmVars0 :: Set ExprVarName -> AnfEnv -> AnfEnv
-aIntroTmVars0 xs env = env{aBoundVars = Map.fromSet (const 0) xs `Map.union` aBoundVars env}
-
-aIntroRenaming :: ExprVarName -> ExprVarName -> AnfEnv -> AnfEnv
-aIntroRenaming x y env = env{aRenamings = Map.insert x y (aRenamings env)}
+aIntroPattern :: AnfEnv -> CasePattern -> (AnfEnv -> CasePattern -> FreshM a) -> FreshM a
+aIntroPattern env p cont = case p of
+    CPVariant t c x -> aIntroTmVar env x 0 $ \env x -> cont env (CPVariant t c x)
+    CPEnum{} -> cont env p
+    CPUnit{} -> cont env p
+    CPBool{} -> cont env p
+    CPNil -> cont env p
+    CPCons x y -> aIntroTmVar env x 0 $ \env x -> aIntroTmVar env y 0 $ \env y -> cont env (CPCons x y)
+    CPNone -> cont env p
+    CPSome x -> aIntroTmVar env x 0 $ \env x -> cont env (CPSome x)
+    CPDefault -> cont env p
 
 isAtomic :: Expr -> Bool
 isAtomic e = case e of
