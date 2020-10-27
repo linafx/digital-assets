@@ -55,15 +55,15 @@ simplifyModule world _version m = runFreshM $ do
 ------------------------------------------------------------
 
 data InlineEnv = InlineEnv
-    { iFreeVars :: Set ExprVarName
-    , iLambdas :: Map ExprVarName (Int, Expr) -- this is a subset of iFreeVars
+    { iBoundVars :: Set ExprVarName
+    , iLambdas :: Map ExprVarName (Int, Expr) -- this is a subset of iBoundVars
     , iWorld :: World
     }
 
 inlineExpr :: World -> Expr -> FreshM Expr
 inlineExpr world e = do
     let env0 = InlineEnv
-            { iFreeVars = Set.empty
+            { iBoundVars = Set.empty
             , iLambdas = Map.empty
             , iWorld = world
             }
@@ -84,10 +84,10 @@ inline env e0 = case e0 of
         ETmLam{} -> handleLetLam b e2
         EApp{} -> case handleApp e1 of
             Just e1' -> do
-                let fvs = Map.map fst (iLambdas env) `Map.union` Map.fromSet (const 0) (iFreeVars env)
+                let bvs = Map.map fst (iLambdas env) `Map.union` Map.fromSet (const 0) (iBoundVars env)
                 -- TODO(MH): We don't need a full ANF transformation here but
                 -- only the lifting of the outermost lets and the alpha renaming.
-                e0' <- anfExpr fvs (iWorld env) (ELet (Binding (x, t) e1') e2)
+                e0' <- anfExpr bvs (iWorld env) (ELet (Binding (x, t) e1') e2)
                 inline env e0'
             Nothing -> ELet b <$> inline (iIntroTmVar x env) e2
         _ -> ELet <$> (Binding (x, t) <$> inline env e1) <*> inline (iIntroTmVar x env) e2
@@ -95,14 +95,14 @@ inline env e0 = case e0 of
     ETyLam (t, k) e1 -> ETyLam (t, k) <$> inline env e1
     ECase e1 as -> do
         let handleAlt (CaseAlternative p e2) =
-                CaseAlternative p <$> inline (iIntroTmVars (fvPattern p) env) e2
+                CaseAlternative p <$> inline (iIntroTmVars (patternVars p) env) e2
         ECase <$> inline env e1 <*> traverse handleAlt as
     EApp{}
         | Just e0' <- handleApp e0 -> do
-            let fvs = Map.map fst (iLambdas env) `Map.union` Map.fromSet (const 0) (iFreeVars env)
+            let bvs = Map.map fst (iLambdas env) `Map.union` Map.fromSet (const 0) (iBoundVars env)
             -- TODO(MH): We don't need a full ANF transformation here but
             -- only the alpha renaming.
-            e0'' <- anfExpr fvs (iWorld env) e0'
+            e0'' <- anfExpr bvs (iWorld env) e0'
             inline env e0''
     _ -> pure e0
   where
@@ -130,14 +130,14 @@ inline env e0 = case e0 of
             _ -> error $ "type or arity error: applying type " ++ show t1 ++ " to " ++ show e0
 
 iIntroTmVar :: ExprVarName -> InlineEnv -> InlineEnv
-iIntroTmVar x env = env{iFreeVars = Set.insert x (iFreeVars env)}
+iIntroTmVar x env = env{iBoundVars = Set.insert x (iBoundVars env)}
 
 iIntroTmVars :: Set ExprVarName -> InlineEnv -> InlineEnv
-iIntroTmVars xs env = env{iFreeVars = xs `Set.union` iFreeVars env}
+iIntroTmVars xs env = env{iBoundVars = xs `Set.union` iBoundVars env}
 
 iIntroLambda :: ExprVarName -> (Int, Expr) -> InlineEnv -> InlineEnv
 iIntroLambda x lam env = env
-    { iFreeVars = Set.insert x (iFreeVars env)
+    { iBoundVars = Set.insert x (iBoundVars env)
     , iLambdas = Map.insert x lam (iLambdas env)
     }
 
@@ -146,17 +146,17 @@ iIntroLambda x lam env = env
 ------------------------------------------------------------
 
 data AnfEnv = AnfEnv
-    { freeVars :: Map ExprVarName Int -- arity of the free variable
-    , renamings :: Map ExprVarName ExprVarName
-    , world :: World
+    { aBoundVars :: Map ExprVarName Int -- arity of the free variable
+    , aRenamings :: Map ExprVarName ExprVarName
+    , aWorld :: World
     }
 
 anfExpr :: Map ExprVarName Int -> World -> Expr -> FreshM Expr
-anfExpr fvs world e =
+anfExpr bvs world e =
     let env0 = AnfEnv
-            { freeVars = fvs
-            , renamings = Map.empty
-            , world = world
+            { aBoundVars = bvs
+            , aRenamings = Map.empty
+            , aWorld = world
             }
     in
     fst <$> anf env0 e
@@ -169,34 +169,34 @@ anf env e0 = do
 anf' :: AnfEnv -> Expr -> FreshM ([Binding], Expr, Int)
 anf' env e = case e of
     EVar x ->
-        let x' = Map.findWithDefault x x (renamings env) in
-        let n = Map.findWithDefault 0 x' (freeVars env) in
+        let x' = Map.findWithDefault x x (aRenamings env) in
+        let n = Map.findWithDefault 0 x' (aBoundVars env) in
         pure ([], EVar x', n)
     EVal q -> do
-        let n = case lookupValue q (world env) of
+        let n = case lookupValue q (aWorld env) of
                 Left _ -> 0
                 Right d -> runtimeArity (dvalBody d)
         pure ([], e, n)
     ETmLam (x, t) e0 -> do
         -- FIXME(MH): Rename `x` if it is bound already.
-        (e1, n) <- anf (introVar x 0 env) e0
+        (e1, n) <- anf (aIntroTmVar x 0 env) e0
         pure ([], ETmLam (x, t) e1, n+1)
     ETyLam (t, k) e0 -> do
         (e1, n) <- anf env e0
         pure ([], ETyLam (t, k) e1, n)
     ELet (Binding (x, t) e1) e2 -> do
         (bs1, e1', n) <- anf' env e1
-        (x', env') <- if x `Map.member` freeVars env
+        (x', env') <- if x `Map.member` aBoundVars env
             then do
                 x' <- freshTmVar
-                pure (x', introRenaming x x' (introVar x' n env))
+                pure (x', aIntroRenaming x x' (aIntroTmVar x' n env))
             else
-                pure (x, introVar x n env)
+                pure (x, aIntroTmVar x n env)
         (bs2, e2', _) <- anf' env' e2
         pure (bs1 ++ [Binding (x', t) e1'] ++ bs2, e2', 0)
     ECase e0 as0 -> do
         anfAtomic env e0 $ \_ bs e1 _ -> do
-            let anfAlt (CaseAlternative p e) = first (CaseAlternative p) <$> anf (introVars0 (fvPattern p) env) e
+            let anfAlt (CaseAlternative p e) = first (CaseAlternative p) <$> anf (aIntroTmVars0 (patternVars p) env) e
             (as1, ns) <- unzip <$> traverse anfAlt as0
             pure (bs, ECase e1 as1, if null ns then 0 else minimum ns)
     ETyApp{} -> handleApp
@@ -235,7 +235,7 @@ anf' env e = case e of
                 pure (bs, e1, k - length as1)
             else do
                 x <- freshTmVar
-                (bs', e2, _) <- anf' (introVar x 0 env) (mkEApps (EVar x) zs1)
+                (bs', e2, _) <- anf' (aIntroTmVar x 0 env) (mkEApps (EVar x) zs1)
                 pure (bs ++ [Binding (x, Nothing) e1] ++ bs', e2, 0)
 
 anfAtomic :: AnfEnv -> Expr -> (AnfEnv -> [Binding] -> Expr -> Int -> FreshM a) -> FreshM a
@@ -245,7 +245,7 @@ anfAtomic env e0 cont = do
         cont env bs e1 n
     else do
         x <- freshTmVar
-        cont (introVar x n env) (bs ++ [Binding (x, Nothing) e1]) (EVar x) n
+        cont (aIntroTmVar x n env) (bs ++ [Binding (x, Nothing) e1]) (EVar x) n
 
 anfMany :: Traversable t => AnfEnv -> t Expr -> FreshM ([Binding], t Expr)
 anfMany env e0s = do
@@ -261,14 +261,14 @@ anfArgs env a0s = do
     (_, bsa1s) <- mapAccumLM step env a0s
     pure (concatMap fst bsa1s, fmap snd bsa1s)
 
-introVar :: ExprVarName -> Int -> AnfEnv -> AnfEnv
-introVar x n env = env{freeVars = Map.insert x n (freeVars env)}
+aIntroTmVar :: ExprVarName -> Int -> AnfEnv -> AnfEnv
+aIntroTmVar x n env = env{aBoundVars = Map.insert x n (aBoundVars env)}
 
-introVars0 :: Set ExprVarName -> AnfEnv -> AnfEnv
-introVars0 xs env = env{freeVars = Map.fromSet (const 0) xs `Map.union` freeVars env}
+aIntroTmVars0 :: Set ExprVarName -> AnfEnv -> AnfEnv
+aIntroTmVars0 xs env = env{aBoundVars = Map.fromSet (const 0) xs `Map.union` aBoundVars env}
 
-introRenaming :: ExprVarName -> ExprVarName -> AnfEnv -> AnfEnv
-introRenaming x y env = env{renamings = Map.insert x y (renamings env)}
+aIntroRenaming :: ExprVarName -> ExprVarName -> AnfEnv -> AnfEnv
+aIntroRenaming x y env = env{aRenamings = Map.insert x y (aRenamings env)}
 
 isAtomic :: Expr -> Bool
 isAtomic e = case e of
@@ -300,8 +300,8 @@ syntacticArity e0 = case e0 of
     ELocation _ e1 -> syntacticArity e1
     _ -> 0
 
-fvPattern :: CasePattern -> Set ExprVarName
-fvPattern p = case p of
+patternVars :: CasePattern -> Set ExprVarName
+patternVars p = case p of
     CPVariant _ _ x -> Set.singleton x
     CPEnum _ _ -> Set.empty
     CPUnit -> Set.empty
