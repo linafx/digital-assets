@@ -87,8 +87,8 @@ _ELets = rightSpine _ELet
 mkETmApps :: Expr -> [Expr] -> Expr
 mkETmApps = curry (review _ETmApps)
 
-takeETmApps :: Expr -> (Expr, [Expr])
-takeETmApps e = e ^. _ETmApps
+takeEApps :: Expr -> (Expr, [Arg])
+takeEApps e = e ^. _EApps
 
 mkETyApps :: Expr -> [Type] -> Expr
 mkETyApps = curry (review _ETyApps)

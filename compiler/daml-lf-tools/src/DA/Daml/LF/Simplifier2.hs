@@ -98,22 +98,8 @@ anf' env e = case e of
             let anfAlt (CaseAlternative p e) = first (CaseAlternative p) <$> anf (introVars0 (fvPat p) env) e
             (as1, ns) <- unzip <$> traverse anfAlt as0
             pure (bs, ECase e1 as1, if null ns then 0 else minimum ns)
-    ETyApp e0 t -> do
-        (bs, e1, n) <- anf' env e0
-        pure (bs, ETyApp e1 t, n)
-    ETmApp{} -> do
-        let (f0, as0) = takeETmApps e
-        anfAtomic env f0 $ \_ bsf f1 n -> do
-            let k = max 1 n -- we must consume at least one argument, otherwise we'll loop
-            let (as1, zs1) = splitAt k as0
-            (bsas, as2) <- anfMany env as1
-            let (bs, e1) = (bsf ++ bsas, mkETmApps f1 as2)
-            if null zs1 then
-                pure (bs, e1, k - length as1)
-            else do
-                x <- freshName
-                (bs', e2, _) <- anf' (introVar x 0 env) (mkETmApps (EVar x) zs1)
-                pure (bs ++ [Binding (x, Nothing) e1] ++ bs', e2, 0)
+    ETyApp{} -> handleApp
+    ETmApp{} -> handleApp
     EUpdate{} -> pure ([], e, 0)
     EScenario{} -> pure ([], e, 0)
     ELocation _ e' -> anf' env e'
@@ -137,6 +123,19 @@ anf' env e = case e of
     defaultAnf = do
         (bs, e') <- anfMany env (project e)
         pure (bs, embed e', 0)
+    handleApp = do
+        let (f0, as0) = takeEApps e
+        anfAtomic env f0 $ \_ bsf f1 n -> do
+            let k = max 1 n -- we must consume at least one argument, otherwise we'll loop
+            let (as1, zs1) = splitAt k as0
+            (bsas, as2) <- anfArgs env as1
+            let (bs, e1) = (bsf ++ bsas, mkEApps f1 as2)
+            if null zs1 then
+                pure (bs, e1, k - length as1)
+            else do
+                x <- freshName
+                (bs', e2, _) <- anf' (introVar x 0 env) (mkEApps (EVar x) zs1)
+                pure (bs ++ [Binding (x, Nothing) e1] ++ bs', e2, 0)
 
 anfAtomic :: AnfEnv -> Expr -> (AnfEnv -> [Binding] -> Expr -> Int -> AnfM a) -> AnfM a
 anfAtomic env e0 cont = do
@@ -149,9 +148,17 @@ anfAtomic env e0 cont = do
 
 anfMany :: Traversable t => AnfEnv -> t Expr -> AnfM ([Binding], t Expr)
 anfMany env e0s = do
-        let step env e0 = anfAtomic env e0 $ \env bs e1 _ -> pure (env, (bs, e1))
-        (_, bse1s) <- mapAccumLM step env e0s
-        pure (concatMap fst bse1s, fmap snd bse1s)
+    let step env e0 = anfAtomic env e0 $ \env bs e1 _ -> pure (env, (bs, e1))
+    (_, bse1s) <- mapAccumLM step env e0s
+    pure (concatMap fst bse1s, fmap snd bse1s)
+
+anfArgs :: AnfEnv -> [Arg] -> AnfM ([Binding], [Arg])
+anfArgs env a0s = do
+    let step env a0 = case a0 of
+            TmArg e0 -> anfAtomic env e0 $ \env bs e1 _ -> pure (env, (bs, TmArg e1))
+            TyArg{} -> pure (env, ([], a0))
+    (_, bsa1s) <- mapAccumLM step env a0s
+    pure (concatMap fst bsa1s, fmap snd bsa1s)
 
 introVar :: ExprVarName -> Int -> AnfEnv -> AnfEnv
 introVar x n env = env{freeVars = Map.insert x n (freeVars env)}
@@ -173,23 +180,22 @@ isAtomic e = case e of
     EBuiltin{} -> True
     ENil{} -> True
     ENone{} -> True
-    ETyApp e' _ -> isAtomic e'
     _ -> False
 
 arity :: Expr -> Int
 arity e0 = case e0 of
-    ETyLam _ e1 -> arity e1
-    ETmLam{} -> countTmLams e0
+    ETyLam{} -> countLams e0
+    ETmLam{} -> countLams e0
     ELet _ e1 -> arity e1
     ELocation _ e1 -> arity e1
     -- TODO(MH): Take partially applied top-level values into account
     _ -> 0
 
-countTmLams :: Expr -> Int
-countTmLams e0 = case e0 of
-    ETmLam _ e1 -> countTmLams e1 + 1
-    ETyLam _ e1 -> countTmLams e1
-    ELocation _ e1 -> countTmLams e1
+countLams :: Expr -> Int
+countLams e0 = case e0 of
+    ETmLam _ e1 -> countLams e1 + 1
+    ETyLam _ e1 -> countLams e1 + 1
+    ELocation _ e1 -> countLams e1
     _ -> 0
 
 -- | Monadic version of mapAccumL
