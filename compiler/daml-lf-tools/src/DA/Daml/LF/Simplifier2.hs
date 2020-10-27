@@ -21,21 +21,29 @@ data AnfEnv = AnfEnv
     , world :: World
     }
 
-data AnfState = AnfState
-    { freshVarCounter :: Int
+data FreshState = FreshState
+    { tmVarCounter :: Int
     }
 
-type AnfM = State AnfState
+type FreshM = State FreshState
+
+freshTmVar :: FreshM ExprVarName
+freshTmVar = do
+    n <- state (\st -> let k = tmVarCounter st + 1 in (k, st{tmVarCounter = k}))
+    pure (ExprVarName ("$v" <> T.show n))
 
 simplifyModule :: World -> Version -> Module -> Module
-simplifyModule world version m =
-    let world' = extendWorldSelf m world in
-    m{moduleValues = NM.map (simplifyDefValue world' version) (moduleValues m)}
+simplifyModule world version m = runFreshM $ do
+    let world' = extendWorldSelf m world
+    ds <- NM.traverse (simplifyDefValue world' version) (moduleValues m)
+    pure m{moduleValues = ds}
 
-simplifyDefValue :: World -> Version -> DefValue -> DefValue
-simplifyDefValue world version d = d{dvalBody = simplifyExpr world version (dvalBody d)}
+simplifyDefValue :: World -> Version -> DefValue -> FreshM DefValue
+simplifyDefValue world version d = do
+    e <- simplifyExpr world version (dvalBody d)
+    pure d{dvalBody = e}
 
-simplifyExpr :: World -> Version -> Expr -> Expr
+simplifyExpr :: World -> Version -> Expr -> FreshM Expr
 simplifyExpr world _ e =
     let env0 = AnfEnv
             { freeVars = Map.empty
@@ -43,20 +51,20 @@ simplifyExpr world _ e =
             , world = world
             }
     in
-    fst (runAnfM (anf env0 e))
+    fst <$> anf env0 e
 
 
-runAnfM :: AnfM a -> a
-runAnfM act = evalState act AnfState
-    { freshVarCounter = 0
+runFreshM :: FreshM a -> a
+runFreshM act = evalState act FreshState
+    { tmVarCounter = 0
     }
 
-anf :: AnfEnv -> Expr -> AnfM (Expr, Int)
+anf :: AnfEnv -> Expr -> FreshM (Expr, Int)
 anf env e0 = do
     (bs, e1, n) <- anf' env e0
     pure (mkELets bs e1, n)
 
-anf' :: AnfEnv -> Expr -> AnfM ([Binding], Expr, Int)
+anf' :: AnfEnv -> Expr -> FreshM ([Binding], Expr, Int)
 anf' env e = case e of
     EVar x ->
         let x' = Map.findWithDefault x x (renamings env) in
@@ -77,7 +85,7 @@ anf' env e = case e of
         (bs1, e1', n) <- anf' env e1
         (x', env') <- if x `Map.member` freeVars env
             then do
-                x' <- freshName
+                x' <- freshTmVar
                 pure (x', introRenaming x x' (introVar x' n env))
             else
                 pure (x, introVar x n env)
@@ -133,26 +141,26 @@ anf' env e = case e of
             if null zs1 then
                 pure (bs, e1, k - length as1)
             else do
-                x <- freshName
+                x <- freshTmVar
                 (bs', e2, _) <- anf' (introVar x 0 env) (mkEApps (EVar x) zs1)
                 pure (bs ++ [Binding (x, Nothing) e1] ++ bs', e2, 0)
 
-anfAtomic :: AnfEnv -> Expr -> (AnfEnv -> [Binding] -> Expr -> Int -> AnfM a) -> AnfM a
+anfAtomic :: AnfEnv -> Expr -> (AnfEnv -> [Binding] -> Expr -> Int -> FreshM a) -> FreshM a
 anfAtomic env e0 cont = do
     (bs, e1, n) <- anf' env e0
     if isAtomic e1 then
         cont env bs e1 n
     else do
-        x <- freshName
+        x <- freshTmVar
         cont (introVar x n env) (bs ++ [Binding (x, Nothing) e1]) (EVar x) n
 
-anfMany :: Traversable t => AnfEnv -> t Expr -> AnfM ([Binding], t Expr)
+anfMany :: Traversable t => AnfEnv -> t Expr -> FreshM ([Binding], t Expr)
 anfMany env e0s = do
     let step env e0 = anfAtomic env e0 $ \env bs e1 _ -> pure (env, (bs, e1))
     (_, bse1s) <- mapAccumLM step env e0s
     pure (concatMap fst bse1s, fmap snd bse1s)
 
-anfArgs :: AnfEnv -> [Arg] -> AnfM ([Binding], [Arg])
+anfArgs :: AnfEnv -> [Arg] -> FreshM ([Binding], [Arg])
 anfArgs env a0s = do
     let step env a0 = case a0 of
             TmArg e0 -> anfAtomic env e0 $ \env bs e1 _ -> pure (env, (bs, TmArg e1))
@@ -168,11 +176,6 @@ introVars0 xs env = env{freeVars = Map.fromSet (const 0) xs `Map.union` freeVars
 
 introRenaming :: ExprVarName -> ExprVarName -> AnfEnv -> AnfEnv
 introRenaming x y env = env{renamings = Map.insert x y (renamings env)}
-
-freshName :: AnfM ExprVarName
-freshName = do
-    n <- state (\st -> let k = freshVarCounter st + 1 in (k, st{freshVarCounter = k}))
-    pure (ExprVarName ("$v" <> T.show n))
 
 isAtomic :: Expr -> Bool
 isAtomic e = case e of
