@@ -38,17 +38,74 @@ freshTmVar = FreshM $ do
 simplifyModule :: World -> Version -> Module -> Module
 simplifyModule world _version m = runFreshM $ do
     let worldForAnf = extendWorldSelf m world
-    dsAnf <- NM.traverse (onBody (anfExpr Map.empty) worldForAnf) (moduleValues m)
-    m <- pure m{moduleValues = dsAnf}
+    m <- onBodies (anfExpr Map.empty worldForAnf) m
     let worldForInline = extendWorldSelf m world
-    dsInline <- NM.traverse (onBody inlineExpr worldForInline) (moduleValues m)
-    m <- pure m{moduleValues = dsInline}
+    m <- onBodies (inlineExpr worldForInline) m
+    let worldForClean = extendWorldSelf m world
+    m <- onBodies (pure . cleanExpr worldForClean) m
     pure m
   where
-    onBody :: (World -> Expr -> FreshM Expr) -> World -> DefValue -> FreshM DefValue
-    onBody f world d = do
-        e <- f world (dvalBody d)
-        pure d{dvalBody = e}
+    onBodies :: (Expr -> FreshM Expr) -> Module -> FreshM Module
+    onBodies f m = do
+        let fOnDefValue d = do
+            e <- f (dvalBody d)
+            pure d{dvalBody = e}
+        ds <- NM.traverse fOnDefValue (moduleValues m)
+        pure m{moduleValues = ds}
+
+------------------------------------------------------------
+-- CLEANER
+------------------------------------------------------------
+
+data CleanerEnv = CleanerEnv
+    { cRenamings :: Map ExprVarName ExprVarName
+    , cWorld :: World
+    }
+
+cleanExpr :: World -> Expr -> Expr
+cleanExpr world = fst . clean CleanerEnv{cRenamings = Map.empty, cWorld = world}
+
+clean :: CleanerEnv -> Expr -> (Expr, Set ExprVarName)
+clean env e0 = case e0 of
+    EVar x -> case Map.lookup x (cRenamings env) of
+        Just y -> (EVar y, Set.singleton y)
+        Nothing -> (e0, Set.singleton x)
+    -- let x = y in e1
+    ELet (Binding (x, _) (EVar y)) e1 -> clean (cIntroRenaming x y env) e1
+    ELet (Binding (x, t) e1) e2 ->
+        let (e2', fvs2) = clean env e2 in
+        if x `Set.member` fvs2 || mayDiverge (cWorld env) e1 then
+            let (e1', fvs1) = clean env e1 in
+            (ELet (Binding (x, t) e1') e2', fvs1 `Set.union` Set.delete x fvs2)
+        else
+            (e2', fvs2)
+    ETmLam (x, t) e1 ->
+        let (e1', fvs) = clean env e1 in
+        (ETmLam (x, t) e1', Set.delete x fvs)
+    ECase e1 as ->
+        let (e1', fvs1) = clean env e1 in
+        let handleAlt (CaseAlternative p e) =
+                let (e', fvs) = clean env e in
+                (CaseAlternative p e', fvs `Set.difference` patternVars p)
+        in
+        let (as', fvss) = unzip (map handleAlt as) in
+        (ECase e1' as', fvs1 `Set.union` Set.unions fvss)
+    _ ->
+        let efvs = fmap (clean env) (project e0) in
+        (embed (fmap fst efvs), Set.unions (fmap snd efvs))
+
+cIntroRenaming :: ExprVarName -> ExprVarName -> CleanerEnv -> CleanerEnv
+cIntroRenaming x y env = env{cRenamings = Map.insert x y (cRenamings env)}
+
+mayDiverge :: World -> Expr -> Bool
+mayDiverge world e = case e of
+    EVal q -> case lookupValue q world of
+        Left _ -> True
+        Right d -> syntacticArity (dvalBody d) == 0
+    EApp{} -> True
+    ECase{} -> True -- TODO(MH): This is _very_ conservative.
+    ELet{} -> error "let under let"
+    _ -> False
 
 ------------------------------------------------------------
 -- INLINER
