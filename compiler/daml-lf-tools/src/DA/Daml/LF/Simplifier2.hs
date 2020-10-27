@@ -101,7 +101,9 @@ mayDiverge :: World -> Expr -> Bool
 mayDiverge world e = case e of
     EVal q -> case lookupValue q world of
         Left _ -> True
-        Right d -> syntacticArity (dvalBody d) == 0
+        Right DefValue{dvalBody = b}
+            | EStructCon fes <- b -> any (\(_, e) -> syntacticArity e == 0) fes
+            | otherwise -> syntacticArity b == 0
     EApp{} -> True
     ECase{} -> True -- TODO(MH): This is _very_ conservative.
     ELet{} -> error "let under let"
@@ -137,14 +139,13 @@ inline :: InlineEnv -> Expr -> FreshM Expr
 inline env e0 = case e0 of
     ELet b@(Binding (x, t) e1) e2 -> case e1 of
         -- let x = y in e2
-        EVar y -> case Map.lookup y (iBoundVars env) of
-            Just info -> ELet b <$> inline (iIntroTmVar x info env) e2
-            Nothing -> error "Reference to unbound variable"
+        EVar y -> do
+            let info = iLookupTmVar y env
+            ELet b <$> inline (iIntroTmVar x info env) e2
         EVal q
-            | Right d <- lookupValue q (iWorld env)
-            , let n = syntacticArity (dvalBody d)
-            , n > 0
-            -> ELet b <$> inline (iIntroTmVar x (LetBoundVar n (dvalBody d)) env) e2
+            | Right d <- lookupValue q (iWorld env) -> do
+                let n = syntacticArity (dvalBody d)
+                ELet b <$> inline (iIntroTmVar x (LetBoundVar n (dvalBody d)) env) e2
         ETyLam{} -> handleLetLam b e2
         ETmLam{} -> handleLetLam b e2
         EApp{} -> case handleApp e1 of
@@ -155,6 +156,13 @@ inline env e0 = case e0 of
                 e0' <- anfExpr bvs (iWorld env) (ELet (Binding (x, t) e1') e2)
                 inline env e0'
             Nothing -> ELet b <$> inline (iIntroTmVar x (LetBoundVar 0 e1) env) e2
+        -- let x == y.f in e2
+        EStructProj f (EVar y)
+            | LetBoundVar{iExpr = EStructCon fes} <- iLookupTmVar y env
+            , Just v <- f `lookup` fes
+            -> do
+                let n = syntacticArity v
+                ELet b <$> inline (iIntroTmVar x (LetBoundVar n v) env) e2
         _ -> ELet <$> (Binding (x, t) <$> inline env e1) <*> inline (iIntroTmVar x (LetBoundVar 0 e1) env) e2
     ETmLam (x, t) e1 -> ETmLam (x, t) <$> inline (iIntroTmVar x AbstractVar env) e1
     ETyLam (t, k) e1 -> ETyLam (t, k) <$> inline env e1
@@ -193,6 +201,11 @@ inline env e0 = case e0 of
             -- TODO(MH): Repeated substitution is not efficient.
             ETyLam (v, _) e1 -> apply (Subst.applySubstInExpr (Subst.typeSubst v t1) e1) as
             _ -> error $ "type or arity error: applying type " ++ show t1 ++ " to " ++ show e0
+
+iLookupTmVar :: ExprVarName -> InlineEnv -> VarInfo
+iLookupTmVar x env = case Map.lookup x (iBoundVars env) of
+    Just info -> info
+    Nothing -> error ("reference to unbound variable " ++ show x)
 
 iIntroTmVar :: ExprVarName -> VarInfo -> InlineEnv -> InlineEnv
 iIntroTmVar x info env = env{iBoundVars = Map.insert x info (iBoundVars env)}
