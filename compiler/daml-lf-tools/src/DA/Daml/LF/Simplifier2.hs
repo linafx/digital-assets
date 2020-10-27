@@ -54,17 +54,24 @@ simplifyModule world _version m = runFreshM $ do
 -- INLINER
 ------------------------------------------------------------
 
+data VarInfo
+    = AbstractVar
+    | LetBoundVar{iArity :: Int, iExpr :: Expr}
+
+infoArity :: VarInfo -> Int
+infoArity info = case info of
+    AbstractVar -> 0
+    LetBoundVar{iArity = n} -> n
+
 data InlineEnv = InlineEnv
-    { iBoundVars :: Set ExprVarName
-    , iLambdas :: Map ExprVarName (Int, Expr) -- this is a subset of iBoundVars
+    { iBoundVars :: Map ExprVarName VarInfo
     , iWorld :: World
     }
 
 inlineExpr :: World -> Expr -> FreshM Expr
 inlineExpr world e = do
     let env0 = InlineEnv
-            { iBoundVars = Set.empty
-            , iLambdas = Map.empty
+            { iBoundVars = Map.empty
             , iWorld = world
             }
     inline env0 e
@@ -72,34 +79,35 @@ inlineExpr world e = do
 inline :: InlineEnv -> Expr -> FreshM Expr
 inline env e0 = case e0 of
     ELet b@(Binding (x, t) e1) e2 -> case e1 of
-        EVar y
-            | Just lam <- Map.lookup y (iLambdas env)
-            -> ELet b <$> inline (iIntroLambda x lam env) e2
+        -- let x = y in e2
+        EVar y -> case Map.lookup y (iBoundVars env) of
+            Just info -> ELet b <$> inline (iIntroTmVar x info env) e2
+            Nothing -> error "Reference to unbound variable"
         EVal q
             | Right d <- lookupValue q (iWorld env)
             , let n = syntacticArity (dvalBody d)
             , n > 0
-            -> ELet b <$> inline (iIntroLambda x (n, dvalBody d) env) e2
+            -> ELet b <$> inline (iIntroTmVar x (LetBoundVar n (dvalBody d)) env) e2
         ETyLam{} -> handleLetLam b e2
         ETmLam{} -> handleLetLam b e2
         EApp{} -> case handleApp e1 of
             Just e1' -> do
-                let bvs = Map.map fst (iLambdas env) `Map.union` Map.fromSet (const 0) (iBoundVars env)
+                let bvs = Map.map infoArity (iBoundVars env)
                 -- TODO(MH): We don't need a full ANF transformation here but
                 -- only the lifting of the outermost lets and the alpha renaming.
                 e0' <- anfExpr bvs (iWorld env) (ELet (Binding (x, t) e1') e2)
                 inline env e0'
-            Nothing -> ELet b <$> inline (iIntroTmVar x env) e2
-        _ -> ELet <$> (Binding (x, t) <$> inline env e1) <*> inline (iIntroTmVar x env) e2
-    ETmLam (x, t) e1 -> ETmLam (x, t) <$> inline (iIntroTmVar x env) e1
+            Nothing -> ELet b <$> inline (iIntroTmVar x (LetBoundVar 0 e1) env) e2
+        _ -> ELet <$> (Binding (x, t) <$> inline env e1) <*> inline (iIntroTmVar x (LetBoundVar 0 e1) env) e2
+    ETmLam (x, t) e1 -> ETmLam (x, t) <$> inline (iIntroTmVar x AbstractVar env) e1
     ETyLam (t, k) e1 -> ETyLam (t, k) <$> inline env e1
     ECase e1 as -> do
         let handleAlt (CaseAlternative p e2) =
-                CaseAlternative p <$> inline (iIntroTmVars (patternVars p) env) e2
+                CaseAlternative p <$> inline (iIntroAbstractTmVars (patternVars p) env) e2
         ECase <$> inline env e1 <*> traverse handleAlt as
     EApp{}
         | Just e0' <- handleApp e0 -> do
-            let bvs = Map.map fst (iLambdas env) `Map.union` Map.fromSet (const 0) (iBoundVars env)
+            let bvs = Map.map infoArity (iBoundVars env)
             -- TODO(MH): We don't need a full ANF transformation here but
             -- only the alpha renaming.
             e0'' <- anfExpr bvs (iWorld env) e0'
@@ -109,12 +117,12 @@ inline env e0 = case e0 of
     handleLetLam (Binding (x, t) e1) e2 = do
         e1' <- inline env e1
         let n = syntacticArity e1'
-        ELet (Binding (x, t) e1') <$> inline (iIntroLambda x (n, e1') env) e2
+        ELet (Binding (x, t) e1') <$> inline (iIntroTmVar x (LetBoundVar n e1') env) e2
     handleApp e0 =
         let (f, as) = takeEApps e0 in
         case f of
             EVar x
-                | Just (n, e1) <- Map.lookup x (iLambdas env)
+                | Just LetBoundVar{iArity = n, iExpr = e1} <- Map.lookup x (iBoundVars env)
                 , n == length as -- TODO(MH): Check that we never have more than `n` args.
                 -> Just (apply e1 as)
             _ -> Nothing
@@ -129,17 +137,11 @@ inline env e0 = case e0 of
             ETyLam (v, _) e1 -> apply (Subst.applySubstInExpr (Subst.typeSubst v t1) e1) as
             _ -> error $ "type or arity error: applying type " ++ show t1 ++ " to " ++ show e0
 
-iIntroTmVar :: ExprVarName -> InlineEnv -> InlineEnv
-iIntroTmVar x env = env{iBoundVars = Set.insert x (iBoundVars env)}
+iIntroTmVar :: ExprVarName -> VarInfo -> InlineEnv -> InlineEnv
+iIntroTmVar x info env = env{iBoundVars = Map.insert x info (iBoundVars env)}
 
-iIntroTmVars :: Set ExprVarName -> InlineEnv -> InlineEnv
-iIntroTmVars xs env = env{iBoundVars = xs `Set.union` iBoundVars env}
-
-iIntroLambda :: ExprVarName -> (Int, Expr) -> InlineEnv -> InlineEnv
-iIntroLambda x lam env = env
-    { iBoundVars = Set.insert x (iBoundVars env)
-    , iLambdas = Map.insert x lam (iLambdas env)
-    }
+iIntroAbstractTmVars :: Set ExprVarName -> InlineEnv -> InlineEnv
+iIntroAbstractTmVars xs env = env{iBoundVars = Map.fromSet (const AbstractVar) xs `Map.union` iBoundVars env}
 
 ------------------------------------------------------------
 -- ANF TRANSFORMATION
