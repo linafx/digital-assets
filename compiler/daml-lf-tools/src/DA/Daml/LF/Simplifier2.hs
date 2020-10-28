@@ -113,17 +113,17 @@ mayDiverge world e = case e of
 -- INLINER
 ------------------------------------------------------------
 
-data VarInfo
-    = AbstractVar
-    | LetBoundVar Expr
+data Value
+    = Abstract
+    | Whnf Expr
 
-infoArity :: VarInfo -> Int
-infoArity info = case info of
-    AbstractVar -> 0
-    LetBoundVar e -> syntacticArity e
+valueArity :: Value -> Int
+valueArity info = case info of
+    Abstract -> 0
+    Whnf e -> syntacticArity e
 
 data InlineEnv = InlineEnv
-    { iBoundVars :: Map ExprVarName VarInfo
+    { iBoundVars :: Map ExprVarName Value
     , iWorld :: World
     }
 
@@ -137,80 +137,92 @@ inlineExpr world e = do
 
 inline :: InlineEnv -> Expr -> FreshM Expr
 inline env e0 = case e0 of
-    ELet b@(Binding (x, t) e1) e2 -> case e1 of
-        -- let x = y in e2
-        EVar y -> do
-            let info = iLookupTmVar y env
-            ELet b <$> inline (iIntroTmVar x info env) e2
-        EVal q
-            | Right d <- lookupValue q (iWorld env) -> do
-                ELet b <$> inline (iIntroTmVar x (LetBoundVar (dvalBody d)) env) e2
-        ETyLam{} -> handleLetLam b e2
-        ETmLam{} -> handleLetLam b e2
-        EApp{} -> case handleApp e1 of
+    ELet (Binding (x, t) e1) e2 -> do
+        info <- evaluate env e1
+        case info of
+            Right (e1', v) -> do
+                ELet (Binding (x, t) e1') <$> inline (iIntroTmVar x v env) e2
             Left e1' -> do
-                let bvs = Map.map infoArity (iBoundVars env)
-                -- TODO(MH): We don't need a full ANF transformation here but
+                let bvs = Map.map valueArity (iBoundVars env)
+                -- TODO(MH): We might notneed a full ANF transformation here but
                 -- only the lifting of the outermost lets and the alpha renaming.
                 e0' <- anfExpr bvs (iWorld env) (ELet (Binding (x, t) e1') e2)
                 inline env e0'
-            Right e1' -> ELet (Binding (x, t) e1') <$> inline (iIntroTmVar x (LetBoundVar e1') env) e2
-        -- let x == y.f in e2
-        EStructProj f (EVar y)
-            | LetBoundVar (EStructCon fes) <- iLookupTmVar y env
-            , Just v <- f `lookup` fes
-            -> do
-                ELet b <$> inline (iIntroTmVar x (LetBoundVar v) env) e2
-        _ -> ELet <$> (Binding (x, t) <$> inline env e1) <*> inline (iIntroTmVar x (LetBoundVar e1) env) e2
-    ETmLam (x, t) e1 -> ETmLam (x, t) <$> inline (iIntroTmVar x AbstractVar env) e1
-    ETyLam (t, k) e1 -> ETyLam (t, k) <$> inline env e1
+    _ -> do
+        info <- evaluate env e0
+        case info of
+            Right (e0', _) -> pure e0'
+            Left e0' -> do
+                let bvs = Map.map valueArity (iBoundVars env)
+                -- TODO(MH): We might notneed a full ANF transformation here but
+                -- only the alpha renaming.
+                e0'' <- anfExpr bvs (iWorld env) e0'
+                inline env e0''
+
+-- Left means we need to re-normalize. Expr in Right is necessary because we
+-- need to inline subexpressions of lambdas and case expressions.
+evaluate :: InlineEnv -> Expr -> FreshM (Either Expr (Expr, Value))
+evaluate env e0 = case e0 of
+    EVar x -> pure $ Right (e0, iLookupTmVar x env)
+    EVal q -> case lookupValue q (iWorld env) of
+        Left _ -> pure $ Right (e0, Abstract)
+        Right d -> pure $ Right (e0, Whnf (dvalBody d)) -- TODO(MH): The body might not be in WHNF.
+    ETyLam (t, k) e1 -> do
+        e0' <- ETyLam (t, k) <$> inline env e1
+        pure $ Right (e0', Whnf e0')
+    ETmLam (x, t) e1 -> do
+        e0' <- ETmLam (x, t) <$> inline (iIntroTmVar x Abstract env) e1
+        pure $ Right (e0', Whnf e0')
+    ETyApp{} -> handleApp e0
+    ETmApp{} -> handleApp e0
+    EStructProj f (EVar x)
+        | Whnf (EStructCon fes) <- iLookupTmVar x env
+        , Just v <- f `lookup` fes
+        -> pure $ Right (e0, Whnf v)  -- TODO(MH): v might be a variable.
     ECase e1 as -> do
         let handleAlt (CaseAlternative p e2) =
                 CaseAlternative p <$> inline (iIntroAbstractTmVars (patternVars p) env) e2
-        ECase <$> inline env e1 <*> traverse handleAlt as
-    EApp{} -> case handleApp e0 of
-        Left e0' -> do
-            let bvs = Map.map infoArity (iBoundVars env)
-            -- TODO(MH): We don't need a full ANF transformation here but
-            -- only the alpha renaming.
-            e0'' <- anfExpr bvs (iWorld env) e0'
-            inline env e0''
-        Right e0' -> pure e0'
-    _ -> pure e0
+        e0' <- ECase <$> inline env e1 <*> traverse handleAlt as
+        pure $ Right (e0', Abstract)
+    _ -> pure $ Right (e0, Abstract)
   where
-    handleLetLam (Binding (x, t) e1) e2 = do
-        e1' <- inline env e1
-        ELet (Binding (x, t) e1') <$> inline (iIntroTmVar x (LetBoundVar e1') env) e2
-    handleApp e0 =
-        let (f, as) = takeEApps e0 in
+    handleApp e0 = do
+        let (f, as) = takeEApps e0
         case f of
             EVar x
-                | LetBoundVar e1 <- iLookupTmVar x env
-                -- TODO(MH): Check that we never have too many args.
-                , syntacticArity e1 == length as
-                -> Left (apply e1 as)
-            _ -> Right e0
-    apply :: Expr -> [Arg] -> Expr
-    apply e0 as = case as of
-        [] -> e0
-        TmArg e1:as -> case e0 of
-            ETmLam (x, t) e2 -> ELet (Binding (x, Just t) e1) (apply e2 as)
-            _ -> error $ "type or arity error: applying expr " ++ show e1 ++ " to " ++ show e0
-        TyArg t1:as -> case e0 of
-            -- TODO(MH): Repeated substitution is not efficient.
-            ETyLam (v, _) e1 -> apply (Subst.applySubstInExpr (Subst.typeSubst v t1) e1) as
-            _ -> error $ "type or arity error: applying type " ++ show t1 ++ " to " ++ show e0
+                | Whnf v <- iLookupTmVar x env
+                , let (g, bs) = takeEApps v
+                , let n = syntacticArity g  -- TODO(MH): Deal with builtins.
+                , n > 0
+                -> case n `compare` (length bs + length as) of
+                    LT -> error "overapplied lambda"
+                    EQ -> do
+                        let e0' = apply g (bs ++ as)
+                        pure $ Left e0'
+                    GT -> pure $ Right (e0, Whnf (mkEApps v as))
+            _ -> pure $ Right (e0, Abstract)
 
-iLookupTmVar :: ExprVarName -> InlineEnv -> VarInfo
+apply :: Expr -> [Arg] -> Expr
+apply e0 as = case as of
+    [] -> e0
+    TmArg e1:as -> case e0 of
+        ETmLam (x, t) e2 -> ELet (Binding (x, Just t) e1) (apply e2 as)
+        _ -> error $ "type or arity error: applying expr " ++ show e1 ++ " to " ++ show e0
+    TyArg t1:as -> case e0 of
+        -- TODO(MH): Repeated substitution is not efficient.
+        ETyLam (v, _) e1 -> apply (Subst.applySubstInExpr (Subst.typeSubst v t1) e1) as
+        _ -> error $ "type or arity error: applying type " ++ show t1 ++ " to " ++ show e0
+
+iLookupTmVar :: ExprVarName -> InlineEnv -> Value
 iLookupTmVar x env = case Map.lookup x (iBoundVars env) of
-    Just info -> info
+    Just v -> v
     Nothing -> error ("reference to unbound variable " ++ show x)
 
-iIntroTmVar :: ExprVarName -> VarInfo -> InlineEnv -> InlineEnv
+iIntroTmVar :: ExprVarName -> Value -> InlineEnv -> InlineEnv
 iIntroTmVar x info env = env{iBoundVars = Map.insert x info (iBoundVars env)}
 
 iIntroAbstractTmVars :: Set ExprVarName -> InlineEnv -> InlineEnv
-iIntroAbstractTmVars xs env = env{iBoundVars = Map.fromSet (const AbstractVar) xs `Map.union` iBoundVars env}
+iIntroAbstractTmVars xs env = env{iBoundVars = Map.fromSet (const Abstract) xs `Map.union` iBoundVars env}
 
 ------------------------------------------------------------
 -- ANF TRANSFORMATION
