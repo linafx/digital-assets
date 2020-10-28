@@ -10,6 +10,7 @@ import DA.Daml.LF.Ast
 import qualified  DA.Daml.LF.Ast.Subst as Subst
 import Data.Bifunctor
 import Data.Functor.Foldable
+import Data.List
 import Data.Map.Strict (Map)
 import Data.Set (Set)
 import Data.Tuple (swap)
@@ -58,56 +59,114 @@ simplifyModule world _version m = runFreshM $ do
 ------------------------------------------------------------
 
 data CleanerEnv = CleanerEnv
-    { cRenamings :: Map ExprVarName ExprVarName
+    { cBoundVars :: Map ExprVarName Int  -- runtime arity of the variable
+    , cRenamings :: Map ExprVarName ExprVarName
     , cWorld :: World
     }
 
 cleanExpr :: World -> Expr -> Expr
-cleanExpr world = fst . clean CleanerEnv{cRenamings = Map.empty, cWorld = world}
+cleanExpr world e0 =
+    let env0 = CleanerEnv
+            { cBoundVars = Map.empty
+            , cRenamings = Map.empty
+            , cWorld = world
+            }
+    in
+    let (e1, _, _, _) = clean env0 e0 in
+    e1
 
-clean :: CleanerEnv -> Expr -> (Expr, Set ExprVarName)
+-- Int is runtime arity, Bool says if this might have effects
+clean :: CleanerEnv -> Expr -> (Expr, Set ExprVarName, Int, Bool)
 clean env e0 = case e0 of
-    EVar x -> case Map.lookup x (cRenamings env) of
-        Just y -> (EVar y, Set.singleton y)
-        Nothing -> (e0, Set.singleton x)
-    -- let x = y in e1
-    ELet (Binding (x, _) (EVar y)) e1 -> clean (cIntroRenaming x y env) e1
+    EVar x ->
+        let x' = Map.findWithDefault x x (cRenamings env) in
+        let n = cLookupTmVar x' env in
+        (EVar x', Set.singleton x', n, False)
+    EBuiltin b -> (e0, Set.empty, builtinArity b, False)
+    -- let x = y in e2
+    ELet (Binding (x, _) (EVar y)) e2 ->
+        let y' = Map.findWithDefault y y (cRenamings env) in
+        clean (cIntroRenaming x y' env) e2
     ELet (Binding (x, t) e1) e2 ->
-        let (e2', fvs2) = clean env e2 in
-        if x `Set.notMember` fvs2 && safeToDrop (cWorld env) e1 then
-            (e2', fvs2)
+        let (e1', fvs1, n1, b1) = clean env e1 in
+        let (e2', fvs2, n2, b2) = clean (cIntroTmVar x n1 env) e2 in
+        if b1 || x `Set.member` fvs2 then
+            (ELet (Binding (x, t) e1') e2', fvs1 `Set.union` Set.delete x fvs2, n2, b1 || b2)
         else
-            let (e1', fvs1) = clean env e1 in
-            (ELet (Binding (x, t) e1') e2', fvs1 `Set.union` Set.delete x fvs2)
+            (e2', fvs2, n2, b2)
+    EVal q -> case lookupValue q (cWorld env) of
+        Left _ ->
+            (e0, Set.empty, 0, True)
+        Right DefValue{dvalBody = b} ->
+            (e0, Set.empty, runtimeArity b, hasEffect b)
     ETmLam (x, t) e1 ->
-        let (e1', fvs) = clean env e1 in
-        (ETmLam (x, t) e1', Set.delete x fvs)
-    ECase e1 as ->
-        let (e1', fvs1) = clean env e1 in
-        let handleAlt (CaseAlternative p e) =
-                let (e', fvs) = clean env e in
-                (CaseAlternative p e', fvs `Set.difference` patternVars p)
+        let (e1', fvs1, n1, _) = clean (cIntroTmVar x 0 env) e1 in
+        let n0' = case e1' of
+                ELam{} -> n1 + 1
+                _ -> 1
         in
-        let (as', fvss) = unzip (map handleAlt as) in
-        (ECase e1' as', fvs1 `Set.union` Set.unions fvss)
+        (ETmLam (x, t) e1', Set.delete x fvs1, n0', False)
+    ETyLam (t, k) e1 ->
+        let (e1', fvs1, n1, _) = clean env e1 in
+        let n0' = case e1' of
+                ELam{} -> n1 + 1
+                _ -> 1
+        in
+        (ETyLam (t, k) e1', fvs1, n0', False)
+    EApp{} ->
+        let (f, as) = takeEApps e0 in
+        let (f', fvs_f, n_f, eff_f) = clean env f in
+        let (as', fvs_as, eff_as) = cleanArgs env as in
+        let n = max 0 (n_f - length as) in
+        (mkEApps f' as', fvs_f `Set.union` fvs_as, n, eff_f || eff_as || n == 0)
+    ECase e1 as ->
+        let (e1', fvs1, _, eff_e1) = clean env e1 in
+        let handleAlt (CaseAlternative p e) =
+                let pvs = patternVars p in
+                let (e', fvs, n, b) = clean (cIntroTmVars0 pvs env) e in
+                (CaseAlternative p e', fvs `Set.difference` pvs, n, b)
+        in
+        let (as', fvss, ns, eff_as) = unzip4 (map handleAlt as) in
+        (ECase e1' as', fvs1 `Set.union` Set.unions fvss, minimum (1_000_000:ns), eff_e1 || or eff_as)
     _ ->
-        let efvs = fmap (clean env) (project e0) in
-        (embed (fmap fst efvs), Set.unions (fmap snd efvs))
+        let info = fmap (clean env) (project e0) in
+        let e0' = embed (fmap (\(e', _, _, _) -> e') info) in
+        let fvs = Set.unions (fmap (\(_, fvs, _, _) -> fvs) info) in
+        let effs = or (fmap (\(_, _, _, eff) -> eff) info) in
+        (e0', fvs, 0, effs)
+
+cleanArgs :: CleanerEnv -> [Arg] -> ([Arg], Set ExprVarName, Bool)
+cleanArgs env = \case
+    [] -> ([], Set.empty, False)
+    TyArg t:as ->
+        let (as', fvs, eff) = cleanArgs env as in
+        (TyArg t:as', fvs, eff)
+    TmArg e:as ->
+        let (e', fvs_e, _, eff_e) = clean env e in
+        let (as', fvs_as, eff_as) = cleanArgs env as in
+        (TmArg e':as', fvs_e `Set.union` fvs_as, eff_e || eff_as)
+
+cIntroTmVar :: ExprVarName -> Int -> CleanerEnv -> CleanerEnv
+cIntroTmVar x n env = env{cBoundVars = Map.insert x n (cBoundVars env)}
+
+cLookupTmVar :: ExprVarName -> CleanerEnv -> Int
+cLookupTmVar x env = case Map.lookup x (cBoundVars env) of
+    Just n -> n
+    Nothing -> error $ "reference to unbound variable " ++ show x
+
+cIntroTmVars0 :: Set ExprVarName -> CleanerEnv -> CleanerEnv
+cIntroTmVars0 xs env = env{cBoundVars = Map.fromSet (const 0) xs `Map.union` cBoundVars env}
 
 cIntroRenaming :: ExprVarName -> ExprVarName -> CleanerEnv -> CleanerEnv
 cIntroRenaming x y env = env{cRenamings = Map.insert x y (cRenamings env)}
 
-safeToDrop :: World -> Expr -> Bool
-safeToDrop world e = case e of
-    EVal q -> case lookupValue q world of
-        Left _ -> False
-        Right DefValue{dvalBody = b}
-            | EStructCon fes <- b -> all (\(_, e) -> syntacticArity e > 0) fes
-            | otherwise -> syntacticArity b > 0
-    EApp{} -> False
-    ECase{} -> False -- TODO(MH): This is _very_ conservative.
-    ELet{} -> error "let under let"
-    _ -> True  -- FIXME(MH): This is an very dangerous default.
+hasEffect :: Expr -> Bool
+hasEffect e = case e of
+    ELam{} -> False
+    EBuiltin{} -> False
+    EStructCon fes
+        | all (\(_, e) -> syntacticArity e > 0) fes -> False
+    _ -> True  -- TODO(MH): This is _very_ conservative.
 
 ------------------------------------------------------------
 -- INLINER
@@ -237,7 +296,7 @@ iIntroAbstractTmVars xs env = env{iBoundVars = Map.fromSet (const Abstract) xs `
 ------------------------------------------------------------
 
 data AnfEnv = AnfEnv
-    { aBoundVars :: Map ExprVarName Int -- arity of the free variable
+    { aBoundVars :: Map ExprVarName Int -- runtime arity of the free variable
     , aRenamings :: Map ExprVarName ExprVarName
     , aWorld :: World
     }
@@ -445,6 +504,16 @@ takeELam e0 = case e0 of
     ETmLam b e1 -> Just (TmLam b, e1)
     ETyLam b e1 -> Just (TyLam b, e1)
     _ -> Nothing
+
+-- mkELams :: [Lam] -> Expr -> Expr
+-- mkELams ls e = foldr mkELam e ls
+
+-- takeELams :: Expr -> ([Lam], Expr)
+-- takeELams e0 = case e0 of
+--     ETmLam b e1 -> first (TmLam b:) (takeELams e1)
+--     ETyLam b e1 -> first (TyLam b:) (takeELams e1)
+--     ELocation _ e1 -> takeELams e1
+--     _ -> ([], e0)
 
 -- | Monadic version of mapAccumL
 mapAccumLM :: forall t m acc x y. (Traversable t, Monad m) =>
