@@ -115,12 +115,12 @@ mayDiverge world e = case e of
 
 data VarInfo
     = AbstractVar
-    | LetBoundVar{iArity :: Int, iExpr :: Expr}
+    | LetBoundVar Expr
 
 infoArity :: VarInfo -> Int
 infoArity info = case info of
     AbstractVar -> 0
-    LetBoundVar{iArity = n} -> n
+    LetBoundVar e -> syntacticArity e
 
 data InlineEnv = InlineEnv
     { iBoundVars :: Map ExprVarName VarInfo
@@ -144,53 +144,52 @@ inline env e0 = case e0 of
             ELet b <$> inline (iIntroTmVar x info env) e2
         EVal q
             | Right d <- lookupValue q (iWorld env) -> do
-                let n = syntacticArity (dvalBody d)
-                ELet b <$> inline (iIntroTmVar x (LetBoundVar n (dvalBody d)) env) e2
+                ELet b <$> inline (iIntroTmVar x (LetBoundVar (dvalBody d)) env) e2
         ETyLam{} -> handleLetLam b e2
         ETmLam{} -> handleLetLam b e2
         EApp{} -> case handleApp e1 of
-            Just e1' -> do
+            Left e1' -> do
                 let bvs = Map.map infoArity (iBoundVars env)
                 -- TODO(MH): We don't need a full ANF transformation here but
                 -- only the lifting of the outermost lets and the alpha renaming.
                 e0' <- anfExpr bvs (iWorld env) (ELet (Binding (x, t) e1') e2)
                 inline env e0'
-            Nothing -> ELet b <$> inline (iIntroTmVar x (LetBoundVar 0 e1) env) e2
+            Right e1' -> ELet (Binding (x, t) e1') <$> inline (iIntroTmVar x (LetBoundVar e1') env) e2
         -- let x == y.f in e2
         EStructProj f (EVar y)
-            | LetBoundVar{iExpr = EStructCon fes} <- iLookupTmVar y env
+            | LetBoundVar (EStructCon fes) <- iLookupTmVar y env
             , Just v <- f `lookup` fes
             -> do
-                let n = syntacticArity v
-                ELet b <$> inline (iIntroTmVar x (LetBoundVar n v) env) e2
-        _ -> ELet <$> (Binding (x, t) <$> inline env e1) <*> inline (iIntroTmVar x (LetBoundVar 0 e1) env) e2
+                ELet b <$> inline (iIntroTmVar x (LetBoundVar v) env) e2
+        _ -> ELet <$> (Binding (x, t) <$> inline env e1) <*> inline (iIntroTmVar x (LetBoundVar e1) env) e2
     ETmLam (x, t) e1 -> ETmLam (x, t) <$> inline (iIntroTmVar x AbstractVar env) e1
     ETyLam (t, k) e1 -> ETyLam (t, k) <$> inline env e1
     ECase e1 as -> do
         let handleAlt (CaseAlternative p e2) =
                 CaseAlternative p <$> inline (iIntroAbstractTmVars (patternVars p) env) e2
         ECase <$> inline env e1 <*> traverse handleAlt as
-    EApp{}
-        | Just e0' <- handleApp e0 -> do
+    EApp{} -> case handleApp e0 of
+        Left e0' -> do
             let bvs = Map.map infoArity (iBoundVars env)
             -- TODO(MH): We don't need a full ANF transformation here but
             -- only the alpha renaming.
             e0'' <- anfExpr bvs (iWorld env) e0'
             inline env e0''
+        Right e0' -> pure e0'
     _ -> pure e0
   where
     handleLetLam (Binding (x, t) e1) e2 = do
         e1' <- inline env e1
-        let n = syntacticArity e1'
-        ELet (Binding (x, t) e1') <$> inline (iIntroTmVar x (LetBoundVar n e1') env) e2
+        ELet (Binding (x, t) e1') <$> inline (iIntroTmVar x (LetBoundVar e1') env) e2
     handleApp e0 =
         let (f, as) = takeEApps e0 in
         case f of
             EVar x
-                | Just LetBoundVar{iArity = n, iExpr = e1} <- Map.lookup x (iBoundVars env)
-                , n == length as -- TODO(MH): Check that we never have more than `n` args.
-                -> Just (apply e1 as)
-            _ -> Nothing
+                | LetBoundVar e1 <- iLookupTmVar x env
+                -- TODO(MH): Check that we never have too many args.
+                , syntacticArity e1 == length as
+                -> Left (apply e1 as)
+            _ -> Right e0
     apply :: Expr -> [Arg] -> Expr
     apply e0 as = case as of
         [] -> e0
