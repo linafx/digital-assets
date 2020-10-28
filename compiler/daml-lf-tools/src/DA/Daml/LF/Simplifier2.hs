@@ -50,9 +50,12 @@ simplifyModule world _version m = runFreshM $ do
   where
     onBodies :: (Expr -> FreshM Expr) -> Module -> FreshM Module
     onBodies f m = do
-        let fOnDefValue d = do
-            e <- f (dvalBody d)
-            pure d{dvalBody = e}
+        let fOnDefValue d@DefValue{dvalBody = e} = do
+            e' <- case e of
+                -- NOTE(MH): This is to keep type class dictionaries detectable.
+                EStructCon fes -> EStructCon <$> traverse (\(x, e) -> (,) x <$> f e) fes
+                _ -> f e
+            pure d{dvalBody = e'}
         ds <- NM.traverse fOnDefValue (moduleValues m)
         pure m{moduleValues = ds}
 
@@ -177,11 +180,13 @@ hasEffect e = case e of
 data Value
     = Abstract
     | Whnf Expr
+    | Method Expr
 
 valueArity :: Value -> Int
 valueArity info = case info of
     Abstract -> 0
     Whnf e -> syntacticArity e
+    Method e -> syntacticArity e
 
 data InlineEnv = InlineEnv
     { iBoundVars :: Map ExprVarName Value
@@ -224,6 +229,18 @@ inline env e0 = case e0 of
 -- need to inline subexpressions of lambdas and case expressions.
 evaluate :: InlineEnv -> Expr -> FreshM (Either Expr (Expr, Value))
 evaluate env e0 = case e0 of
+    -- NOTE(MH): For type classes we're happy to inline the method as soon as
+    -- we have it. It will either be a reference to another function or a lambda
+    -- containing getField or setField.
+    -- BEGIN special treatment for type classes.
+    EStructProj f (EVar x)
+        | Whnf (EStructCon fes) <- iLookupTmVar x env
+        , Just v <- f `lookup` fes
+        -> pure $ Right (e0, Method v)
+    ETmApp (EVar x) EUnit
+        | Method (ETmLam (_, TUnit) e) <- iLookupTmVar x env
+        -> pure $ Left e
+    -- END special treatment for type classes.
     EVar x -> pure $ Right (e0, iLookupTmVar x env)
     EBuiltin{} -> pure $ Right (e0, Whnf e0)
     EVal q -> case lookupValue q (iWorld env) of
@@ -236,10 +253,6 @@ evaluate env e0 = case e0 of
         e0' <- ETmLam (x, t) <$> inline (iIntroTmVar x Abstract env) e1
         pure $ Right (e0', Whnf e0')
     EApp{} -> handleApp e0
-    EStructProj f (EVar x)
-        | Whnf (EStructCon fes) <- iLookupTmVar x env
-        , Just v <- f `lookup` fes
-        -> pure $ Right (e0, Whnf v)  -- TODO(MH): v might be a variable.
     ECase e1 as -> do
         let handleAlt (CaseAlternative p e2) =
                 CaseAlternative p <$> inline (iIntroAbstractTmVars (patternVars p) env) e2
@@ -302,6 +315,7 @@ _iIntroTrace x v = do
     let msg = case v of
             Abstract -> "INTRO " ++ renderPretty x ++ " as ABSTRACT"
             Whnf e -> "INTRO " ++ renderPretty x ++ " as\n" ++ renderPretty e
+            Method e -> "INTRO METHOD " ++ renderPretty x ++ " as\n" ++ renderPretty e
     traceM msg
 
 iIntroAbstractTmVars :: Set ExprVarName -> InlineEnv -> InlineEnv
