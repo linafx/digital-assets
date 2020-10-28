@@ -262,15 +262,35 @@ evaluate env e0 = case e0 of
         pureWhnf e0'
     ETmApp{} -> handleApp e0
     ETyApp{} -> handleApp e0
+    ELet{} -> error "let under let"
     ECase e1 as -> do
         let handleAlt (CaseAlternative p e2) =
                 CaseAlternative p <$> inline (iIntroAbstractTmVars (patternVars p) env) e2
         e0' <- ECase <$> inline env e1 <*> traverse handleAlt as
         pureAbstract e0'
     ERecCon{} -> pureWhnf e0
-    ERecProj _ f (normalize env -> Whnf (ERecCon _ fes)) ->
-        pureNormalize env $ fromJust (lookup f fes)
-    _ -> pureAbstract e0
+    ERecProj _ f e1
+        | Whnf (ERecCon _ fes) <- normalize env e1 -> pureNormalize env $ fromJust (lookup f fes)
+        | otherwise -> pureAbstract e0
+    ERecUpd{} -> pureAbstract e0  -- TODO(MH): Implement.
+    EStructCon{} -> pureWhnf e0
+    EStructProj f e1
+        | Whnf (EStructCon fes) <- normalize env e1 -> pureNormalize env $ fromJust (lookup f fes)
+        | otherwise -> pureAbstract e0
+    EStructUpd{} -> pureAbstract e0  -- TODO(MH): Implement.
+    EVariantCon{} -> pureWhnf e0
+    EEnumCon{} -> pureWhnf e0
+    ENil{} -> pureWhnf e0
+    ECons{} -> pureWhnf e0
+    ENone{} -> pureWhnf e0
+    ESome{} -> pureWhnf e0
+    ELocation _ e1 -> evaluate env e1
+    -- TODO(MH): Implement the builtins below.
+    EToAny{} -> pureAbstract e0
+    EFromAny{} -> pureAbstract e0
+    ETypeRep{} -> pureAbstract e0
+    EUpdate{} -> pureAbstract e0
+    EScenario{} -> pureAbstract e0
   where
     pureWhnf e = pure $ Right (e, Whnf e)
     pureAbstract e = pure $ Right (e, Abstract)
