@@ -58,7 +58,7 @@ simplifyModule world _version m = runFreshM $ do
 -- CLEANER
 ------------------------------------------------------------
 
-data CleanerEnv = CleanerEnv
+data CleanEnv = CleanEnv
     { cBoundVars :: Map ExprVarName Int  -- runtime arity of the variable
     , cRenamings :: Map ExprVarName ExprVarName
     , cWorld :: World
@@ -66,7 +66,7 @@ data CleanerEnv = CleanerEnv
 
 cleanExpr :: World -> Expr -> Expr
 cleanExpr world e0 =
-    let env0 = CleanerEnv
+    let env0 = CleanEnv
             { cBoundVars = Map.empty
             , cRenamings = Map.empty
             , cWorld = world
@@ -76,7 +76,7 @@ cleanExpr world e0 =
     e1
 
 -- Int is runtime arity, Bool says if this might have effects
-clean :: CleanerEnv -> Expr -> (Expr, Set ExprVarName, Int, Bool)
+clean :: CleanEnv -> Expr -> (Expr, Set ExprVarName, Int, Bool)
 clean env e0 = case e0 of
     EVar x ->
         let x' = Map.findWithDefault x x (cRenamings env) in
@@ -135,7 +135,7 @@ clean env e0 = case e0 of
         let effs = or (fmap (\(_, _, _, eff) -> eff) info) in
         (e0', fvs, 0, effs)
 
-cleanArgs :: CleanerEnv -> [Arg] -> ([Arg], Set ExprVarName, Bool)
+cleanArgs :: CleanEnv -> [Arg] -> ([Arg], Set ExprVarName, Bool)
 cleanArgs env = \case
     [] -> ([], Set.empty, False)
     TyArg t:as ->
@@ -146,18 +146,18 @@ cleanArgs env = \case
         let (as', fvs_as, eff_as) = cleanArgs env as in
         (TmArg e':as', fvs_e `Set.union` fvs_as, eff_e || eff_as)
 
-cIntroTmVar :: ExprVarName -> Int -> CleanerEnv -> CleanerEnv
+cIntroTmVar :: ExprVarName -> Int -> CleanEnv -> CleanEnv
 cIntroTmVar x n env = env{cBoundVars = Map.insert x n (cBoundVars env)}
 
-cLookupTmVar :: ExprVarName -> CleanerEnv -> Int
+cLookupTmVar :: ExprVarName -> CleanEnv -> Int
 cLookupTmVar x env = case Map.lookup x (cBoundVars env) of
     Just n -> n
     Nothing -> error $ "reference to unbound variable " ++ show x
 
-cIntroTmVars0 :: Set ExprVarName -> CleanerEnv -> CleanerEnv
+cIntroTmVars0 :: Set ExprVarName -> CleanEnv -> CleanEnv
 cIntroTmVars0 xs env = env{cBoundVars = Map.fromSet (const 0) xs `Map.union` cBoundVars env}
 
-cIntroRenaming :: ExprVarName -> ExprVarName -> CleanerEnv -> CleanerEnv
+cIntroRenaming :: ExprVarName -> ExprVarName -> CleanEnv -> CleanEnv
 cIntroRenaming x y env = env{cRenamings = Map.insert x y (cRenamings env)}
 
 hasEffect :: Expr -> Bool
