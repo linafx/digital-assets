@@ -164,6 +164,7 @@ inline env e0 = case e0 of
 evaluate :: InlineEnv -> Expr -> FreshM (Either Expr (Expr, Value))
 evaluate env e0 = case e0 of
     EVar x -> pure $ Right (e0, iLookupTmVar x env)
+    EBuiltin{} -> pure $ Right (e0, Whnf e0)
     EVal q -> case lookupValue q (iWorld env) of
         Left _ -> pure $ Right (e0, Abstract)
         Right d -> pure $ Right (e0, Whnf (dvalBody d)) -- TODO(MH): The body might not be in WHNF.
@@ -173,8 +174,7 @@ evaluate env e0 = case e0 of
     ETmLam (x, t) e1 -> do
         e0' <- ETmLam (x, t) <$> inline (iIntroTmVar x Abstract env) e1
         pure $ Right (e0', Whnf e0')
-    ETyApp{} -> handleApp e0
-    ETmApp{} -> handleApp e0
+    EApp{} -> handleApp e0
     EStructProj f (EVar x)
         | Whnf (EStructCon fes) <- iLookupTmVar x env
         , Just v <- f `lookup` fes
@@ -189,17 +189,25 @@ evaluate env e0 = case e0 of
     handleApp e0 = do
         let (f, as) = takeEApps e0
         case f of
-            EVar x
-                | Whnf v <- iLookupTmVar x env
-                , let (g, bs) = takeEApps v
-                , let n = syntacticArity g  -- TODO(MH): Deal with builtins.
-                , n > 0
-                -> case n `compare` (length bs + length as) of
-                    LT -> error "overapplied lambda"
-                    EQ -> do
-                        let e0' = apply g (bs ++ as)
-                        pure $ Left e0'
-                    GT -> pure $ Right (e0, Whnf (mkEApps v as))
+            EVar x | Whnf v <- iLookupTmVar x env -> do
+                let (g, bs) = takeEApps v
+                case g of
+                    ELam{} -> do
+                        let n = syntacticArity g
+                        case n `compare` (length bs + length as) of
+                            LT -> error "overapplied lambda"
+                            EQ -> do
+                                let e0' = apply g (bs ++ as)
+                                pure $ Left e0'
+                            GT -> pure $ Right (e0, Whnf (mkEApps v as))
+                    EBuiltin b | n > 0 -> do
+                        case n `compare` (length bs + length as) of
+                            LT -> error "overapplied builtin"
+                            EQ -> pure $ Right (mkEApps v as, Abstract)
+                            GT -> pure $ Right (e0, Whnf (mkEApps v as))
+                      where
+                        n = builtinArity b
+                    _ -> pure $ Right (e0, Abstract)
             _ -> pure $ Right (e0, Abstract)
 
 apply :: Expr -> [Arg] -> Expr
@@ -381,19 +389,24 @@ isAtomic e = case e of
 -- | Lower bound on the arity of the expression once it has been evaluated.
 runtimeArity :: Expr -> Int
 runtimeArity e0 = case e0 of
-    ETyLam{} -> syntacticArity e0
-    ETmLam{} -> syntacticArity e0
+    ELam{} -> syntacticArity e0
+    EBuiltin b -> builtinArity b
     ELet _ e1 -> runtimeArity e1
     ELocation _ e1 -> runtimeArity e1
-    -- TODO(MH): Take partially applied top-level values into account
+    -- TODO(MH): Take partially applied top-level values and builtins into account
     _ -> 0
 
 -- | Number of leading lambdas of the expression.
 syntacticArity :: Expr -> Int
 syntacticArity e0 = case e0 of
-    ETmLam _ e1 -> syntacticArity e1 + 1
-    ETyLam _ e1 -> syntacticArity e1 + 1
+    ELam _ e1 -> syntacticArity e1 + 1
     ELocation _ e1 -> syntacticArity e1
+    _ -> 0
+
+-- | Arity of the builtin, including the type abstractions.
+builtinArity :: BuiltinExpr -> Int
+builtinArity b = case b of
+    BEAddInt64 -> 2
     _ -> 0
 
 patternVars :: CasePattern -> Set ExprVarName
@@ -412,6 +425,26 @@ pattern EApp :: Expr -> Arg -> Expr
 pattern EApp fun arg <- (matching _EApp -> Right (fun, arg))
   where
     EApp fun arg = mkEApp fun arg
+
+data Lam
+    = TmLam (ExprVarName, Type)
+    | TyLam (TypeVarName, Kind)
+
+pattern ELam :: Lam -> Expr -> Expr
+pattern ELam lam body <- (takeELam -> Just (lam, body))
+  where
+    ELam lam body = mkELam lam body
+
+mkELam :: Lam -> Expr -> Expr
+mkELam l e = case l of
+    TmLam b -> ETmLam b e
+    TyLam b -> ETyLam b e
+
+takeELam :: Expr -> Maybe (Lam, Expr)
+takeELam e0 = case e0 of
+    ETmLam b e1 -> Just (TmLam b, e1)
+    ETyLam b e1 -> Just (TyLam b, e1)
+    _ -> Nothing
 
 -- | Monadic version of mapAccumL
 mapAccumLM :: forall t m acc x y. (Traversable t, Monad m) =>
