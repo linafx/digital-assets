@@ -8,6 +8,7 @@ import Control.Lens
 import Control.Monad.State.Strict
 import DA.Daml.LF.Ast
 import qualified  DA.Daml.LF.Ast.Subst as Subst
+import DA.Pretty (renderPretty)
 import Data.Bifunctor
 import Data.Functor.Foldable
 import Data.List
@@ -18,6 +19,7 @@ import qualified Data.Map.Strict as Map
 import qualified Data.NameMap as NM
 import qualified Data.Set as Set
 import qualified Data.Text.Extended as T
+import Debug.Trace
 
 data FreshState = FreshState
     { tmVarCounter :: Int
@@ -259,7 +261,7 @@ evaluate env e0 = case e0 of
                                 let e0' = apply g (bs ++ as)
                                 pure $ Left e0'
                             GT -> pure $ Right (e0, Whnf (mkEApps v as))
-                    EBuiltin b | n > 0 -> do
+                    EBuiltin b -> do
                         case n `compare` (length bs + length as) of
                             LT -> error "overapplied builtin"
                             EQ -> pure $ Right (mkEApps v as, Abstract)
@@ -267,6 +269,13 @@ evaluate env e0 = case e0 of
                       where
                         n = builtinArity b
                     _ -> pure $ Right (e0, Abstract)
+            EBuiltin b -> do
+                case n `compare` (length as) of
+                    LT -> error "overapplied builtin"
+                    EQ -> pure $ Right (mkEApps f as, Abstract)
+                    GT -> pure $ Right (e0, Whnf (mkEApps f as))
+              where
+                n = builtinArity b
             _ -> pure $ Right (e0, Abstract)
 
 apply :: Expr -> [Arg] -> Expr
@@ -287,6 +296,13 @@ iLookupTmVar x env = case Map.lookup x (iBoundVars env) of
 
 iIntroTmVar :: ExprVarName -> Value -> InlineEnv -> InlineEnv
 iIntroTmVar x info env = env{iBoundVars = Map.insert x info (iBoundVars env)}
+
+_iIntroTrace :: Monad m => ExprVarName -> Value -> m ()
+_iIntroTrace x v = do
+    let msg = case v of
+            Abstract -> "INTRO " ++ renderPretty x ++ " as ABSTRACT"
+            Whnf e -> "INTRO " ++ renderPretty x ++ " as\n" ++ renderPretty e
+    traceM msg
 
 iIntroAbstractTmVars :: Set ExprVarName -> InlineEnv -> InlineEnv
 iIntroAbstractTmVars xs env = env{iBoundVars = Map.fromSet (const Abstract) xs `Map.union` iBoundVars env}
