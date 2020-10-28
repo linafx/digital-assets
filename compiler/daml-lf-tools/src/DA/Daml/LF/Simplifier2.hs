@@ -74,11 +74,11 @@ clean env e0 = case e0 of
     ELet (Binding (x, _) (EVar y)) e1 -> clean (cIntroRenaming x y env) e1
     ELet (Binding (x, t) e1) e2 ->
         let (e2', fvs2) = clean env e2 in
-        if x `Set.member` fvs2 || mayDiverge (cWorld env) e1 then
+        if x `Set.notMember` fvs2 && safeToDrop (cWorld env) e1 then
+            (e2', fvs2)
+        else
             let (e1', fvs1) = clean env e1 in
             (ELet (Binding (x, t) e1') e2', fvs1 `Set.union` Set.delete x fvs2)
-        else
-            (e2', fvs2)
     ETmLam (x, t) e1 ->
         let (e1', fvs) = clean env e1 in
         (ETmLam (x, t) e1', Set.delete x fvs)
@@ -97,17 +97,17 @@ clean env e0 = case e0 of
 cIntroRenaming :: ExprVarName -> ExprVarName -> CleanerEnv -> CleanerEnv
 cIntroRenaming x y env = env{cRenamings = Map.insert x y (cRenamings env)}
 
-mayDiverge :: World -> Expr -> Bool
-mayDiverge world e = case e of
+safeToDrop :: World -> Expr -> Bool
+safeToDrop world e = case e of
     EVal q -> case lookupValue q world of
-        Left _ -> True
+        Left _ -> False
         Right DefValue{dvalBody = b}
-            | EStructCon fes <- b -> any (\(_, e) -> syntacticArity e == 0) fes
-            | otherwise -> syntacticArity b == 0
-    EApp{} -> True
-    ECase{} -> True -- TODO(MH): This is _very_ conservative.
+            | EStructCon fes <- b -> all (\(_, e) -> syntacticArity e > 0) fes
+            | otherwise -> syntacticArity b > 0
+    EApp{} -> False
+    ECase{} -> False -- TODO(MH): This is _very_ conservative.
     ELet{} -> error "let under let"
-    _ -> False
+    _ -> True  -- FIXME(MH): This is an very dangerous default.
 
 ------------------------------------------------------------
 -- INLINER
