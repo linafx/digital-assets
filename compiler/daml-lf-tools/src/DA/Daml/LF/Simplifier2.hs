@@ -4,6 +4,7 @@ module DA.Daml.LF.Simplifier2 (
     simplifyModule
 ) where
 
+import Control.Exception (assert)
 import Control.Lens
 import Control.Monad.State.Strict
 import DA.Daml.LF.Ast
@@ -13,6 +14,7 @@ import Data.Bifunctor
 import Data.Functor.Foldable
 import Data.List
 import Data.Map.Strict (Map)
+import Data.Maybe
 import Data.Set (Set)
 import Data.Tuple (swap)
 import qualified Data.Map.Strict as Map
@@ -242,68 +244,64 @@ evaluate env e0 = case e0 of
     -- we have it. It will either be a reference to another function or a lambda
     -- containing getField or setField.
     -- BEGIN special treatment for type classes.
-    EStructProj f (EVar x)
-        | Whnf (EStructCon fes) <- iLookupTmVar x env
-        , Just v <- f `lookup` fes
-        -> pure $ Right (e0, Method v)
-    ETmApp (EVar x) EUnit
-        | Method (ETmLam (_, TUnit) e) <- iLookupTmVar x env
-        -> pure $ Left e
+    EStructProj f (normalize env -> Whnf (EStructCon fes))
+        | ETmLam (_, TUnit) e1 <- fromJust (f `lookup` fes)
+        -> pure $ Right (e0, Method e1)
+    ETmApp (normalize env -> Method m) EUnit -> pure $ Left m
     -- END special treatment for type classes.
     EVar x -> pure $ Right (e0, iLookupTmVar x env)
-    EBuiltin{} -> pure $ Right (e0, Whnf e0)
+    EBuiltin{} -> pureWhnf e0
     EVal q -> case lookupValue q (iWorld env) of
-        Left _ -> pure $ Right (e0, Abstract)
+        Left _ -> pureAbstract e0
         Right d -> pure $ Right (e0, Whnf (dvalBody d)) -- TODO(MH): The body might not be in WHNF.
     ETyLam (t, k) e1 -> do
         e0' <- ETyLam (t, k) <$> inline env e1
-        pure $ Right (e0', Whnf e0')
+        pureWhnf e0'
     ETmLam (x, t) e1 -> do
         e0' <- ETmLam (x, t) <$> inline (iIntroTmVar x Abstract env) e1
-        pure $ Right (e0', Whnf e0')
-    EApp{} -> handleApp e0
+        pureWhnf e0'
+    ETmApp{} -> handleApp e0
+    ETyApp{} -> handleApp e0
     ECase e1 as -> do
         let handleAlt (CaseAlternative p e2) =
                 CaseAlternative p <$> inline (iIntroAbstractTmVars (patternVars p) env) e2
         e0' <- ECase <$> inline env e1 <*> traverse handleAlt as
-        pure $ Right (e0', Abstract)
-    ERecCon{} -> pure $ Right (e0, Whnf e0)
-    ERecProj _ f (EVar x)
-        | Whnf (ERecCon _ fes) <- iLookupTmVar x env
-        , Just (EVar y) <- lookup f fes
-        -> pure $ Right (EVar y, iLookupTmVar y env)
-    _ -> pure $ Right (e0, Abstract)
+        pureAbstract e0'
+    ERecCon{} -> pureWhnf e0
+    ERecProj _ f (normalize env -> Whnf (ERecCon _ fes)) ->
+        pureNormalize env $ fromJust (lookup f fes)
+    _ -> pureAbstract e0
   where
+    pureWhnf e = pure $ Right (e, Whnf e)
+    pureAbstract e = pure $ Right (e, Abstract)
+    pureNormalize env e = assert (isAtomic e) $ pure $ Right (e, normalize env e)
     handleApp e0 = do
         let (f, as) = takeEApps e0
+        -- TODO(MH): This seems overly complicated.
         case f of
             EVar x | Whnf v <- iLookupTmVar x env -> do
                 let (g, bs) = takeEApps v
                 case g of
                     ELam{} -> do
-                        let n = syntacticArity g
-                        case n `compare` (length bs + length as) of
+                        case syntacticArity g `compare` (length bs + length as) of
                             LT -> error "overapplied lambda"
                             EQ -> do
                                 let e0' = apply g (bs ++ as)
                                 pure $ Left e0'
                             GT -> pure $ Right (e0, Whnf (mkEApps v as))
                     EBuiltin b -> do
-                        case n `compare` (length bs + length as) of
+                        case builtinArity b `compare` (length bs + length as) of
                             LT -> error "overapplied builtin"
-                            EQ -> pure $ Right (mkEApps v as, Abstract)
+                            EQ -> pureAbstract $ mkEApps v as
                             GT -> pure $ Right (e0, Whnf (mkEApps v as))
-                      where
-                        n = builtinArity b
-                    _ -> pure $ Right (e0, Abstract)
+                    _ -> pureAbstract e0
             EBuiltin b -> do
-                case n `compare` (length as) of
+                case builtinArity b `compare` length as of
                     LT -> error "overapplied builtin"
-                    EQ -> pure $ Right (mkEApps f as, Abstract)
+                    EQ -> pureAbstract $ mkEApps f as
                     GT -> pure $ Right (e0, Whnf (mkEApps f as))
               where
-                n = builtinArity b
-            _ -> pure $ Right (e0, Abstract)
+            _ -> pureAbstract e0
 
 apply :: Expr -> [Arg] -> Expr
 apply e0 as = case as of
@@ -315,6 +313,16 @@ apply e0 as = case as of
         -- TODO(MH): Repeated substitution is not efficient.
         ETyLam (v, _) e1 -> apply (Subst.applySubstInExpr (Subst.typeSubst v t1) e1) as
         _ -> error $ "type or arity error: applying type " ++ show t1 ++ " to " ++ show e0
+
+normalizeTmVar :: InlineEnv -> ExprVarName -> Value
+normalizeTmVar env x = case iLookupTmVar x env of
+    Whnf (EVar x) -> normalizeTmVar env x
+    v -> v
+
+normalize :: InlineEnv -> Expr -> Value
+normalize env = \case
+    EVar x -> normalizeTmVar env x
+    e -> Whnf e
 
 iLookupTmVar :: ExprVarName -> InlineEnv -> Value
 iLookupTmVar x env = case Map.lookup x (iBoundVars env) of
