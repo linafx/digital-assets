@@ -65,7 +65,7 @@ simplifyModule world _version m = runFreshM $ do
 
 data CleanEnv = CleanEnv
     { cBoundVars :: Map ExprVarName Int  -- runtime arity of the variable
-    , cRenamings :: Map ExprVarName ExprVarName
+    , cInlinings :: Map ExprVarName Expr  -- all expressions are atomic
     , cWorld :: World
     }
 
@@ -73,7 +73,7 @@ cleanExpr :: World -> Expr -> Expr
 cleanExpr world e0 =
     let env0 = CleanEnv
             { cBoundVars = Map.empty
-            , cRenamings = Map.empty
+            , cInlinings = Map.empty
             , cWorld = world
             }
     in
@@ -84,13 +84,21 @@ cleanExpr world e0 =
 clean :: CleanEnv -> Expr -> (Expr, Set ExprVarName, Int, Bool)
 clean env e0 = case e0 of
     EVar x ->
-        let x' = Map.findWithDefault x x (cRenamings env) in
-        let n = cLookupTmVar x' env in
-        (EVar x', Set.singleton x', n, False)
+        let e0' = Map.findWithDefault e0 x (cInlinings env) in
+        let (fvs, n) = case e0' of
+                EVar x' -> (Set.singleton x', cLookupTmVar x' env)
+                EBuiltin b -> (Set.empty, builtinArity b)
+                ENil{} -> (Set.empty, 0)
+                ENone{} -> (Set.empty, 0)
+                _ -> error "cInlinings returned non-atom"
+        in
+        (e0', fvs, n, False)
     EBuiltin b -> (e0, Set.empty, builtinArity b, False)
     ELet (Binding (x, _) (EVar y)) e2 ->
-        let y' = Map.findWithDefault y y (cRenamings env) in
-        clean (cIntroRenaming x y' env) e2
+        let e1' = Map.findWithDefault (EVar y) y (cInlinings env) in
+        clean (cIntroInlining x e1' env) e2
+    ELet (Binding (x, _) e1) e2 | isAtomic e1 ->
+        clean (cIntroInlining x e1 env) e2
     ELet (Binding (x, t) e1) e2 ->
         let (e1', fvs1, n1, b1) = clean env e1 in
         let (e2', fvs2, n2, b2) = clean (cIntroTmVar x n1 env) e2 in
@@ -163,8 +171,8 @@ cLookupTmVar x env = case Map.lookup x (cBoundVars env) of
 cIntroTmVars0 :: Set ExprVarName -> CleanEnv -> CleanEnv
 cIntroTmVars0 xs env = env{cBoundVars = Map.fromSet (const 0) xs `Map.union` cBoundVars env}
 
-cIntroRenaming :: ExprVarName -> ExprVarName -> CleanEnv -> CleanEnv
-cIntroRenaming x y env = env{cRenamings = Map.insert x y (cRenamings env)}
+cIntroInlining :: ExprVarName -> Expr -> CleanEnv -> CleanEnv
+cIntroInlining x e env = env{cInlinings = Map.insert x e (cInlinings env)}
 
 hasEffect :: Expr -> Bool
 hasEffect e = case e of
