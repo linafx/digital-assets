@@ -88,14 +88,15 @@ clean env e0 = case e0 of
         let n = cLookupTmVar x' env in
         (EVar x', Set.singleton x', n, False)
     EBuiltin b -> (e0, Set.empty, builtinArity b, False)
-    -- let x = y in e2
     ELet (Binding (x, _) (EVar y)) e2 ->
         let y' = Map.findWithDefault y y (cRenamings env) in
         clean (cIntroRenaming x y' env) e2
     ELet (Binding (x, t) e1) e2 ->
         let (e1', fvs1, n1, b1) = clean env e1 in
         let (e2', fvs2, n2, b2) = clean (cIntroTmVar x n1 env) e2 in
-        if b1 || x `Set.member` fvs2 then
+        if e2' == EVar x then
+            (e1', fvs1, n1, b1)
+        else if b1 || x `Set.member` fvs2 then
             (ELet (Binding (x, t) e1') e2', fvs1 `Set.union` Set.delete x fvs2, n2, b1 || b2)
         else
             (e2', fvs2, n2, b2)
@@ -258,6 +259,11 @@ evaluate env e0 = case e0 of
                 CaseAlternative p <$> inline (iIntroAbstractTmVars (patternVars p) env) e2
         e0' <- ECase <$> inline env e1 <*> traverse handleAlt as
         pure $ Right (e0', Abstract)
+    ERecCon{} -> pure $ Right (e0, Whnf e0)
+    ERecProj _ f (EVar x)
+        | Whnf (ERecCon _ fes) <- iLookupTmVar x env
+        , Just (EVar y) <- lookup f fes
+        -> pure $ Right (EVar y, iLookupTmVar y env)
     _ -> pure $ Right (e0, Abstract)
   where
     handleApp e0 = do
