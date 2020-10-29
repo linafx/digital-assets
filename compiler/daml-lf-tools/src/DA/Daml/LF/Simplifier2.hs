@@ -4,7 +4,6 @@ module DA.Daml.LF.Simplifier2 (
     simplifyModule
 ) where
 
-import Control.Exception (assert)
 import Control.Lens
 import Control.Monad.State.Strict
 import DA.Daml.LF.Ast
@@ -22,7 +21,6 @@ import qualified Data.Map.Strict as Map
 import qualified Data.NameMap as NM
 import qualified Data.Set as Set
 import qualified Data.Text.Extended as T
-import Debug.Trace
 
 data FreshState = FreshState
     { tmVarCounter :: Int
@@ -189,16 +187,49 @@ hasEffect e = case e of
 -- INLINER
 ------------------------------------------------------------
 
+data Atom
+    = AVar ExprVarName
+    | ABuiltin BuiltinExpr
+    | ANone Type
+    | ANil Type
+
 data Value
-    = Abstract
+    = VAbstract
+    | VPAP BuiltinExpr [Arg]
+    | VLam Expr
+    | VPALam ExprVarName Expr [Arg]
+    | VRecord [(FieldName, Atom)]
+    | VStruct [(FieldName, Atom)]
+    | VVariant VariantConName Atom
+    | VEnum VariantConName
+    | VNone
+    | VSome Atom
+    | VNil
+    | VCons Atom Atom
+    | VDict [(FieldName, Expr)]
+    | VMethod Expr
     | Whnf Expr
-    | Method Expr
+
+pattern VBuiltin :: BuiltinExpr -> Value
+pattern VBuiltin b = VPAP b []
 
 valueArity :: Value -> Int
-valueArity info = case info of
-    Abstract -> 0
+valueArity = \case
+    VAbstract -> 0
+    VPAP b as -> builtinArity b - length as
+    VLam e -> syntacticArity e
+    VPALam _ e as -> syntacticArity e - length as
+    VRecord{} -> 0
+    VStruct{} -> 0
+    VVariant{} -> 0
+    VEnum{} -> 0
+    VNone -> 0
+    VSome{} -> 0
+    VNil -> 0
+    VCons{} -> 0
+    VDict{} -> 0
+    VMethod e -> syntacticArity e
     Whnf e -> syntacticArity e
-    Method e -> syntacticArity e
 
 data InlineEnv = InlineEnv
     { iBoundVars :: Map ExprVarName Value
@@ -245,42 +276,66 @@ evaluate env e0 = case e0 of
     -- we have it. It will either be a reference to another function or a lambda
     -- containing getField or setField.
     -- BEGIN special treatment for type classes.
-    EStructProj f (normalize env -> Whnf (EStructCon fes))
-        | ETmLam (_, TUnit) e1 <- fromJust (f `lookup` fes)
-        -> pure $ Right (e0, Method e1)
-    ETmApp (normalize env -> Method m) EUnit -> pure $ Left m
+    EStructProj f (lookupAsAtom env -> VDict fes) ->
+        pure $ Right (e0, VMethod (fromJust (f `lookup` fes)))
+    ETmApp (EVar x) EUnit
+        | VMethod m <- iLookupTmVar x env -> pure $ Left m
     -- END special treatment for type classes.
     EVar x -> pure $ Right (e0, iLookupTmVar x env)
-    EBuiltin{} -> pureWhnf e0
+    EBuiltin b -> pure $ Right (e0, VBuiltin b)
     EVal q -> case lookupValue q (iWorld env) of
         Left _ -> pureAbstract e0
-        Right d -> pure $ Right (e0, Whnf (dvalBody d)) -- TODO(MH): The body might not be in WHNF.
+        Right d -> do
+            let v = case dvalBody d of
+                    e@ELam{} -> VLam e
+                    EStructCon fes
+                        | Just dict <- traverse isMethod fes -> VDict dict
+                      where
+                        isMethod (f, e) = case e of
+                            ETmLam (_, TUnit) e' -> Just (f, e')
+                            _ -> Nothing
+                    _ -> VAbstract
+            pure $ Right (e0, v)
     ETyLam (t, k) e1 -> do
         e0' <- ETyLam (t, k) <$> inline env e1
-        pureWhnf e0'
+        pure $ Right (e0', VLam e0')
     ETmLam (x, t) e1 -> do
-        e0' <- ETmLam (x, t) <$> inline (iIntroTmVar x Abstract env) e1
-        pureWhnf e0'
+        e0' <- ETmLam (x, t) <$> inline (iIntroTmVar x VAbstract env) e1
+        pure $ Right (e0', VLam e0')
     ETmApp{} -> handleApp e0
     ETyApp{} -> handleApp e0
     ELet{} -> error "let under let"
     ECase e1 as -> handleCase e1 as
-    ERecCon{} -> pureWhnf e0
-    ERecProj _ f e1
-        | Whnf (ERecCon _ fes) <- normalize env e1 -> pureNormalize env $ fromJust (lookup f fes)
+    ERecCon _ fas -> do
+        let v = VRecord [(f, asAtom a) | (f, a) <- fas]
+        pure $ Right (e0, v)
+    ERecProj _ f a
+        | VRecord fes <- lookupAsAtom env a -> do
+            let a' = fromJust (lookup f fes)
+            pure $ Right (asExpr a', lookupAtom env a')
         | otherwise -> pureAbstract e0
     ERecUpd{} -> pureAbstract e0  -- TODO(MH): Implement.
-    EStructCon{} -> pureWhnf e0
-    EStructProj f e1
-        | Whnf (EStructCon fes) <- normalize env e1 -> pureNormalize env $ fromJust (lookup f fes)
+    EStructCon fas -> do
+        let v = VRecord [(f, asAtom a) | (f, a) <- fas]
+        pure $ Right (e0, v)
+    EStructProj f a
+        | VStruct fes <- lookupAsAtom env a -> do
+            let a' = fromJust (lookup f fes)
+            pure $ Right (asExpr a', lookupAtom env a')
         | otherwise -> pureAbstract e0
     EStructUpd{} -> pureAbstract e0  -- TODO(MH): Implement.
-    EVariantCon{} -> pureWhnf e0
-    EEnumCon{} -> pureWhnf e0
-    ENil{} -> pureWhnf e0
-    ECons{} -> pureWhnf e0
-    ENone{} -> pureWhnf e0
-    ESome{} -> pureWhnf e0
+    EVariantCon _ c a -> do
+        let v = VVariant c (asAtom a)
+        pure $ Right (e0, v)
+    EEnumCon _ c -> pure $ Right (e0, VEnum c)
+    ENil _ -> pure $ Right (e0, VNil)
+    ECons _ a1 a2 -> do
+        let v = VCons (asAtom a1) (asAtom a2)
+        pure $ Right (e0, v)
+    ENone{} -> pure $ Right (e0, VNone)
+    ESome _ a -> do
+        let v = VSome (asAtom a)
+        pure $ Right (e0, v)
     ELocation _ e1 -> evaluate env e1
     -- TODO(MH): Implement the builtins below.
     EToAny{} -> pureAbstract e0
@@ -289,110 +344,108 @@ evaluate env e0 = case e0 of
     EUpdate{} -> pureAbstract e0
     EScenario{} -> pureAbstract e0
   where
-    pureWhnf e = pure $ Right (e, Whnf e)
-    pureAbstract e = pure $ Right (e, Abstract)
-    pureNormalize env e = assert (isAtomic e) $ pure $ Right (e, normalize env e)
+    pureAbstract e = pure $ Right (e, VAbstract)
     handleApp e0 = do
         let (f, as) = takeEApps e0
-        -- TODO(MH): This seems overly complicated.
         case f of
-            EVar x | Whnf v <- iLookupTmVar x env -> do
-                let (g, bs) = takeEApps v
-                case g of
-                    ELam{} -> do
-                        case syntacticArity g `compare` (length bs + length as) of
-                            LT -> error "overapplied lambda"
-                            EQ -> do
-                                let e0' = apply g (bs ++ as)
-                                pure $ Left e0'
-                            GT -> pure $ Right (e0, Whnf (mkEApps v as))
-                    EBuiltin b -> do
-                        case builtinArity b `compare` (length bs + length as) of
-                            LT -> error "overapplied builtin"
-                            EQ -> pureAbstract $ mkEApps v as
-                            GT -> pure $ Right (e0, Whnf (mkEApps v as))
-                    _ -> pureAbstract e0
-            EBuiltin b -> do
-                case builtinArity b `compare` length as of
+            EVar x -> case iLookupTmVar x env of
+                VAbstract -> pureAbstract e0
+                VLam e -> case syntacticArity e `compare` length as of
+                    LT -> error "overapplied lambda"
+                    EQ -> pure $ Left (apply e as)
+                    GT -> pure $ Right (e0, VPALam x e as)
+                VPALam y e as' -> case syntacticArity e `compare` (length as' + length as) of
+                    LT -> error "overapplied lambda"
+                    EQ -> pure $ Left (apply e (as' ++ as))
+                    GT -> pure $ Right (e0, VPALam y e (as' ++ as))
+                VPAP b as' -> case builtinArity b `compare` (length as' + length as) of
                     LT -> error "overapplied builtin"
-                    EQ -> pureAbstract $ mkEApps f as
-                    GT -> pure $ Right (e0, Whnf (mkEApps f as))
-              where
-            _ -> pureAbstract e0
+                    EQ -> pureAbstract $ mkEApps (EBuiltin b) (as' ++ as)
+                    GT -> pure $ Right (e0, VPAP b (as' ++ as))
+                _ -> illTyped
+            EBuiltin b -> case builtinArity b `compare` length as of
+                LT -> error "overapplied builtin"
+                EQ -> pureAbstract e0
+                GT -> pure $ Right (e0, VPAP b as)
+            _ -> illTyped
+      where
+        illTyped = error $ "ill-typed appplication in " ++ renderPretty e0
     handleCase e1 as = do
-        let nonExhaustive e = error $ "non-exhaustive pattern match on " ++ renderPretty e
         case normalize env e1 of
-            Whnf e1'@EUnit{} -> case firstJust match as of
-                Nothing -> nonExhaustive e1'
+            VAbstract -> do
+                let handleAlt (CaseAlternative p e2) =
+                        CaseAlternative p <$> inline (iIntroAbstractTmVars (patternVars p) env) e2
+                e0' <- ECase <$> inline env e1 <*> traverse handleAlt as
+                pureAbstract e0'
+            VBuiltin BEUnit -> case firstJust match as of
+                Nothing -> nonExhaustive
                 Just a -> pure $ Left a
               where
                 match (CaseAlternative p e) = case p of
                     CPUnit -> Just e
                     CPDefault -> Just e
                     _ -> Nothing
-            Whnf e1'@(EBool v) -> case firstJust match as of
-                Nothing -> nonExhaustive e1'
+            VBuiltin (BEBool v) -> case firstJust match as of
+                Nothing -> nonExhaustive
                 Just a -> pure $ Left a
               where
                 match (CaseAlternative p e) = case p of
                     CPBool b | b == v -> Just e
                     CPDefault -> Just e
                     _ -> Nothing
-            Whnf e1'@ENone{} -> case firstJust match as of
-                Nothing -> nonExhaustive e1'
+            VNone -> case firstJust match as of
+                Nothing -> nonExhaustive
                 Just a -> pure $ Left a
               where
                 match (CaseAlternative p e) = case p of
                     CPNone -> Just e
                     CPDefault -> Just e
                     _ -> Nothing
-            Whnf e1'@(ESome _ v) -> case firstJust match as of
-                Nothing -> nonExhaustive e1'
+            VSome v -> case firstJust match as of
+                Nothing -> nonExhaustive
                 Just a -> pure $ Left a
               where
                 match (CaseAlternative p e) = case p of
-                    CPSome x -> Just (ELet (Binding (x, Nothing) v) e)
+                    CPSome x -> Just (ELet (Binding (x, Nothing) (asExpr v)) e)
                     CPDefault -> Just e
                     _ -> Nothing
-            Whnf e1'@ENil{} -> case firstJust match as of
-                Nothing -> nonExhaustive e1'
+            VNil -> case firstJust match as of
+                Nothing -> nonExhaustive
                 Just a -> pure $ Left a
               where
                 match (CaseAlternative p e) = case p of
                     CPNil -> Just e
                     CPDefault -> Just e
                     _ -> Nothing
-            Whnf e1'@(ECons _ h t) -> case firstJust match as of
-                Nothing -> nonExhaustive e1'
+            VCons h t -> case firstJust match as of
+                Nothing -> nonExhaustive
                 Just a -> pure $ Left a
               where
                 match (CaseAlternative p e) = case p of
-                    CPCons x y -> Just (ELet (Binding (x, Nothing) h) $ ELet (Binding (y, Nothing) t) e)
+                    CPCons x y -> Just (ELet (Binding (x, Nothing) (asExpr h)) $ ELet (Binding (y, Nothing) (asExpr t)) e)
                     CPDefault -> Just e
                     _ -> Nothing
-            Whnf e1'@(EVariantCon _ c v) -> case firstJust match as of
-                Nothing -> nonExhaustive e1'
+            VVariant c v -> case firstJust match as of
+                Nothing -> nonExhaustive
                 Just a -> pure $ Left a
               where
                 match (CaseAlternative p e) = case p of
-                    CPVariant _ c' x | c == c' -> Just (ELet (Binding (x, Nothing) v) e)
+                    CPVariant _ c' x | c == c' -> Just (ELet (Binding (x, Nothing) (asExpr v)) e)
                     CPDefault -> Just e
                     _ -> Nothing
-            Whnf e1'@(EEnumCon _ c) -> case firstJust match as of
-                Nothing -> nonExhaustive e1'
+            VEnum c -> case firstJust match as of
+                Nothing -> nonExhaustive
                 Just a -> pure $ Left a
               where
                 match (CaseAlternative p e) = case p of
                     CPEnum _ c' | c == c' -> Just e
                     CPDefault -> Just e
                     _ -> Nothing
-            Whnf e -> error $ "matching on non-matchable expression " ++ renderPretty e
-            Method e -> error $ "matching on non-matchable method " ++ renderPretty e
-            Abstract -> do
-                let handleAlt (CaseAlternative p e2) =
-                        CaseAlternative p <$> inline (iIntroAbstractTmVars (patternVars p) env) e2
-                e0' <- ECase <$> inline env e1 <*> traverse handleAlt as
-                pureAbstract e0'
+            _ -> illTyped
+          where
+            e0 = ECase e1 as
+            nonExhaustive = error $ "non-exhaustive pattern match in " ++ renderPretty e0
+            illTyped = error $ "pattern match on non-metchable type in " ++ renderPretty e0
 
 apply :: Expr -> [Arg] -> Expr
 apply e0 as = case as of
@@ -415,24 +468,41 @@ normalize env = \case
     EVar x -> normalizeTmVar env x
     e -> Whnf e
 
+lookupAsAtom :: InlineEnv -> Expr -> Value
+lookupAsAtom env = lookupAtom env . asAtom
+
+lookupAtom :: InlineEnv -> Atom -> Value
+lookupAtom env = \case
+    AVar x -> iLookupTmVar x env
+    ABuiltin b -> VBuiltin b
+    ANone _ -> VNone
+    ANil _ -> VNil
+
+asAtom :: Expr -> Atom
+asAtom = \case
+    EVar x -> AVar x
+    EBuiltin b -> ABuiltin b
+    ENone t -> ANone t
+    ENil t -> ANil t
+    e -> error $ "expected atom, found " ++ renderPretty e
+
+asExpr :: Atom -> Expr
+asExpr = \case
+    AVar x -> EVar x
+    ABuiltin b -> EBuiltin b
+    ANone t -> ENone t
+    ANil t -> ENil t
+
 iLookupTmVar :: ExprVarName -> InlineEnv -> Value
 iLookupTmVar x env = case Map.lookup x (iBoundVars env) of
     Just v -> v
-    Nothing -> error ("reference to unbound variable " ++ show x)
+    Nothing -> error ("reference to unbound variable " ++ renderPretty x)
 
 iIntroTmVar :: ExprVarName -> Value -> InlineEnv -> InlineEnv
 iIntroTmVar x info env = env{iBoundVars = Map.insert x info (iBoundVars env)}
 
-_iIntroTrace :: Monad m => ExprVarName -> Value -> m ()
-_iIntroTrace x v = do
-    let msg = case v of
-            Abstract -> "INTRO " ++ renderPretty x ++ " as ABSTRACT"
-            Whnf e -> "INTRO " ++ renderPretty x ++ " as\n" ++ renderPretty e
-            Method e -> "INTRO METHOD " ++ renderPretty x ++ " as\n" ++ renderPretty e
-    traceM msg
-
 iIntroAbstractTmVars :: Set ExprVarName -> InlineEnv -> InlineEnv
-iIntroAbstractTmVars xs env = env{iBoundVars = Map.fromSet (const Abstract) xs `Map.union` iBoundVars env}
+iIntroAbstractTmVars xs env = env{iBoundVars = Map.fromSet (const VAbstract) xs `Map.union` iBoundVars env}
 
 ------------------------------------------------------------
 -- ANF TRANSFORMATION
@@ -624,13 +694,15 @@ patternVars p = case p of
     CPSome x -> Set.singleton x
     CPDefault -> Set.empty
 
-pattern EBool :: Bool -> Expr
-pattern EBool b = EBuiltin (BEBool b)
-
 pattern EApp :: Expr -> Arg -> Expr
 pattern EApp fun arg <- (matching _EApp -> Right (fun, arg))
   where
     EApp fun arg = mkEApp fun arg
+
+-- pattern EApps :: Expr -> [Arg] -> Expr
+-- pattern EApps f as <- (takeEApps -> (f, as))
+--   where
+--     EApps f as = mkEApps f as
 
 data Lam
     = TmLam (ExprVarName, Type)
@@ -651,6 +723,11 @@ takeELam e0 = case e0 of
     ETmLam b e1 -> Just (TmLam b, e1)
     ETyLam b e1 -> Just (TyLam b, e1)
     _ -> Nothing
+
+-- takeELams :: Expr -> ([Lam], Expr)
+-- takeELams = \case
+--     ELam b e -> first (b:) (takeELams e)
+--     e -> ([], e)
 
 takeTFuns :: Type -> ([Type], Type)
 takeTFuns = \case
