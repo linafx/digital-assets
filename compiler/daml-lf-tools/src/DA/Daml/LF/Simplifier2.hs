@@ -350,22 +350,22 @@ evaluate env e0 = case e0 of
         case f of
             EVar x -> case iLookupTmVar x env of
                 VAbstract -> pureAbstract e0
-                VLam e -> handleLam e0 x e as
-                VPALam y e as' -> handleLam e0 y e (as' ++ as)
-                VPAP b as' -> handleBuitlin e0 b (as' ++ as)
+                VLam e -> handleLam x e as
+                VPALam y e as' -> handleLam y e (as' ++ as)
+                VPAP b as' -> handleBuitlin b (as' ++ as)
                 _ -> illTyped
-            EBuiltin b -> handleBuitlin e0 b as
+            EBuiltin b -> handleBuitlin b as
             _ -> illTyped
       where
         illTyped = error $ "ill-typed appplication in " ++ renderPretty e0
-        handleLam e0 x e as = case syntacticArity e `compare` length as of
+        handleLam x e as = case syntacticArity e `compare` length as of
             LT -> error "overapplied lambda"
             EQ -> pure $ Left (apply e as)
-            GT -> pure $ Right (e0, VPALam x e as)
-        handleBuitlin e0 b as = case builtinArity b `compare` length as of
+            GT -> pure $ Right (mkEApps (EVar x) as, VPALam x e as)
+        handleBuitlin b as = case builtinArity b `compare` length as of
             LT -> error "overapplied builtin"
             EQ -> pureAbstract $ mkEApps (EBuiltin b) as
-            GT -> pure $ Right (e0, VPAP b as)
+            GT -> pure $ Right (mkEApps (EBuiltin b) as, VPAP b as)
     handleCase e1 as = do
         case normalize env e1 of
             VAbstract -> do
