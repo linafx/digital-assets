@@ -182,110 +182,110 @@ expandSynApp tsyn args = do
   -- to call 'substitute'.
   return $ substitute (Map.fromList subst1) synType
 
-typeOfBuiltin :: MonadGamma m => BuiltinExpr -> m Type
+typeOfBuiltin :: BuiltinExpr -> Type
 typeOfBuiltin = \case
-  BEInt64 _          -> pure TInt64
-  BEDecimal _        -> pure TDecimal
-  BENumeric n        -> pure (TNumeric (TNat (typeLevelNat (numericScale n))))
-  BEText    _        -> pure TText
-  BETimestamp _      -> pure TTimestamp
-  BEParty   _        -> pure TParty
-  BEDate _           -> pure TDate
-  BEUnit             -> pure TUnit
-  BEBool _           -> pure TBool
-  BEError            -> pure $ TForall (alpha, KStar) (TText :-> tAlpha)
-  BEEqualGeneric     -> pure $ TForall (alpha, KStar) (tAlpha :-> tAlpha :-> TBool)
-  BELessGeneric      -> pure $ TForall (alpha, KStar) (tAlpha :-> tAlpha :-> TBool)
-  BELessEqGeneric    -> pure $ TForall (alpha, KStar) (tAlpha :-> tAlpha :-> TBool)
-  BEGreaterGeneric   -> pure $ TForall (alpha, KStar) (tAlpha :-> tAlpha :-> TBool)
-  BEGreaterEqGeneric -> pure $ TForall (alpha, KStar) (tAlpha :-> tAlpha :-> TBool)
-  BEEqual     btype  -> pure $ tComparison btype
-  BELess      btype  -> pure $ tComparison btype
-  BELessEq    btype  -> pure $ tComparison btype
-  BEGreater   btype  -> pure $ tComparison btype
-  BEGreaterEq btype  -> pure $ tComparison btype
-  BEToText    btype  -> pure $ TBuiltin btype :-> TText
-  BEToTextContractId -> pure $ TForall (alpha, KStar) $ TContractId tAlpha :-> TOptional TText
-  BETextFromCodePoints -> pure $ TList TInt64 :-> TText
-  BEPartyToQuotedText -> pure $ TParty :-> TText
-  BEPartyFromText    -> pure $ TText :-> TOptional TParty
-  BEInt64FromText    -> pure $ TText :-> TOptional TInt64
-  BEDecimalFromText  -> pure $ TText :-> TOptional TDecimal
-  BETextToCodePoints -> pure $ TText :-> TList TInt64
-  BEAddDecimal       -> pure $ tBinop TDecimal
-  BESubDecimal       -> pure $ tBinop TDecimal
-  BEMulDecimal       -> pure $ tBinop TDecimal
-  BEDivDecimal       -> pure $ tBinop TDecimal
-  BERoundDecimal     -> pure $ TInt64 :-> TDecimal :-> TDecimal
-  BEEqualNumeric     -> pure $ TForall (alpha, KNat) $ TNumeric tAlpha :-> TNumeric tAlpha :-> TBool
-  BELessNumeric      -> pure $ TForall (alpha, KNat) $ TNumeric tAlpha :-> TNumeric tAlpha :-> TBool
-  BELessEqNumeric    -> pure $ TForall (alpha, KNat) $ TNumeric tAlpha :-> TNumeric tAlpha :-> TBool
-  BEGreaterNumeric   -> pure $ TForall (alpha, KNat) $ TNumeric tAlpha :-> TNumeric tAlpha :-> TBool
-  BEGreaterEqNumeric -> pure $ TForall (alpha, KNat) $ TNumeric tAlpha :-> TNumeric tAlpha :-> TBool
-  BEAddNumeric -> pure $ TForall (alpha, KNat) $ TNumeric tAlpha :-> TNumeric tAlpha :-> TNumeric tAlpha
-  BESubNumeric -> pure $ TForall (alpha, KNat) $ TNumeric tAlpha :-> TNumeric tAlpha :-> TNumeric tAlpha
-  BEMulNumeric -> pure $ TForall (alpha, KNat) $ TForall (beta, KNat) $ TForall (gamma, KNat) $ TNumeric tAlpha :-> TNumeric tBeta :-> TNumeric tGamma
-  BEDivNumeric -> pure $ TForall (alpha, KNat) $ TForall (beta, KNat) $ TForall (gamma, KNat) $ TNumeric tAlpha :-> TNumeric tBeta :-> TNumeric tGamma
-  BERoundNumeric -> pure $ TForall (alpha, KNat) $ TInt64 :-> TNumeric tAlpha :-> TNumeric tAlpha
-  BECastNumeric -> pure $ TForall (alpha, KNat) $ TForall (beta, KNat) $ TNumeric tAlpha :-> TNumeric tBeta
-  BEShiftNumeric -> pure $ TForall (alpha, KNat) $ TForall (beta, KNat) $ TNumeric tAlpha :-> TNumeric tBeta
-  BEInt64ToNumeric -> pure $ TForall (alpha, KNat) $ TInt64 :-> TNumeric tAlpha
-  BENumericToInt64 -> pure $ TForall (alpha, KNat) $ TNumeric tAlpha :-> TInt64
-  BEToTextNumeric -> pure $ TForall (alpha, KNat) $ TNumeric tAlpha :-> TText
-  BENumericFromText -> pure $ TForall (alpha, KNat) $ TText :-> TOptional (TNumeric tAlpha)
+  BEInt64 _          -> TInt64
+  BEDecimal _        -> TDecimal
+  BENumeric n        -> (TNumeric (TNat (typeLevelNat (numericScale n))))
+  BEText    _        -> TText
+  BETimestamp _      -> TTimestamp
+  BEParty   _        -> TParty
+  BEDate _           -> TDate
+  BEUnit             -> TUnit
+  BEBool _           -> TBool
+  BEError            -> TForall (alpha, KStar) (TText :-> tAlpha)
+  BEEqualGeneric     -> TForall (alpha, KStar) (tAlpha :-> tAlpha :-> TBool)
+  BELessGeneric      -> TForall (alpha, KStar) (tAlpha :-> tAlpha :-> TBool)
+  BELessEqGeneric    -> TForall (alpha, KStar) (tAlpha :-> tAlpha :-> TBool)
+  BEGreaterGeneric   -> TForall (alpha, KStar) (tAlpha :-> tAlpha :-> TBool)
+  BEGreaterEqGeneric -> TForall (alpha, KStar) (tAlpha :-> tAlpha :-> TBool)
+  BEEqual     btype  -> tComparison btype
+  BELess      btype  -> tComparison btype
+  BELessEq    btype  -> tComparison btype
+  BEGreater   btype  -> tComparison btype
+  BEGreaterEq btype  -> tComparison btype
+  BEToText    btype  -> TBuiltin btype :-> TText
+  BEToTextContractId -> TForall (alpha, KStar) $ TContractId tAlpha :-> TOptional TText
+  BETextFromCodePoints -> TList TInt64 :-> TText
+  BEPartyToQuotedText -> TParty :-> TText
+  BEPartyFromText    -> TText :-> TOptional TParty
+  BEInt64FromText    -> TText :-> TOptional TInt64
+  BEDecimalFromText  -> TText :-> TOptional TDecimal
+  BETextToCodePoints -> TText :-> TList TInt64
+  BEAddDecimal       -> tBinop TDecimal
+  BESubDecimal       -> tBinop TDecimal
+  BEMulDecimal       -> tBinop TDecimal
+  BEDivDecimal       -> tBinop TDecimal
+  BERoundDecimal     -> TInt64 :-> TDecimal :-> TDecimal
+  BEEqualNumeric     -> TForall (alpha, KNat) $ TNumeric tAlpha :-> TNumeric tAlpha :-> TBool
+  BELessNumeric      -> TForall (alpha, KNat) $ TNumeric tAlpha :-> TNumeric tAlpha :-> TBool
+  BELessEqNumeric    -> TForall (alpha, KNat) $ TNumeric tAlpha :-> TNumeric tAlpha :-> TBool
+  BEGreaterNumeric   -> TForall (alpha, KNat) $ TNumeric tAlpha :-> TNumeric tAlpha :-> TBool
+  BEGreaterEqNumeric -> TForall (alpha, KNat) $ TNumeric tAlpha :-> TNumeric tAlpha :-> TBool
+  BEAddNumeric -> TForall (alpha, KNat) $ TNumeric tAlpha :-> TNumeric tAlpha :-> TNumeric tAlpha
+  BESubNumeric -> TForall (alpha, KNat) $ TNumeric tAlpha :-> TNumeric tAlpha :-> TNumeric tAlpha
+  BEMulNumeric -> TForall (alpha, KNat) $ TForall (beta, KNat) $ TForall (gamma, KNat) $ TNumeric tAlpha :-> TNumeric tBeta :-> TNumeric tGamma
+  BEDivNumeric -> TForall (alpha, KNat) $ TForall (beta, KNat) $ TForall (gamma, KNat) $ TNumeric tAlpha :-> TNumeric tBeta :-> TNumeric tGamma
+  BERoundNumeric -> TForall (alpha, KNat) $ TInt64 :-> TNumeric tAlpha :-> TNumeric tAlpha
+  BECastNumeric -> TForall (alpha, KNat) $ TForall (beta, KNat) $ TNumeric tAlpha :-> TNumeric tBeta
+  BEShiftNumeric -> TForall (alpha, KNat) $ TForall (beta, KNat) $ TNumeric tAlpha :-> TNumeric tBeta
+  BEInt64ToNumeric -> TForall (alpha, KNat) $ TInt64 :-> TNumeric tAlpha
+  BENumericToInt64 -> TForall (alpha, KNat) $ TNumeric tAlpha :-> TInt64
+  BEToTextNumeric -> TForall (alpha, KNat) $ TNumeric tAlpha :-> TText
+  BENumericFromText -> TForall (alpha, KNat) $ TText :-> TOptional (TNumeric tAlpha)
 
-  BEAddInt64         -> pure $ tBinop TInt64
-  BESubInt64         -> pure $ tBinop TInt64
-  BEMulInt64         -> pure $ tBinop TInt64
-  BEDivInt64         -> pure $ tBinop TInt64
-  BEModInt64         -> pure $ tBinop TInt64
-  BEExpInt64         -> pure $ tBinop TInt64
-  BEInt64ToDecimal   -> pure $ TInt64 :-> TDecimal
-  BEDecimalToInt64   -> pure $ TDecimal :-> TInt64
-  BEExplodeText      -> pure $ TText :-> TList TText
-  BEAppendText       -> pure $ tBinop TText
-  BEImplodeText      -> pure $ TList TText :-> TText
-  BESha256Text       -> pure $ TText :-> TText
-  BEFoldl -> pure $ TForall (alpha, KStar) $ TForall (beta, KStar) $
+  BEAddInt64         -> tBinop TInt64
+  BESubInt64         -> tBinop TInt64
+  BEMulInt64         -> tBinop TInt64
+  BEDivInt64         -> tBinop TInt64
+  BEModInt64         -> tBinop TInt64
+  BEExpInt64         -> tBinop TInt64
+  BEInt64ToDecimal   -> TInt64 :-> TDecimal
+  BEDecimalToInt64   -> TDecimal :-> TInt64
+  BEExplodeText      -> TText :-> TList TText
+  BEAppendText       -> tBinop TText
+  BEImplodeText      -> TList TText :-> TText
+  BESha256Text       -> TText :-> TText
+  BEFoldl -> TForall (alpha, KStar) $ TForall (beta, KStar) $
              (tBeta :-> tAlpha :-> tBeta) :-> tBeta :-> TList tAlpha :-> tBeta
-  BEFoldr -> pure $ TForall (alpha, KStar) $ TForall (beta, KStar) $
+  BEFoldr -> TForall (alpha, KStar) $ TForall (beta, KStar) $
              (tAlpha :-> tBeta :-> tBeta) :-> tBeta :-> TList tAlpha :-> tBeta
-  BETextMapEmpty  -> pure $ TForall (alpha, KStar) $ TTextMap tAlpha
-  BETextMapInsert -> pure $ TForall (alpha, KStar) $ TText :-> tAlpha :-> TTextMap tAlpha :-> TTextMap tAlpha
-  BETextMapLookup -> pure $ TForall (alpha, KStar) $ TText :-> TTextMap tAlpha :-> TOptional tAlpha
-  BETextMapDelete -> pure $ TForall (alpha, KStar) $ TText :-> TTextMap tAlpha :-> TTextMap tAlpha
-  BETextMapToList -> pure $ TForall (alpha, KStar) $ TTextMap tAlpha :-> TList (TTextMapEntry tAlpha)
-  BETextMapSize   -> pure $ TForall (alpha, KStar) $ TTextMap tAlpha :-> TInt64
-  BEGenMapEmpty -> pure $ TForall (alpha, KStar) $ TForall (beta, KStar) $ TGenMap tAlpha tBeta
-  BEGenMapInsert -> pure $ TForall (alpha, KStar) $ TForall (beta, KStar) $ tAlpha :-> tBeta :-> TGenMap tAlpha tBeta :-> TGenMap tAlpha tBeta
-  BEGenMapLookup -> pure $ TForall (alpha, KStar) $ TForall (beta, KStar) $ tAlpha :-> TGenMap tAlpha tBeta :-> TOptional tBeta
-  BEGenMapDelete -> pure $ TForall (alpha, KStar) $ TForall (beta, KStar) $ tAlpha :-> TGenMap tAlpha tBeta :-> TGenMap tAlpha tBeta
-  BEGenMapKeys -> pure $ TForall (alpha, KStar) $ TForall (beta, KStar) $ TGenMap tAlpha tBeta :-> TList tAlpha
-  BEGenMapValues -> pure $ TForall (alpha, KStar) $ TForall (beta, KStar) $ TGenMap tAlpha tBeta :-> TList tBeta
-  BEGenMapSize -> pure $ TForall (alpha, KStar) $ TForall (beta, KStar) $ TGenMap tAlpha tBeta :-> TInt64
+  BETextMapEmpty  -> TForall (alpha, KStar) $ TTextMap tAlpha
+  BETextMapInsert -> TForall (alpha, KStar) $ TText :-> tAlpha :-> TTextMap tAlpha :-> TTextMap tAlpha
+  BETextMapLookup -> TForall (alpha, KStar) $ TText :-> TTextMap tAlpha :-> TOptional tAlpha
+  BETextMapDelete -> TForall (alpha, KStar) $ TText :-> TTextMap tAlpha :-> TTextMap tAlpha
+  BETextMapToList -> TForall (alpha, KStar) $ TTextMap tAlpha :-> TList (TTextMapEntry tAlpha)
+  BETextMapSize   -> TForall (alpha, KStar) $ TTextMap tAlpha :-> TInt64
+  BEGenMapEmpty -> TForall (alpha, KStar) $ TForall (beta, KStar) $ TGenMap tAlpha tBeta
+  BEGenMapInsert -> TForall (alpha, KStar) $ TForall (beta, KStar) $ tAlpha :-> tBeta :-> TGenMap tAlpha tBeta :-> TGenMap tAlpha tBeta
+  BEGenMapLookup -> TForall (alpha, KStar) $ TForall (beta, KStar) $ tAlpha :-> TGenMap tAlpha tBeta :-> TOptional tBeta
+  BEGenMapDelete -> TForall (alpha, KStar) $ TForall (beta, KStar) $ tAlpha :-> TGenMap tAlpha tBeta :-> TGenMap tAlpha tBeta
+  BEGenMapKeys -> TForall (alpha, KStar) $ TForall (beta, KStar) $ TGenMap tAlpha tBeta :-> TList tAlpha
+  BEGenMapValues -> TForall (alpha, KStar) $ TForall (beta, KStar) $ TGenMap tAlpha tBeta :-> TList tBeta
+  BEGenMapSize -> TForall (alpha, KStar) $ TForall (beta, KStar) $ TGenMap tAlpha tBeta :-> TInt64
 
-  BEEqualList -> pure $
+  BEEqualList ->
     TForall (alpha, KStar) $
     (tAlpha :-> tAlpha :-> TBool) :-> TList tAlpha :-> TList tAlpha :-> TBool
-  BETimestampToUnixMicroseconds -> pure $ TTimestamp :-> TInt64
-  BEUnixMicrosecondsToTimestamp -> pure $ TInt64 :-> TTimestamp
-  BEDateToUnixDays -> pure $ TDate :-> TInt64
-  BEUnixDaysToDate -> pure $ TInt64 :-> TDate
-  BETrace -> pure $ TForall (alpha, KStar) $ TText :-> tAlpha :-> tAlpha
-  BEEqualContractId -> pure $
+  BETimestampToUnixMicroseconds -> TTimestamp :-> TInt64
+  BEUnixMicrosecondsToTimestamp -> TInt64 :-> TTimestamp
+  BEDateToUnixDays -> TDate :-> TInt64
+  BEUnixDaysToDate -> TInt64 :-> TDate
+  BETrace -> TForall (alpha, KStar) $ TText :-> tAlpha :-> tAlpha
+  BEEqualContractId ->
     TForall (alpha, KStar) $
     TContractId tAlpha :-> TContractId tAlpha :-> TBool
   BECoerceContractId -> do
-    pure $ TForall (alpha, KStar) $ TForall (beta, KStar) $ TContractId tAlpha :-> TContractId tBeta
+    TForall (alpha, KStar) $ TForall (beta, KStar) $ TContractId tAlpha :-> TContractId tBeta
 
-  BETextToUpper -> pure (TText :-> TText)
-  BETextToLower -> pure (TText :-> TText)
-  BETextSlice -> pure (TInt64 :-> TInt64 :-> TText :-> TText)
-  BETextSliceIndex -> pure (TText :-> TText :-> TOptional TInt64)
-  BETextContainsOnly -> pure (TText :-> TText :-> TBool)
-  BETextReplicate -> pure (TInt64 :-> TText :-> TText)
-  BETextSplitOn -> pure (TText :-> TText :-> TList TText)
-  BETextIntercalate -> pure (TText :-> TList TText :-> TText)
+  BETextToUpper -> TText :-> TText
+  BETextToLower -> TText :-> TText
+  BETextSlice -> TInt64 :-> TInt64 :-> TText :-> TText
+  BETextSliceIndex -> TText :-> TText :-> TOptional TInt64
+  BETextContainsOnly -> TText :-> TText :-> TBool
+  BETextReplicate -> TInt64 :-> TText :-> TText
+  BETextSplitOn -> TText :-> TText :-> TList TText
+  BETextIntercalate -> TText :-> TList TText :-> TText
 
   where
     tComparison btype = TBuiltin btype :-> TBuiltin btype :-> TBool
@@ -571,7 +571,7 @@ typeOf' :: MonadGamma m => Expr -> m Type
 typeOf' = \case
   EVar var -> lookupExprVar var
   EVal val -> dvalType <$> inWorld (lookupValue val)
-  EBuiltin bexpr -> typeOfBuiltin bexpr
+  EBuiltin bexpr -> pure (typeOfBuiltin bexpr)
   ERecCon typ recordExpr -> checkRecCon typ recordExpr $> typeConAppToType typ
   ERecProj typ field rec -> typeOfRecProj typ field rec
   ERecUpd typ field record update -> typeOfRecUpd typ field record update
