@@ -12,7 +12,7 @@ import qualified  DA.Daml.LF.Ast.Subst as Subst
 import DA.Pretty (renderPretty)
 import Data.Bifunctor
 import Data.Functor.Foldable
-import Data.List
+import Data.List.Extra
 import Data.Map.Strict (Map)
 import Data.Maybe
 import Data.Set (Set)
@@ -263,11 +263,7 @@ evaluate env e0 = case e0 of
     ETmApp{} -> handleApp e0
     ETyApp{} -> handleApp e0
     ELet{} -> error "let under let"
-    ECase e1 as -> do
-        let handleAlt (CaseAlternative p e2) =
-                CaseAlternative p <$> inline (iIntroAbstractTmVars (patternVars p) env) e2
-        e0' <- ECase <$> inline env e1 <*> traverse handleAlt as
-        pureAbstract e0'
+    ECase e1 as -> handleCase e1 as
     ERecCon{} -> pureWhnf e0
     ERecProj _ f e1
         | Whnf (ERecCon _ fes) <- normalize env e1 -> pureNormalize env $ fromJust (lookup f fes)
@@ -322,6 +318,80 @@ evaluate env e0 = case e0 of
                     GT -> pure $ Right (e0, Whnf (mkEApps f as))
               where
             _ -> pureAbstract e0
+    handleCase e1 as = do
+        let nonExhaustive e = error $ "non-exhaustive pattern match on " ++ renderPretty e
+        case normalize env e1 of
+            Whnf e1'@EUnit{} -> case firstJust match as of
+                Nothing -> nonExhaustive e1'
+                Just a -> pure $ Left a
+              where
+                match (CaseAlternative p e) = case p of
+                    CPUnit -> Just e
+                    CPDefault -> Just e
+                    _ -> Nothing
+            Whnf e1'@(EBool v) -> case firstJust match as of
+                Nothing -> nonExhaustive e1'
+                Just a -> pure $ Left a
+              where
+                match (CaseAlternative p e) = case p of
+                    CPBool b | b == v -> Just e
+                    CPDefault -> Just e
+                    _ -> Nothing
+            Whnf e1'@ENone{} -> case firstJust match as of
+                Nothing -> nonExhaustive e1'
+                Just a -> pure $ Left a
+              where
+                match (CaseAlternative p e) = case p of
+                    CPNone -> Just e
+                    CPDefault -> Just e
+                    _ -> Nothing
+            Whnf e1'@(ESome _ v) -> case firstJust match as of
+                Nothing -> nonExhaustive e1'
+                Just a -> pure $ Left a
+              where
+                match (CaseAlternative p e) = case p of
+                    CPSome x -> Just (ELet (Binding (x, Nothing) v) e)
+                    CPDefault -> Just e
+                    _ -> Nothing
+            Whnf e1'@ENil{} -> case firstJust match as of
+                Nothing -> nonExhaustive e1'
+                Just a -> pure $ Left a
+              where
+                match (CaseAlternative p e) = case p of
+                    CPNil -> Just e
+                    CPDefault -> Just e
+                    _ -> Nothing
+            Whnf e1'@(ECons _ h t) -> case firstJust match as of
+                Nothing -> nonExhaustive e1'
+                Just a -> pure $ Left a
+              where
+                match (CaseAlternative p e) = case p of
+                    CPCons x y -> Just (ELet (Binding (x, Nothing) h) $ ELet (Binding (y, Nothing) t) e)
+                    CPDefault -> Just e
+                    _ -> Nothing
+            Whnf e1'@(EVariantCon _ c v) -> case firstJust match as of
+                Nothing -> nonExhaustive e1'
+                Just a -> pure $ Left a
+              where
+                match (CaseAlternative p e) = case p of
+                    CPVariant _ c' x | c == c' -> Just (ELet (Binding (x, Nothing) v) e)
+                    CPDefault -> Just e
+                    _ -> Nothing
+            Whnf e1'@(EEnumCon _ c) -> case firstJust match as of
+                Nothing -> nonExhaustive e1'
+                Just a -> pure $ Left a
+              where
+                match (CaseAlternative p e) = case p of
+                    CPEnum _ c' | c == c' -> Just e
+                    CPDefault -> Just e
+                    _ -> Nothing
+            Whnf e -> error $ "matching on non-matchable expression " ++ renderPretty e
+            Method e -> error $ "matching on non-matchable method " ++ renderPretty e
+            Abstract -> do
+                let handleAlt (CaseAlternative p e2) =
+                        CaseAlternative p <$> inline (iIntroAbstractTmVars (patternVars p) env) e2
+                e0' <- ECase <$> inline env e1 <*> traverse handleAlt as
+                pureAbstract e0'
 
 apply :: Expr -> [Arg] -> Expr
 apply e0 as = case as of
@@ -551,6 +621,9 @@ patternVars p = case p of
     CPNone -> Set.empty
     CPSome x -> Set.singleton x
     CPDefault -> Set.empty
+
+pattern EBool :: Bool -> Expr
+pattern EBool b = EBuiltin (BEBool b)
 
 pattern EApp :: Expr -> Arg -> Expr
 pattern EApp fun arg <- (matching _EApp -> Right (fun, arg))
