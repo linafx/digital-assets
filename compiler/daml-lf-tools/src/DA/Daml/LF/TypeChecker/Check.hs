@@ -31,6 +31,7 @@ module DA.Daml.LF.TypeChecker.Check
     ( checkModule
     , expandTypeSynonyms
     , typeOf'
+    , typeOfBuiltin
     ) where
 
 import Data.Hashable

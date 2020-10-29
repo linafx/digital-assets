@@ -8,7 +8,8 @@ import Control.Exception (assert)
 import Control.Lens
 import Control.Monad.State.Strict
 import DA.Daml.LF.Ast
-import qualified  DA.Daml.LF.Ast.Subst as Subst
+import qualified DA.Daml.LF.Ast.Subst as Subst
+import qualified DA.Daml.LF.TypeChecker.Check as Check
 import DA.Pretty (renderPretty)
 import Data.Bifunctor
 import Data.Functor.Foldable
@@ -606,9 +607,10 @@ syntacticArity e0 = case e0 of
 
 -- | Arity of the builtin, including the type abstractions.
 builtinArity :: BuiltinExpr -> Int
-builtinArity b = case b of
-    BEAddInt64 -> 2
-    _ -> 0
+builtinArity b =
+    let (vs, t) = takeTForalls (Check.typeOfBuiltin b) in
+    let (ps, _) = takeTFuns t in
+    length vs + length ps
 
 patternVars :: CasePattern -> Set ExprVarName
 patternVars p = case p of
@@ -649,6 +651,16 @@ takeELam e0 = case e0 of
     ETmLam b e1 -> Just (TmLam b, e1)
     ETyLam b e1 -> Just (TyLam b, e1)
     _ -> Nothing
+
+takeTFuns :: Type -> ([Type], Type)
+takeTFuns = \case
+    a :-> b -> first (a:) (takeTFuns b)
+    t -> ([], t)
+
+takeTForalls :: Type -> ([(TypeVarName, Kind)], Type)
+takeTForalls = \case
+    TForall v t -> first (v:) (takeTForalls t)
+    t -> ([], t)
 
 -- mkELams :: [Lam] -> Expr -> Expr
 -- mkELams ls e = foldr mkELam e ls
