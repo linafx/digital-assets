@@ -1,5 +1,5 @@
 diff --git a/haskell/assets/ghc_8_6_5_win_base.patch b/haskell/assets/ghc_8_6_5_win_base.patch
-index d870deef..31e39c20 100644
+index d870deef..77edb1d2 100644
 --- a/haskell/assets/ghc_8_6_5_win_base.patch
 +++ b/haskell/assets/ghc_8_6_5_win_base.patch
 @@ -5,7 +5,7 @@
@@ -7,7 +7,7 @@ index d870deef..31e39c20 100644
   extra-libraries:
  -    wsock32 user32 shell32 msvcrt mingw32 mingwex
 -+    wsock32 user32 shell32 msvcrt mingw32 mingwex shlwapi
-++    wsock32 user32 shell32 msvcrt mingw32 mingwex shlwapi stdc++
+++    wsock32 ws2_32 user32 shell32 msvcrt mingw32 mingwex shlwapi stdc++
   include-dirs: $topdir\base-4.12.0.0\include
   includes:
       HsBase.h
