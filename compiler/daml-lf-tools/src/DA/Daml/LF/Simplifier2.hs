@@ -360,7 +360,9 @@ evaluate env e0 = case e0 of
         illTyped = error $ "ill-typed appplication in " ++ renderPretty e0
         handleLam x e as = case syntacticArity e `compare` length as of
             LT -> error "overapplied lambda"
-            EQ -> pure $ Left (apply e as)
+            EQ -> do
+                (bs, e') <- apply e as
+                pure $ Left (foldr ELet e' bs)
             GT -> pure $ Right (mkEApps (EVar x) as, VPALam x e as)
         handleBuitlin b as = case builtinArity b `compare` length as of
             LT -> error "overapplied builtin"
@@ -443,11 +445,20 @@ evaluate env e0 = case e0 of
             nonExhaustive = error $ "non-exhaustive pattern match in " ++ renderPretty e0
             illTyped = error $ "pattern match on non-metchable type in " ++ renderPretty e0
 
-apply :: Expr -> [Arg] -> Expr
+apply :: Expr -> [Arg] -> FreshM ([Binding], Expr)
 apply e0 as = case as of
-    [] -> e0
+    [] -> pure ([], e0)
     TmArg e1:as -> case e0 of
-        ETmLam (x, t) e2 -> ELet (Binding (x, Just t) e1) (apply e2 as)
+        ETmLam (x, t) e2 -> do
+            -- NOTE(MH): Simply rewriting `(\x1 ... xn -> E) A1 ... An` into
+            -- `let x1 = A1 in ... let xn = An in E` would go wrong if `xi` is
+            -- is free in `Aj` for some `i < j`. Thus, we rewrite into
+            -- `let y1 = A1 in ... let yn = An in let x1 = y1 in ... let xn = yn in E`,
+            -- where `y1, ..., yn` are fresh names. The `let yi = Ai` bindings
+            -- are return in the first list.
+            (bs, e2') <- apply e2 as
+            y <- freshTmVar
+            pure (Binding (y, Just t) e1 : bs, ELet (Binding (x, Just t) (EVar y)) e2')
         _ -> error $ "type or arity error: applying expr " ++ show e1 ++ " to " ++ show e0
     TyArg t1:as -> case e0 of
         -- TODO(MH): Repeated substitution is not efficient.
