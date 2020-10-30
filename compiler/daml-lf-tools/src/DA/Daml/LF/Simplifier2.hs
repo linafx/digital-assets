@@ -52,10 +52,7 @@ simplifyModule world _version m = runFreshM $ do
     onBodies :: (Expr -> FreshM Expr) -> Module -> FreshM Module
     onBodies f m = do
         let fOnDefValue d@DefValue{dvalBody = e} = do
-            e' <- case e of
-                -- NOTE(MH): This is to keep type class dictionaries detectable.
-                EStructCon fes -> EStructCon <$> traverse (\(x, e) -> (,) x <$> f e) fes
-                _ -> f e
+            e' <- f e
             pure d{dvalBody = e'}
         ds <- NM.traverse fOnDefValue (moduleValues m)
         pure m{moduleValues = ds}
@@ -272,10 +269,13 @@ inline env e0 = case e0 of
 -- need to inline subexpressions of lambdas and case expressions.
 evaluate :: InlineEnv -> Expr -> FreshM (Either Expr (Expr, Value))
 evaluate env e0 = case e0 of
-    -- NOTE(MH): For type classes we're happy to inline the method as soon as
+    -- NOTE(MH): For type classes, we want to inline the method as soon as
     -- we have it. It will either be a reference to another function or a lambda
-    -- containing getField or setField.
+    -- containing `getField` or `setField`. To achieve this, we treat structural
+    -- records full of expression of the form `\(_: TUnit) -> ...` special.
     -- BEGIN special treatment for type classes.
+    EStructCon fas
+        | Just dict <- isDict fas -> pure $ Right (e0, VDict dict)
     EStructProj f (lookupAsAtom env -> VDict fes) ->
         pure $ Right (e0, VMethod (fromJust (f `lookup` fes)))
     ETmApp (EVar x) EUnit
@@ -289,11 +289,7 @@ evaluate env e0 = case e0 of
             let v = case dvalBody d of
                     e@ELam{} -> VLam e
                     EStructCon fes
-                        | Just dict <- traverse isMethod fes -> VDict dict
-                      where
-                        isMethod (f, e) = case e of
-                            ETmLam (_, TUnit) e' -> Just (f, e')
-                            _ -> Nothing
+                        | Just dict <- isDict fes -> VDict dict
                     _ -> VAbstract
             pure $ Right (e0, v)
     ETyLam (t, k) e1 -> do
@@ -316,8 +312,8 @@ evaluate env e0 = case e0 of
         | otherwise -> pureAbstract e0
     ERecUpd{} -> pureAbstract e0  -- TODO(MH): Implement.
     EStructCon fas -> do
-        let v = VRecord [(f, asAtom a) | (f, a) <- fas]
-        pure $ Right (e0, v)
+            let v = VStruct [(f, asAtom a) | (f, a) <- fas]
+            pure $ Right (e0, v)
     EStructProj f a
         | VStruct fes <- lookupAsAtom env a -> do
             let a' = fromJust (lookup f fes)
@@ -575,7 +571,15 @@ anf' env e = case e of
     ERecUpd{} -> defaultAnf
     EVariantCon{} -> defaultAnf
     EEnumCon{} -> defaultAnf
-    EStructCon{} -> defaultAnf
+    EStructCon fes
+        -- NOTE(MH): We don't lift `let`s out of structural records that look
+        -- like type class dictionaries.
+        | Just _ <- isDict fes -> do
+            fes' <- forM fes $ \(f, e) -> do
+                (e', _) <- anf env e
+                pure (f, e')
+            pure ([], EStructCon fes', 0)
+        | otherwise -> defaultAnf
     EStructProj{} -> defaultAnf
     EStructUpd{} -> defaultAnf
     ENil{} -> defaultAnf
@@ -700,6 +704,13 @@ patternVars p = case p of
     CPNone -> Set.empty
     CPSome x -> Set.singleton x
     CPDefault -> Set.empty
+
+isDict :: [(FieldName, Expr)] -> Maybe [(FieldName, Expr)]
+isDict = traverse isMethod
+  where
+    isMethod (f, e) = case e of
+        ETmLam (_, TUnit) e' -> Just (f, e')
+        _ -> Nothing
 
 pattern EApp :: Expr -> Arg -> Expr
 pattern EApp fun arg <- (matching _EApp -> Right (fun, arg))
