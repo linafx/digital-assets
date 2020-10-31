@@ -500,9 +500,13 @@ decodeExprSum exprSum = mayDecode "exprSum" exprSum $ \case
   LF1.ExprSumRecUpd (LF1.Expr_RecUpd mbTycon field mbRecord mbUpdate) ->
     ERecUpd
       <$> mayDecode "Expr_RecUpdTycon" mbTycon decodeTypeConApp
-      <*> decodeName FieldName field
       <*> mayDecode "Expr_RecUpdRecord" mbRecord decodeExpr
-      <*> mayDecode "Expr_RecUpdUpdate" mbUpdate decodeExpr
+      <*> (singlePair
+        <$> decodeName FieldName field
+        <*> mayDecode "Expr_RecUpdUpdate" mbUpdate decodeExpr
+      )
+    where
+      singlePair x y = [(x, y)]
   LF1.ExprSumVariantCon (LF1.Expr_VariantCon mbTycon variant mbArg) ->
     EVariantCon
       <$> mayDecode "Expr_VariantConTycon" mbTycon decodeTypeConApp

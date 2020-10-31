@@ -861,7 +861,7 @@ convertExpr env0 e = do
         field' <- convertType env field
         withTmArg env field' args $ \x1 args ->
             withTmArg env record' args $ \x2 args ->
-                pure (ERecUpd (fromTCon record') (mkField $ fsToText name) x2 x1, args)
+                pure (ERecUpd (fromTCon record') x2 [(mkField $ fsToText name, x1)], args)
     -- NOTE(MH): We only inline `getField` for record types. Projections on
     -- sum-of-records types have to through the type class for `getField`.
     go env (VarIn DA_Internal_Record "getField") (LType (isStrLitTy -> Just name) : LType recordType@(TypeCon recordTyCon _) : LType _fieldType : _dict : args)
@@ -877,7 +877,7 @@ convertExpr env0 e = do
             field' <- convertType env field
             withTmArg env field' args $ \x1 args ->
                 withTmArg env record' args $ \x2 args ->
-                    pure (ERecUpd (fromTCon record') (mkField $ fsToText name) x2 x1, args)
+                    pure (ERecUpd (fromTCon record') x2 [(mkField $ fsToText name, x1)], args)
         -- TODO: Also fix evaluation order for sum-of-record types.
     go env (VarIn GHC_Real "fromRational") (LExpr (VarIs ":%" `App` tyInteger `App` Lit (LitNumber _ top _) `App` Lit (LitNumber _ bot _)) : args)
         = fmap (, args) $ convertRationalDecimal env top bot

@@ -439,7 +439,7 @@ instance Pretty Expr where
       pPrintAppDoc lvl prec
         (pPrintPrec lvl precEApp tcon <> "." <> pPrint field)
         (map TyArg targs ++ [TmArg rec])
-    ERecUpd (TypeConApp tcon targs) field record update ->
+    ERecUpd (TypeConApp tcon targs) record updates ->
       maybeParens (prec > precEApp) $
         sep $
           pPrintPrec lvl precEApp tcon
@@ -449,8 +449,9 @@ instance Pretty Expr where
         updDoc = sep
           [ pPrintPrec lvl 0 record
           , keyword_ "with"
-          , hang (pPrint field <-> "=") 2 (pPrintPrec lvl 0 update)
+          , sep (punctuate ";" (map pPrintUpd updates))
           ]
+        pPrintUpd (field, expr) = hang (pPrint field <-> "=") 2 (pPrintPrec lvl 0 expr)
     EVariantCon (TypeConApp tcon targs) con arg ->
       pPrintAppDoc lvl prec
         (pPrintPrec lvl precEApp tcon <> ":" <> pPrint con)

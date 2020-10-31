@@ -373,12 +373,10 @@ data Expr
   | ERecUpd
     { recTypeCon :: !TypeConApp
       -- ^ Applied type constructor of the record type.
-    , recField :: !FieldName
-      -- ^ Field to update.
     , recExpr :: !Expr
-      -- ^ Expression to update the field in.
-    , recUpdate :: !Expr
-      -- ^ Expression to update the field with.
+      -- ^ Record to update.
+    , recUpdates :: ![(FieldName, Expr)]
+      -- ^ Fields to update.
     }
   -- | Variant construction.
   | EVariantCon

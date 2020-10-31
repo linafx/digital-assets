@@ -24,7 +24,7 @@ data ExprF expr
   | EBuiltinF    !BuiltinExpr
   | ERecConF     !TypeConApp ![(FieldName, expr)]
   | ERecProjF    !TypeConApp !FieldName !expr
-  | ERecUpdF     !TypeConApp !FieldName !expr !expr
+  | ERecUpdF     !TypeConApp !expr ![(FieldName, expr)]
   | EVariantConF !TypeConApp !VariantConName !expr
   | EEnumConF    !(Qualified TypeConName) !VariantConName
   | EStructConF  ![(FieldName, expr)]
@@ -159,7 +159,7 @@ instance Recursive Expr where
     EBuiltin    a     -> EBuiltinF      a
     ERecCon     a b   -> ERecConF       a b
     ERecProj    a b c -> ERecProjF      a b c
-    ERecUpd   a b c d -> ERecUpdF     a b c d
+    ERecUpd     a b c -> ERecUpdF       a b c
     EVariantCon a b c -> EVariantConF   a b c
     EEnumCon    a b   -> EEnumConF      a b
     EStructCon  a     -> EStructConF    a
@@ -189,7 +189,7 @@ instance Corecursive Expr where
     EBuiltinF    a     -> EBuiltin      a
     ERecConF     a b   -> ERecCon       a b
     ERecProjF    a b c -> ERecProj      a b c
-    ERecUpdF   a b c d -> ERecUpd     a b c d
+    ERecUpdF     a b c -> ERecUpd       a b c
     EVariantConF a b c -> EVariantCon   a b c
     EEnumConF    a b   -> EEnumCon      a b
     EStructConF  a     -> EStructCon    a

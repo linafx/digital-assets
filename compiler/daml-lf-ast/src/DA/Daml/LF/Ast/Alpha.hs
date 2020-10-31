@@ -133,11 +133,10 @@ alphaExpr' env = \case
             && alphaTypeConApp env t1 t2
             && alphaExpr' env e1 e2
         _ -> False
-    ERecUpd t1 f1 e1a e1b -> \case
-        ERecUpd t2 f2 e2a e2b -> f1 == f2
-            && alphaTypeConApp env t1 t2
-            && alphaExpr' env e1a e2a
-            && alphaExpr' env e1b e2b
+    ERecUpd t1 e1 fs1 -> \case
+        ERecUpd t2 e2 fs2 -> alphaTypeConApp env t1 t2
+            && alphaExpr' env e1 e2
+            && onFieldList (alphaExpr' env) fs1 fs2
         _ -> False
     EVariantCon t1 c1 e1 -> \case
         EVariantCon t2 c2 e2 -> c1 == c2

@@ -125,11 +125,10 @@ applySubstInExpr subst@Subst{..} = \case
         (applySubstInTypeConApp subst t)
         f
         (applySubstInExpr subst e)
-    ERecUpd t f e1 e2 -> ERecUpd
+    ERecUpd t e fs -> ERecUpd
         (applySubstInTypeConApp subst t)
-        f
-        (applySubstInExpr subst e1)
-        (applySubstInExpr subst e2)
+        (applySubstInExpr subst e)
+        (substFields subst fs)
     EVariantCon t v e -> EVariantCon
         (applySubstInTypeConApp subst t)
         v

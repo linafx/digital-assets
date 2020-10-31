@@ -323,14 +323,15 @@ typeOfRecProj typ0 field record = do
   checkExpr record (typeConAppToType typ0)
   pure fieldType
 
-typeOfRecUpd :: MonadGamma m => TypeConApp -> FieldName -> Expr -> Expr -> m Type
-typeOfRecUpd typ0 field record update = do
+typeOfRecUpd :: MonadGamma m => TypeConApp -> Expr -> [(FieldName, Expr)] -> m Type
+typeOfRecUpd typ0 record updates = do
   dataCons <- checkTypeConApp typ0
   recordType <- match _DataRecord (EExpectedRecordType typ0) dataCons
-  fieldType <- match _Just (EUnknownField field) (lookup field recordType)
   let typ1 = typeConAppToType typ0
   checkExpr record typ1
-  checkExpr update fieldType
+  forM_ updates $ \(field, update) -> do
+    fieldType <- match _Just (EUnknownField field) (lookup field recordType)
+    checkExpr update fieldType
   pure typ1
 
 typeOfStructCon :: MonadGamma m => [(FieldName, Expr)] -> m Type
@@ -575,7 +576,7 @@ typeOf' = \case
   EBuiltin bexpr -> pure (typeOfBuiltin bexpr)
   ERecCon typ recordExpr -> checkRecCon typ recordExpr $> typeConAppToType typ
   ERecProj typ field rec -> typeOfRecProj typ field rec
-  ERecUpd typ field record update -> typeOfRecUpd typ field record update
+  ERecUpd typ record updates -> typeOfRecUpd typ record updates
   EVariantCon typ con arg -> checkVariantCon typ con arg $> typeConAppToType typ
   EEnumCon typ con -> checkEnumCon typ con $> TCon typ
   EStructCon recordExpr -> typeOfStructCon recordExpr

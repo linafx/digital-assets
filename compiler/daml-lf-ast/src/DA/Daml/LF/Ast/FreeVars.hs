@@ -80,7 +80,7 @@ freeVarsStep = \case
     EBuiltinF _ -> mempty
     ERecConF t fs -> freeVarsInTypeConApp t <> foldMap snd fs
     ERecProjF t _ e -> freeVarsInTypeConApp t <> e
-    ERecUpdF t _ e1 e2 -> freeVarsInTypeConApp t <> e1 <> e2
+    ERecUpdF t e fs -> freeVarsInTypeConApp t <> e <> foldMap snd fs
     EVariantConF t _ e -> freeVarsInTypeConApp t <> e
     EEnumConF _ _ -> mempty
     EStructConF fs -> foldMap snd fs

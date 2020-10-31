@@ -168,7 +168,7 @@ safetyStep = \case
 
   ERecConF _ fs -> minimum (Safe 0 : map snd fs)
   ERecProjF _ _ s -> s `min` Safe 0
-  ERecUpdF _ _ s1 s2 -> s1 `min` s2 `min` Safe 0
+  ERecUpdF _ s fs -> s `min` minimum (Safe 0 : map snd fs)
   EVariantConF _ _ s -> s `min` Safe 0
   EEnumConF _ _ -> Safe 0
   EStructConF fs -> minimum (Safe 0 : map snd fs)

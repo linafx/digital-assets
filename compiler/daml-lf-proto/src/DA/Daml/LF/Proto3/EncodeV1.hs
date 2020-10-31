@@ -16,6 +16,7 @@ import           Control.Monad.State.Strict
 import qualified Data.Bifunctor as Bf
 import           Data.Coerce
 import           Data.Either
+import           Data.Foldable (foldlM)
 import           Data.Functor.Identity
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.List as L
@@ -534,11 +535,16 @@ encodeExpr' = \case
         expr_RecProjRecord <- encodeExpr recExpr
         pureExpr $ P.ExprSumRecProj P.Expr_RecProj{..}
     ERecUpd{..} -> do
-        expr_RecUpdTycon <- encodeTypeConApp recTypeCon
-        expr_RecUpdField <- encodeName unFieldName recField
-        expr_RecUpdRecord <- encodeExpr recExpr
-        expr_RecUpdUpdate <- encodeExpr recUpdate
-        pureExpr $ P.ExprSumRecUpd P.Expr_RecUpd{..}
+        recTypeCon' <- encodeTypeConApp recTypeCon
+        recExpr' <- encodeExpr' recExpr
+        foldlM (encodeUpdate recTypeCon') recExpr' recUpdates
+      where
+        encodeUpdate :: Just P.Type_Con -> P.Expr -> (FieldName, Expr) -> Encode P.Expr
+        encodeUpdate expr_RecUpdTycon recExpr' (recField, recUpdate) = do
+            let expr_RecUpdRecord = Just recExpr'
+            expr_RecUpdField <- encodeName unFieldName recField
+            expr_RecUpdUpdate <- encodeExpr recUpdate
+            pureExpr $ P.ExprSumRecUpd P.Expr_RecUpd{..}
     EVariantCon{..} -> do
         expr_VariantConTycon <- encodeTypeConApp varTypeCon
         expr_VariantConVariantCon <- encodeName unVariantConName varVariant
