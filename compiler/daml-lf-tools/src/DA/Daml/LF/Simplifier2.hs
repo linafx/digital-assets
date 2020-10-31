@@ -196,6 +196,7 @@ data Value
     | VLam Expr
     | VPALam ExprVarName Expr [Arg]
     | VRecord [(FieldName, Atom)]
+    | VPartialRecord ExprVarName [(FieldName, Atom)]
     | VStruct [(FieldName, Atom)]
     | VVariant VariantConName Atom
     | VEnum VariantConName
@@ -217,6 +218,7 @@ valueArity = \case
     VLam e -> syntacticArity e
     VPALam _ e as -> syntacticArity e - length as
     VRecord{} -> 0
+    VPartialRecord{} -> 0
     VStruct{} -> 0
     VVariant{} -> 0
     VEnum{} -> 0
@@ -305,12 +307,27 @@ evaluate env e0 = case e0 of
     ERecCon _ fas -> do
         let v = VRecord [(f, asAtom a) | (f, a) <- fas]
         pure $ Right (e0, v)
-    ERecProj _ f a
-        | VRecord fes <- lookupAsAtom env a -> do
+    ERecProj t f a -> case lookupAsAtom env a of
+        VRecord fes -> do
             let a' = fromJust (lookup f fes)
             pure $ Right (asExpr a', lookupAtom env a')
-        | otherwise -> pureAbstract e0
-    ERecUpd{} -> pureAbstract e0  -- TODO(MH): Implement.
+        VPartialRecord x fs -> case lookup f fs of
+            Nothing -> pure $ Right (ERecProj t f (EVar x), VAbstract)
+            Just a -> pure $ Right (asExpr a, lookupAtom env a)
+        _ -> pureAbstract e0
+    ERecUpd t (asAtom -> AVar x) us -> case iLookupTmVar x env of
+        VRecord fs -> do
+            let fs' = [ (f, maybe e asAtom (lookup f us)) | (f, e) <- fs]
+            pure $ Right (ERecCon t (map (second asExpr) fs'), VRecord fs')
+        VPartialRecord y fs -> do
+            let us' = [(f, asExpr a) | (f, a) <- fs, isNothing (lookup f us)] ++ us
+            let v = VPartialRecord y (map (second asAtom) us')
+            pure $ Right (ERecUpd t (EVar y) us', v)
+        VAbstract -> do
+            let v = VPartialRecord x (map (second asAtom) us)
+            pure $ Right (e0, v)
+        _ -> error $ "ill-typed record update: " ++ renderPretty e0
+    ERecUpd _ _ _ -> error $ "ill-typed record update: " ++ renderPretty e0
     EStructCon fas -> do
             let v = VStruct [(f, asAtom a) | (f, a) <- fas]
             pure $ Right (e0, v)

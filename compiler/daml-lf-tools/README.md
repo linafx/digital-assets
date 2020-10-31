@@ -67,3 +67,44 @@ let h = f A B;
 let k = f A C;
 ```
 If `g` is dead after this rewriting, we can eliminate it and have saved one iteration of the interpreter's main loop and one PAP allocation at the expense of having to apply one more _atomic_ argument. This is a good trade-off since pushing an atomic argument to is comparatively cheaper. (TODO: Quantify this.) However, if `g` is not dead after this rewriting, we've introduced the additional work of applying two more _atomic_ arguments. This is not great but at least it does not add any additional steps through the main loop of the interpreter or PAP allocations.
+
+
+## Batching record updates
+
+Similarly to the batching of function applications, we batch record updates. We rewrite
+```ocaml
+let r1 = Record {field1 = A, field2 = B};
+let r2 = {r2 with field1 = C};
+```
+into
+```ocaml
+let r1 = Record {field1 = A, field2 = B};
+let r2 = Record {field1 = C, field2 = B};
+```
+and
+```ocaml
+let r1 = {r0 with field1 = A};
+let r2 = {r1 with field2 = B};
+let r3 = {r2 with field1 = C};
+```
+into
+```ocaml
+let r1 = {r0 with field1 = A};
+let r2 = {r0 with field1 = A, field2 = B};
+let r3 = {r0 with field2 = B, field1 = C};
+```
+The trade-offs for this batching are the same as for the batching of function applications: We save an iteration through the main loop and an allocation for each record that becomes dead through this rewriting. The additional cost in any case are lookups of values in the current environment.
+
+In order to make as many record constructions and updates as possible dead, we also rewrite record projections to point to either the value of a field if it is known or to the earliest record containing the field. For instance, we rewrite
+```ocaml
+let r1 = {r0 with field1 = A};
+let x = r1.field1;
+let y = r1.field2;
+```
+into
+```ocaml
+let r1 = {r0 with field1 = A};
+let x = A;
+let y = r0.field2;
+```
+In this example, `r1` has become dead through the rewriting.
