@@ -737,27 +737,27 @@ pattern EApp fun arg <- (matching _EApp -> Right (fun, arg))
 --   where
 --     EApps f as = mkEApps f as
 
-data Lam
-    = TmLam (ExprVarName, Type)
-    | TyLam (TypeVarName, Kind)
+data Binder
+    = TmBinder (ExprVarName, Type)
+    | TyBinder (TypeVarName, Kind)
 
-pattern ELam :: Lam -> Expr -> Expr
+pattern ELam :: Binder -> Expr -> Expr
 pattern ELam lam body <- (takeELam -> Just (lam, body))
   where
     ELam lam body = mkELam lam body
 
-mkELam :: Lam -> Expr -> Expr
+mkELam :: Binder -> Expr -> Expr
 mkELam l e = case l of
-    TmLam b -> ETmLam b e
-    TyLam b -> ETyLam b e
+    TmBinder b -> ETmLam b e
+    TyBinder b -> ETyLam b e
 
-takeELam :: Expr -> Maybe (Lam, Expr)
+takeELam :: Expr -> Maybe (Binder, Expr)
 takeELam e0 = case e0 of
-    ETmLam b e1 -> Just (TmLam b, e1)
-    ETyLam b e1 -> Just (TyLam b, e1)
+    ETmLam b e1 -> Just (TmBinder b, e1)
+    ETyLam b e1 -> Just (TyBinder b, e1)
     _ -> Nothing
 
--- takeELams :: Expr -> ([Lam], Expr)
+-- takeELams :: Expr -> ([Binder], Expr)
 -- takeELams = \case
 --     ELam b e -> first (b:) (takeELams e)
 --     e -> ([], e)
@@ -782,13 +782,13 @@ takeTyArg = \case
     TyArg t -> Just t
     TmArg _ -> Nothing
 
--- mkELams :: [Lam] -> Expr -> Expr
+-- mkELams :: [Binder] -> Expr -> Expr
 -- mkELams ls e = foldr mkELam e ls
 
--- takeELams :: Expr -> ([Lam], Expr)
+-- takeELams :: Expr -> ([Binder], Expr)
 -- takeELams e0 = case e0 of
---     ETmLam b e1 -> first (TmLam b:) (takeELams e1)
---     ETyLam b e1 -> first (TyLam b:) (takeELams e1)
+--     ETmLam b e1 -> first (TmBinder b:) (takeELams e1)
+--     ETyLam b e1 -> first (TyBinder b:) (takeELams e1)
 --     ELocation _ e1 -> takeELams e1
 --     _ -> ([], e0)
 
