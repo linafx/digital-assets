@@ -136,7 +136,8 @@ clean env e0 = case e0 of
         let (f', fvs_f, n_f, eff_f) = clean env f in
         let (as', fvs_as, eff_as) = cleanArgs env as in
         let n = max 0 (n_f - length as) in
-        (mkEApps f' as', fvs_f `Set.union` fvs_as, n, eff_f || eff_as || n == 0)
+        -- FIXME(MH): We need to treat type arguments of kind `Nat` like term arguments.
+        (mkEApps f' as', fvs_f `Set.union` fvs_as, n, eff_f || eff_as || (n == 0 && any isTmArg as))
     ECase e1 as ->
         let (e1', fvs1, _, eff_e1) = clean env e1 in
         let handleAlt (CaseAlternative p e) =
@@ -194,6 +195,7 @@ type Atom = ExprVarName
 
 data Value
     = VAbstract
+    | VPAAbstract ExprVarName [Type]  -- Applying type arguments is always safe, except for type-level naturals.
     | VPAP BuiltinExpr [Arg]
     | VLam Expr
     | VPALam ExprVarName Expr [Arg]
@@ -216,6 +218,7 @@ pattern VBuiltin b = VPAP b []
 valueArity :: Value -> Int
 valueArity = \case
     VAbstract -> 0
+    VPAAbstract{} -> 0
     VPAP b as -> builtinArity b - length as
     VLam e -> syntacticArity e
     VPALam _ e as -> syntacticArity e - length as
@@ -363,7 +366,16 @@ evaluate env e0 = case e0 of
         let (f, as) = takeEApps e0
         case f of
             EVar x -> case iLookupTmVar x env of
-                VAbstract -> pureAbstract e0
+                VAbstract -> case traverse takeTyArg as of
+                    Just ts -> do
+                        let v = VPAAbstract x ts
+                        pure $ Right (e0, v)
+                    Nothing -> pureAbstract e0
+                VPAAbstract y ts -> case traverse takeTyArg as of
+                    Just us -> do
+                        let v = VPAAbstract y (ts ++ us)
+                        pure $ Right (mkETyApps (EVar y) (ts ++ us), v)
+                    Nothing -> pureAbstract $ mkEApps (EVar y) (map TyArg ts ++ as)
                 VLam e -> handleLam x e as
                 VPALam y e as' -> handleLam y e (as' ++ as)
                 VPAP b as' -> handleBuitlin b (as' ++ as)
@@ -759,6 +771,16 @@ takeTForalls :: Type -> ([(TypeVarName, Kind)], Type)
 takeTForalls = \case
     TForall v t -> first (v:) (takeTForalls t)
     t -> ([], t)
+
+isTmArg :: Arg -> Bool
+isTmArg = \case
+    TmArg{} -> True
+    TyArg{} -> False
+
+takeTyArg :: Arg -> Maybe Type
+takeTyArg = \case
+    TyArg t -> Just t
+    TmArg _ -> Nothing
 
 -- mkELams :: [Lam] -> Expr -> Expr
 -- mkELams ls e = foldr mkELam e ls
