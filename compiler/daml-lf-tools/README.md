@@ -108,3 +108,30 @@ let x = A;
 let y = r0.field2;
 ```
 In this example, `r1` has become dead through the rewriting.
+
+
+## Examples
+
+We list a few examples of what the prototype of the simplifier can already achieve. For all these examples we assume a van Laarhoven lens library in scope.
+
+```haskell
+data Outer = Outer {field1: Int, field2: Text, inner: Inner}
+data Inner = Inner {field3: Int, field4: Text}
+
+xxx: Outer -> Outer
+xxx outer =
+    set (lens @"field1") 1
+    . over (lens @"inner" . lens @"field3") (* 2)
+    . set (lens @"inner" . lens @"field4") "abc"
+    $ outer
+```
+is simplified to (modulo variable names)
+```ocaml
+fun xxx (outer: Outer): Outer -> {
+    let a = outer.inner;
+    let b = a.field3;
+    let c = %mul_int64 b 2;
+    let d = Inner {a with field4 = "abc", field3 = c};
+    Outer {outer with inner = d, field1 = 1}
+}
+```
