@@ -63,7 +63,7 @@ simplifyModule world _version m = runFreshM $ do
 
 data CleanEnv = CleanEnv
     { cBoundVars :: Map ExprVarName Int  -- runtime arity of the variable
-    , cInlinings :: Map ExprVarName Expr  -- all expressions are atomic
+    , cInlinings :: Map ExprVarName Expr  -- all expressions are variables, booleans, or unit
     , cWorld :: World
     }
 
@@ -97,6 +97,12 @@ clean env e0 = case e0 of
         clean (cIntroInlining x e1' env) e2
     ELet (Binding (x, _) e1) e2 | isAtomic e1 ->
         clean (cIntroInlining x e1 env) e2
+      where
+        isAtomic = \case
+            EVar _ -> True
+            EBuiltin (BEBool _) -> True
+            EBuiltin BEUnit -> True
+            _ -> False
     ELet (Binding (x, t) e1) e2 ->
         let (e1', fvs1, n1, b1) = clean env e1 in
         let (e2', fvs2, n2, b2) = clean (cIntroTmVar x n1 env) e2 in
@@ -184,11 +190,7 @@ hasEffect e = case e of
 -- INLINER
 ------------------------------------------------------------
 
-data Atom
-    = AVar ExprVarName
-    | ABuiltin BuiltinExpr
-    | ANone Type
-    | ANil Type
+type Atom = ExprVarName
 
 data Value
     = VAbstract
@@ -278,9 +280,9 @@ evaluate env e0 = case e0 of
     -- BEGIN special treatment for type classes.
     EStructCon fas
         | Just dict <- isDict fas -> pure $ Right (e0, VDict dict)
-    EStructProj f (lookupAsAtom env -> VDict fes) ->
+    EStructProj f (lookupAtom env -> VDict fes) ->
         pure $ Right (e0, VMethod (fromJust (f `lookup` fes)))
-    ETmApp (EVar x) EUnit
+    ETmApp (EVar x) (lookupAtom env -> VBuiltin BEUnit)
         | VMethod m <- iLookupTmVar x env -> pure $ Left m
     -- END special treatment for type classes.
     EVar x -> pure $ Right (e0, iLookupTmVar x env)
@@ -307,34 +309,33 @@ evaluate env e0 = case e0 of
     ERecCon _ fas -> do
         let v = VRecord [(f, asAtom a) | (f, a) <- fas]
         pure $ Right (e0, v)
-    ERecProj t f a -> case lookupAsAtom env a of
+    ERecProj t f a -> case lookupAtom env a of
         VRecord fes -> do
             let a' = fromJust (lookup f fes)
-            pure $ Right (asExpr a', lookupAtom env a')
+            pure $ Right (EVar a', iLookupTmVar a' env)
         VPartialRecord x fs -> case lookup f fs of
             Nothing -> pure $ Right (ERecProj t f (EVar x), VAbstract)
-            Just a -> pure $ Right (asExpr a, lookupAtom env a)
+            Just a -> pure $ Right (EVar a, iLookupTmVar a env)
         _ -> pureAbstract e0
-    ERecUpd t (asAtom -> AVar x) us -> case iLookupTmVar x env of
+    ERecUpd t (asAtom -> x) us -> case iLookupTmVar x env of
         VRecord fs -> do
-            let fs' = [ (f, maybe e asAtom (lookup f us)) | (f, e) <- fs]
-            pure $ Right (ERecCon t (map (second asExpr) fs'), VRecord fs')
+            let fs' = [(f, maybe e asAtom (lookup f us)) | (f, e) <- fs]
+            pure $ Right (ERecCon t (map (second EVar) fs'), VRecord fs')
         VPartialRecord y fs -> do
-            let us' = [(f, asExpr a) | (f, a) <- fs, isNothing (lookup f us)] ++ us
+            let us' = [(f, EVar a) | (f, a) <- fs, isNothing (lookup f us)] ++ us
             let v = VPartialRecord y (map (second asAtom) us')
             pure $ Right (ERecUpd t (EVar y) us', v)
         VAbstract -> do
             let v = VPartialRecord x (map (second asAtom) us)
             pure $ Right (e0, v)
         _ -> error $ "ill-typed record update: " ++ renderPretty e0
-    ERecUpd _ _ _ -> error $ "ill-typed record update: " ++ renderPretty e0
     EStructCon fas -> do
             let v = VStruct [(f, asAtom a) | (f, a) <- fas]
             pure $ Right (e0, v)
     EStructProj f a
-        | VStruct fes <- lookupAsAtom env a -> do
+        | VStruct fes <- lookupAtom env a -> do
             let a' = fromJust (lookup f fes)
-            pure $ Right (asExpr a', lookupAtom env a')
+            pure $ Right (EVar a', iLookupTmVar a' env)
         | otherwise -> pureAbstract e0
     EStructUpd{} -> pureAbstract e0  -- TODO(MH): Implement.
     EVariantCon _ c a -> do
@@ -417,7 +418,7 @@ evaluate env e0 = case e0 of
                 Just a -> pure $ Left a
               where
                 match (CaseAlternative p e) = case p of
-                    CPSome x -> Just (ELet (Binding (x, Nothing) (asExpr v)) e)
+                    CPSome x -> Just (ELet (Binding (x, Nothing) (EVar v)) e)
                     CPDefault -> Just e
                     _ -> Nothing
             VNil -> case firstJust match as of
@@ -433,7 +434,7 @@ evaluate env e0 = case e0 of
                 Just a -> pure $ Left a
               where
                 match (CaseAlternative p e) = case p of
-                    CPCons x y -> Just (ELet (Binding (x, Nothing) (asExpr h)) $ ELet (Binding (y, Nothing) (asExpr t)) e)
+                    CPCons x y -> Just (ELet (Binding (x, Nothing) (EVar h)) $ ELet (Binding (y, Nothing) (EVar t)) e)
                     CPDefault -> Just e
                     _ -> Nothing
             VVariant c v -> case firstJust match as of
@@ -441,7 +442,7 @@ evaluate env e0 = case e0 of
                 Just a -> pure $ Left a
               where
                 match (CaseAlternative p e) = case p of
-                    CPVariant _ c' x | c == c' -> Just (ELet (Binding (x, Nothing) (asExpr v)) e)
+                    CPVariant _ c' x | c == c' -> Just (ELet (Binding (x, Nothing) (EVar v)) e)
                     CPDefault -> Just e
                     _ -> Nothing
             VEnum c -> case firstJust match as of
@@ -488,30 +489,13 @@ normalize env = \case
     EVar x -> normalizeTmVar env x
     e -> Whnf e
 
-lookupAsAtom :: InlineEnv -> Expr -> Value
-lookupAsAtom env = lookupAtom env . asAtom
-
-lookupAtom :: InlineEnv -> Atom -> Value
-lookupAtom env = \case
-    AVar x -> iLookupTmVar x env
-    ABuiltin b -> VBuiltin b
-    ANone _ -> VNone
-    ANil _ -> VNil
+lookupAtom :: InlineEnv -> Expr -> Value
+lookupAtom env e = iLookupTmVar (asAtom e) env
 
 asAtom :: Expr -> Atom
 asAtom = \case
-    EVar x -> AVar x
-    EBuiltin b -> ABuiltin b
-    ENone t -> ANone t
-    ENil t -> ANil t
+    EVar x -> x
     e -> error $ "expected atom, found " ++ renderPretty e
-
-asExpr :: Atom -> Expr
-asExpr = \case
-    AVar x -> EVar x
-    ABuiltin b -> EBuiltin b
-    ANone t -> ENone t
-    ANil t -> ENil t
 
 iLookupTmVar :: ExprVarName -> InlineEnv -> Value
 iLookupTmVar x env = case Map.lookup x (iBoundVars env) of
@@ -612,7 +596,7 @@ anf' env e = case e of
         pure (bs, embed e', 0)
     handleApp = do
         let (f0, as0) = takeEApps e
-        anfAtomic env f0 $ \_ bsf f1 n -> do
+        anfPseudoAtomic isVarOrBuiltin env f0 $ \_ bsf f1 n -> do
             let k = max 1 n -- we must consume at least one argument, otherwise we'll loop
             let (as1, zs1) = splitAt k as0
             (bsas, as2) <- anfArgs env as1
@@ -624,16 +608,26 @@ anf' env e = case e of
                 aIntroTmVar env x 0 $ \env x -> do
                     (bs', e2, _) <- anf' env (mkEApps (EVar x) zs1)
                     pure (bs ++ [Binding (x, Nothing) e1] ++ bs', e2, 0)
+      where
+        isVarOrBuiltin :: Expr -> Bool
+        isVarOrBuiltin = \case
+            EVar{} -> True
+            EBuiltin b | builtinArity b > 0 -> True
+            _ -> False
 
-anfAtomic :: AnfEnv -> Expr -> (AnfEnv -> [Binding] -> Expr -> Int -> FreshM a) -> FreshM a
-anfAtomic env e0 cont = do
+anfPseudoAtomic :: (Expr -> Bool) -> AnfEnv -> Expr -> (AnfEnv -> [Binding] -> Expr -> Int -> FreshM a) -> FreshM a
+anfPseudoAtomic isAtom env e0 cont = do
     (bs, e1, n) <- anf' env e0
-    if isAtomic e1 then
+    if isAtom e1 then
         cont env bs e1 n
     else do
         x <- freshTmVar
         aIntroTmVar env x n $ \env x -> do
         cont env (bs ++ [Binding (x, Nothing) e1]) (EVar x) n
+
+anfAtomic :: AnfEnv -> Expr -> (AnfEnv -> [Binding] -> Expr -> Int -> FreshM a) -> FreshM a
+anfAtomic = anfPseudoAtomic $ \case { EVar{} -> True; _ -> False }
+
 
 anfMany :: Traversable t => AnfEnv -> t Expr -> FreshM ([Binding], t Expr)
 anfMany env e0s = do
@@ -673,14 +667,6 @@ aIntroPattern env p cont = case p of
     CPNone -> cont env p
     CPSome x -> aIntroTmVar env x 0 $ \env x -> cont env (CPSome x)
     CPDefault -> cont env p
-
-isAtomic :: Expr -> Bool
-isAtomic e = case e of
-    EVar{} -> True
-    EBuiltin{} -> True
-    ENil{} -> True
-    ENone{} -> True
-    _ -> False
 
 ------------------------------------------------------------
 -- UTILITIES

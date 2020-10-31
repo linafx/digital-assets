@@ -2,7 +2,9 @@
 
 ## ANF
 
-As a very first step, we transform into ANF. This has two major benefits:
+As a very first step, we transform into ANF. In argument position, we only consider variables as atomic. In function position, we consider variables and builtins as atomic. Literals are never considered atomic. They allocate in the heap and hence duplicating them might be detrimental to performance. In a final cleanup step, we slightly relax this restriction and inline the values `unit`, `true`, and `false` at their call sites. These values use shared heap objects for all occurrences.
+
+Using ANF has has two major benefits:
 
 1.  It simplifies the analysis of which subexpressions might cause side effects, such as raising an exception or non-termination, at runtime. For instance, if we have an expression `f A1 ... An` where the `Ai` are all atomic expressions and we know that `f` won't cause any side effects when applied to `n` arguments, then we know that the whole expression `f A1 ... An` won't cause any side effects. If the `Ai` were complex expressions, we would need to analyze them for side effects as well.
 
@@ -13,7 +15,7 @@ As a very first step, we transform into ANF. This has two major benefits:
     let x = r.field1;
     ...
     ```
-    We would like to rewrite the `let x = r.field1;` line into `let x = E;`. However, if `E` was a complex expression, we would end up evaluating it twice (unless we perform perfect subexpression elimination). In contrast, if `E` is an atomic expression, then no evaluation will be performed by the `let x = E;` line. In fact, if `E` is a "small" atomic expression, such as a reference to a variable or an integer, the simplifier will remove this line entirely and replace all call sites of `x` with `E`.
+    We would like to rewrite the `let x = r.field1;` line into `let x = E;`. However, if `E` was a complex expression, we would end up evaluating it twice (unless we perform perfect subexpression elimination). In contrast, if `E` is an atomic expression, then no evaluation will be performed by the `let x = E;` line. In fact, the simplifier will remove this line entirely and replace all call sites of `x` with `E`.
 
 
 ## General structure
@@ -128,10 +130,13 @@ xxx outer =
 is simplified to (modulo variable names)
 ```ocaml
 fun xxx (outer: Outer): Outer -> {
-    let a = outer.inner;
-    let b = a.field3;
-    let c = %mul_int64 b 2;
-    let d = Inner {a with field4 = "abc", field3 = c};
-    Outer {outer with inner = d, field1 = 1}
+    let a = 1;
+    let b = 2;
+    let c = "abc";
+    let d = outer.inner;
+    let e = d.field3;
+    let f = %mul_int64 e b;
+    let g = Inner {d with field4 = c, field3 = f};
+    Outer {outer with inner = g, field1 = a}
 }
 ```
