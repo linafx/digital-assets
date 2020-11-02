@@ -21,6 +21,7 @@ da_scala_library(
         "//ledger-api/rs-grpc-bridge",
         "//ledger/ledger-api-auth-client",
         "//ledger/ledger-api-domain",
+        "//ledger/ledger-api-signing-client",
         "//ledger/ledger-resources",
         "//libs-scala/concurrent",
         "//libs-scala/grpc-utils",

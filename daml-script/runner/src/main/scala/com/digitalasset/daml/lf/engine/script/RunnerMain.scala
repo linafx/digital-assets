@@ -6,7 +6,9 @@ package com.daml.lf.engine.script
 import akka.actor.ActorSystem
 import akka.http.scaladsl.Http
 import akka.stream._
-import java.nio.file.Files
+import java.nio.file.{Files}
+import java.security.KeyFactory
+import java.security.spec.PKCS8EncodedKeySpec
 import scala.collection.JavaConverters._
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.concurrent.duration.Duration
@@ -100,7 +102,12 @@ object RunnerMain {
             val envIface = EnvironmentInterface.fromReaderInterfaces(ifaceDar)
             Runner.jsonClients(participantParams, envIface)
           } else {
-            Runner.connect(participantParams, config.tlsConfig, config.maxInboundMessageSize)
+            val privKey = config.signingKeyFile.map { file =>
+              val keyBytes = Files.readAllBytes(file.toPath)
+              val keySpec = new PKCS8EncodedKeySpec(keyBytes)
+              KeyFactory.getInstance("RSA").generatePrivate(keySpec)
+            }
+            Runner.connect(participantParams, config.tlsConfig, privKey, config.maxInboundMessageSize)
           }
           result <- Runner.run(dar, scriptId, inputValue, clients, timeMode)
           _ <- Future {

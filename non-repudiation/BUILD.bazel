@@ -1,0 +1,36 @@
+# Copyright (c) 2020 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+load("//bazel_tools:scala.bzl", "da_scala_binary")
+
+da_scala_binary(
+    name = "non-repudiation",
+    srcs = glob(["src/main/scala/**/*.scala"]),
+    main_class = "com.daml.nonrepudiation.Main",
+    resources = glob([
+        "src/main/resources/**/*",
+    ]),
+    visibility = ["//visibility:public"],
+    runtime_deps = [
+        "@maven//:ch_qos_logback_logback_classic",
+    ],
+    deps = [
+        "//ledger-api/grpc-definitions:ledger-api-scalapb",
+        "//ledger/ledger-api-client",
+        "//ledger/ledger-resources",
+        "//libs-scala/contextualized-logging",
+        "//libs-scala/ports",
+        "//libs-scala/resources",
+        "//libs-scala/resources-akka",
+        "@maven//:com_github_scopt_scopt_2_12",
+        "@maven//:com_google_guava_guava",
+        "@maven//:com_typesafe_akka_akka_actor_2_12",
+        "@maven//:io_grpc_grpc_api",
+        "@maven//:io_grpc_grpc_core",
+        "@maven//:io_grpc_grpc_netty",
+        "@maven//:io_grpc_grpc_services",
+        "@maven//:io_grpc_grpc_stub",
+        "@maven//:io_netty_netty_handler",
+        "@maven//:org_slf4j_slf4j_api",
+    ],
+)

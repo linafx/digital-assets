@@ -8,6 +8,7 @@ import java.util.concurrent.TimeUnit
 
 import com.daml.grpc.adapter.ExecutionSequencerFactory
 import com.daml.ledger.api.auth.client.LedgerCallCredentials
+import com.daml.ledger.api.signing.client.SigningInterceptor
 import com.daml.ledger.api.domain.LedgerId
 import com.daml.ledger.api.v1.active_contracts_service.ActiveContractsServiceGrpc
 import com.daml.ledger.api.v1.admin.package_management_service.PackageManagementServiceGrpc
@@ -54,8 +55,12 @@ final class LedgerClient private (
       config.commandClient
     )
 
-  val commandServiceClient: SynchronousCommandClient =
-    new SynchronousCommandClient(LedgerClient.stub(CommandServiceGrpc.stub(channel), config.token))
+  val commandServiceClient: SynchronousCommandClient = {
+      val stub = LedgerClient
+        .stub(CommandServiceGrpc.stub(channel), config.token)
+    new SynchronousCommandClient(
+    config.signingKey.fold(stub)(key => stub.withInterceptors(new SigningInterceptor(key))))
+    }
 
   val packageClient: PackageClient =
     new PackageClient(ledgerId, LedgerClient.stub(PackageServiceGrpc.stub(channel), config.token))

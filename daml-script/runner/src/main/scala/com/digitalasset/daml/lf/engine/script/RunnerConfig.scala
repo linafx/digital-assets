@@ -21,7 +21,8 @@ case class RunnerConfig(
     commandTtl: Duration,
     inputFile: Option[File],
     outputFile: Option[File],
-    accessTokenFile: Option[Path],
+  accessTokenFile: Option[Path],
+  signingKeyFile: Option[File],
     tlsConfig: TlsConfiguration,
     jsonApi: Boolean,
     maxInboundMessageSize: Int,
@@ -101,6 +102,11 @@ object RunnerConfig {
       }
       .text("File from which the access token will be read, required to interact with an authenticated ledger")
 
+    opt[File]("signing-key-file")
+      .action { (f, c) =>
+        c.copy(signingKeyFile = Some(f))
+      }
+
     TlsConfigurationCli.parse(this, colSpacer = "        ")((f, c) =>
       c.copy(tlsConfig = f(c.tlsConfig)))
 
@@ -163,6 +169,7 @@ object RunnerConfig {
         inputFile = None,
         outputFile = None,
         accessTokenFile = None,
+        signingKeyFile = None,
         tlsConfig = TlsConfiguration(false, None, None, None),
         jsonApi = false,
         maxInboundMessageSize = DefaultMaxInboundMessageSize,

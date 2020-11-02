@@ -58,7 +58,7 @@ private[apiserver] object GrpcServer {
         }
         val server = builder.build()
         try {
-          server.start()
+          server.start
         } catch {
           case e: IOException if e.getCause != null && e.getCause.isInstanceOf[BindException] =>
             throw new UnableToBind(desiredPort, e.getCause)

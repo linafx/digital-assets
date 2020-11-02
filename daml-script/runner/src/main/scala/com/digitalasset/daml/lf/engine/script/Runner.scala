@@ -10,6 +10,7 @@ import akka.http.scaladsl.model.Uri
 import akka.stream.Materializer
 import com.typesafe.scalalogging.StrictLogging
 import java.time.Clock
+import java.security.PrivateKey
 
 import scala.concurrent.{ExecutionContext, Future}
 import scalaz.{Applicative, NonEmptyList, OneAnd, Traverse, \/-}
@@ -57,7 +58,7 @@ case class Participant(participant: String)
 case class ApiParameters(
     host: String,
     port: Int,
-    access_token: Option[String],
+  access_token: Option[String],
     application_id: Option[ApplicationId])
 case class Participants[+T](
     default_participant: Option[T],
@@ -204,7 +205,8 @@ object Runner {
   val DEFAULT_APPLICATION_ID: ApplicationId = ApplicationId("daml-script")
   private def connectApiParameters(
       params: ApiParameters,
-      tlsConfig: TlsConfiguration,
+    tlsConfig: TlsConfiguration,
+    signingKey: Option[PrivateKey],
       maxInboundMessageSize: Int,
   )(implicit ec: ExecutionContext, seq: ExecutionSequencerFactory): Future[GrpcLedgerClient] = {
     val applicationId = params.application_id.getOrElse(Runner.DEFAULT_APPLICATION_ID)
@@ -214,6 +216,7 @@ object Runner {
       commandClient = CommandClientConfiguration.default,
       sslContext = tlsConfig.client,
       token = params.access_token,
+      signingKey = signingKey,
       maxInboundMessageSize = maxInboundMessageSize,
     )
     LedgerClient
@@ -223,15 +226,16 @@ object Runner {
   // We might want to have one config per participant at some point but for now this should be sufficient.
   def connect(
       participantParams: Participants[ApiParameters],
-      tlsConfig: TlsConfiguration,
+    tlsConfig: TlsConfiguration,
+    signingKey: Option[PrivateKey],
       maxInboundMessageSize: Int)(
       implicit ec: ExecutionContext,
       seq: ExecutionSequencerFactory): Future[Participants[GrpcLedgerClient]] = {
     for {
       defaultClient <- participantParams.default_participant.traverse(x =>
-        connectApiParameters(x, tlsConfig, maxInboundMessageSize))
+        connectApiParameters(x, tlsConfig, signingKey, maxInboundMessageSize))
       participantClients <- participantParams.participants.traverse(v =>
-        connectApiParameters(v, tlsConfig, maxInboundMessageSize))
+        connectApiParameters(v, tlsConfig, signingKey, maxInboundMessageSize))
     } yield Participants(defaultClient, participantClients, participantParams.party_participants)
   }
 

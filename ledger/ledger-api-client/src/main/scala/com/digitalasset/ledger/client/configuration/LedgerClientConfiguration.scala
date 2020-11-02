@@ -5,6 +5,7 @@ package com.daml.ledger.client.configuration
 
 import io.grpc.internal.GrpcUtil
 import io.netty.handler.ssl.SslContext
+import java.security.PrivateKey
 
 /**
   * @param applicationId          The string that will be used as an application identifier when issuing commands and retrieving transactions
@@ -20,7 +21,8 @@ final case class LedgerClientConfiguration(
     ledgerIdRequirement: LedgerIdRequirement,
     commandClient: CommandClientConfiguration,
     sslContext: Option[SslContext],
-    token: Option[String] = None,
+  token: Option[String] = None,
+  signingKey: Option[PrivateKey] = None,
     maxInboundMetadataSize: Int = GrpcUtil.DEFAULT_MAX_HEADER_LIST_SIZE,
     maxInboundMessageSize: Int = GrpcUtil.DEFAULT_MAX_MESSAGE_SIZE,
 )

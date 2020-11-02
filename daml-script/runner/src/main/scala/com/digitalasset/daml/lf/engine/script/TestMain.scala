@@ -122,6 +122,7 @@ object TestMain extends StrictLogging {
           clients <- Runner.connect(
             participantParams,
             TlsConfiguration(false, None, None, None),
+            None,
             config.maxInboundMessageSize,
           )
           _ <- clients.getParticipant(None) match {
