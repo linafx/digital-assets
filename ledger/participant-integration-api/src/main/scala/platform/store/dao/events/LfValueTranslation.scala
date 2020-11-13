@@ -3,6 +3,9 @@
 
 package com.daml.platform.store.dao.events
 
+import java.io.{ByteArrayOutputStream, InputStream}
+import java.util.zip.{GZIPInputStream, GZIPOutputStream}
+
 import anorm.NamedParameter
 import com.daml.caching
 import com.daml.ledger.EventId
@@ -10,19 +13,20 @@ import com.daml.ledger.api.v1.event.{CreatedEvent, ExercisedEvent}
 import com.daml.ledger.api.v1.value.{Record => ApiRecord, Value => ApiValue}
 import com.daml.metrics.Metrics
 import com.daml.platform.participant.util.LfEngineToApi
+import com.daml.platform.store.dao.events.LfValueTranslation.Compression
 import com.daml.platform.store.dao.events.{Value => LfValue}
 import com.daml.platform.store.serialization.ValueSerializer
 
-final class LfValueTranslation(val cache: LfValueTranslation.Cache) {
+final class LfValueTranslation(val cache: LfValueTranslation.Cache)(implicit metrics: Metrics) {
 
   private def cantSerialize(attribute: String, forContract: ContractId): String =
     s"Cannot serialize $attribute for ${forContract.coid}"
 
   private def serializeCreateArgOrThrow(contractId: ContractId, arg: LfValue): Array[Byte] =
-    ValueSerializer.serializeValue(
+    Compression.compress("create_arg")(ValueSerializer.serializeValue(
       value = arg,
       errorContext = cantSerialize(attribute = "create argument", forContract = contractId),
-    )
+    ))
 
   private def serializeCreateArgOrThrow(c: Create): Array[Byte] =
     serializeCreateArgOrThrow(c.coid, c.coinst.arg)
@@ -34,13 +38,13 @@ final class LfValueTranslation(val cache: LfValueTranslation.Cache) {
           value = k.key,
           errorContext = cantSerialize(attribute = "key", forContract = c.coid),
       )
-    )
+    ).map(Compression.compress("nullable_create_key"))
 
   private def serializeExerciseArgOrThrow(e: Exercise): Array[Byte] =
-    ValueSerializer.serializeValue(
+    Compression.compress("exercise_arg")(ValueSerializer.serializeValue(
       value = e.chosenValue,
       errorContext = cantSerialize(attribute = "exercise argument", forContract = e.targetCoid),
-    )
+    ))
 
   private def serializeNullableExerciseResultOrThrow(e: Exercise): Option[Array[Byte]] =
     e.exerciseResult.map(
@@ -49,7 +53,7 @@ final class LfValueTranslation(val cache: LfValueTranslation.Cache) {
           value = exerciseResult,
           errorContext = cantSerialize(attribute = "exercise result", forContract = e.targetCoid),
       )
-    )
+    ).map(Compression.compress("exercise_result"))
 
   def serialize(contractId: ContractId, createArgument: LfValue): NamedParameter = {
     cache.contracts.put(
@@ -118,8 +122,8 @@ final class LfValueTranslation(val cache: LfValueTranslation.Cache) {
         .getIfPresent(eventKey(raw.partial.eventId))
         .getOrElse(
           LfValueTranslation.EventCache.Value.Create(
-            argument = ValueSerializer.deserializeValue(raw.createArgument),
-            key = raw.createKeyValue.map(ValueSerializer.deserializeValue)
+            argument = ValueSerializer.deserializeValue(Compression.decompressStream(raw.createArgument)),
+            key = raw.createKeyValue.map(Compression.decompressStream).map(ValueSerializer.deserializeValue)
           )
         )
         .assertCreate()
@@ -148,8 +152,8 @@ final class LfValueTranslation(val cache: LfValueTranslation.Cache) {
         .getIfPresent(eventKey(raw.partial.eventId))
         .getOrElse(
           LfValueTranslation.EventCache.Value.Exercise(
-            argument = ValueSerializer.deserializeValue(raw.exerciseArgument),
-            result = raw.exerciseResult.map(ValueSerializer.deserializeValue)
+            argument = ValueSerializer.deserializeValue(Compression.decompressStream(raw.exerciseArgument)),
+            result = raw.exerciseResult.map(Compression.decompressStream).map(ValueSerializer.deserializeValue)
           )
         )
         .assertExercise()
@@ -258,5 +262,32 @@ object LfValueTranslation {
     final case class Key(contractId: ContractId)
 
     final case class Value(argument: LfValue)
+  }
+
+  object Compression {
+    def compress(metricsSuffix: String)(input: Array[Byte])(implicit metrics: Metrics): Array[Byte] = {
+      val result: Array[Byte] = metrics.registry.timer(metrics.daml.indexer.Prefix :+ metricsSuffix :+ "compression")
+        .time(() => {
+          val bos = new ByteArrayOutputStream(input.length)
+          val gzip = new GZIPOutputStream(bos)
+          try {
+            gzip.write(input)
+          } finally {
+            gzip.close()
+          }
+          val compressed = bos.toByteArray
+          bos.close()
+          compressed
+        })
+      metrics.registry.histogram(metrics.daml.indexer.Prefix :+ metricsSuffix :+ "compression" :+ "uncompressed")
+        .update(input.length)
+      metrics.registry.histogram(metrics.daml.indexer.Prefix :+ metricsSuffix :+ "compression" :+ "compressed")
+        .update(result.length)
+      result
+    }
+
+   def decompressStream(inputStream: InputStream): GZIPInputStream = {
+      new GZIPInputStream(inputStream)
+    }
   }
 }
