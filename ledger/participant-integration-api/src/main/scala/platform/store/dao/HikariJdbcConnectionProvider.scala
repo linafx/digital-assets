@@ -3,7 +3,7 @@
 
 package com.daml.platform.store.dao
 
-import java.sql.{Connection, SQLTransientConnectionException}
+import java.sql.{Connection, PreparedStatement, SQLTransientConnectionException}
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.{Timer, TimerTask}
 
@@ -123,7 +123,10 @@ private[platform] class HikariJdbcConnectionProvider(
   override def runSQL[T](databaseMetrics: DatabaseMetrics)(block: Connection => T): T = {
     val conn = dataSource.getConnection()
     conn.setAutoCommit(false)
+    var statement: PreparedStatement = null
     try {
+      statement = conn.prepareStatement("SET LOCAL synchronous_commit = 'off'")
+      statement.execute()
       val res = Timed.value(
         databaseMetrics.queryTimer,
         block(conn)
@@ -142,6 +145,7 @@ private[platform] class HikariJdbcConnectionProvider(
         conn.rollback()
         throw t
     } finally {
+      if(statement != null) statement.close()
       conn.close()
     }
   }
