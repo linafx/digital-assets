@@ -74,7 +74,7 @@ private[commands] class CommandTracker[Context](maxDeduplicationTime: () => JDur
       val timeout_detection = "timeout-detection"
       override def preStart(): Unit = {
         scheduleWithFixedDelay(timeout_detection, 1.second, 1.second)
-
+        pull(submitRequestIn)
       }
 
       override protected def onTimer(timerKey: Any): Unit = {
@@ -87,11 +87,27 @@ private[commands] class CommandTracker[Context](maxDeduplicationTime: () => JDur
       }
 
       private val pendingCommands = new mutable.HashMap[String, TrackingData[Context]]()
+      private val pendingSubmissions = mutable.Buffer.empty[Ctx[(Context, String), SubmitRequest]]
+
+      private def enqueueOrPush(submitRequest: Ctx[(Context, String), SubmitRequest]) = {
+        if (isAvailable(submitRequestOut) && pendingSubmissions.isEmpty)
+          push(submitRequestOut, submitRequest)
+        else pendingSubmissions += submitRequest
+        pull(submitRequestIn)
+      }
 
       setHandler(
         submitRequestOut,
         new OutHandler {
-          override def onPull(): Unit = pull(submitRequestIn)
+          override def onPull(): Unit = {
+            if (pendingSubmissions.isEmpty) {
+              // nothing to do here, the next time a submitRequest arrives in submitRequestIn,
+              // enqueueOrPush will directly push it to submitRequestOut
+              ()
+            } else {
+              push(submitRequestOut, pendingSubmissions.remove(0))
+            }
+          }
 
           override def onDownstreamFinish(cause: Throwable): Unit = {
             cancel(submitRequestIn)
@@ -110,7 +126,7 @@ private[commands] class CommandTracker[Context](maxDeduplicationTime: () => JDur
               "Submitted command {}",
               submitRequest.value.getCommands.commandId,
             )
-            push(submitRequestOut, submitRequest.enrich(_ -> _.getCommands.commandId))
+            enqueueOrPush(submitRequest.enrich(_ -> _.getCommands.commandId))
           }
 
           override def onUpstreamFinish(): Unit = {
