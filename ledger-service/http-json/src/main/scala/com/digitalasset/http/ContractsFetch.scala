@@ -437,7 +437,9 @@ private[http] object ContractsFetch {
       step: InsertDeleteStep[Any, PreInsertContract],
   )(implicit log: doobie.LogHandler): ConnectionIO[Unit] = {
     import doobie.implicits._, cats.syntax.functor._
+    println("insertAndDelete")
     surrogateTemplateIds(step.inserts.iterator.map(_.templateId).toSet).flatMap { stidMap =>
+      println("surrogateTemplateIds")
       import cats.syntax.apply._, cats.instances.vector._, scalaz.std.set._
       import json.JsonProtocol._
       import doobie.postgres.implicits._

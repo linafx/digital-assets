@@ -5,7 +5,6 @@ package com.daml.http.dbbackend
 
 import scala.language.higherKinds
 import com.github.ghik.silencer.silent
-
 import doobie._
 import doobie.implicits._
 import scalaz.{@@, Foldable, Functor, OneAnd, Tag}
@@ -77,11 +76,11 @@ object Queries {
         contract
         (contract_id NVARCHAR2(100) PRIMARY KEY NOT NULL
         ,tpid NUMBER NOT NULL REFERENCES template_id (tpid)
-        ,key BLOB NOT NULL
+        ,key CLOB
          CONSTRAINT ensure_json_key CHECK (key IS JSON)
-        ,payload BLOB NOT NULL
+        ,payload CLOB
          CONSTRAINT ensure_json_payload CHECK (payload IS JSON)
-        ,agreement_text NVARCHAR2(100) NOT NULL
+        ,agreement_text NVARCHAR2(100)
         )
     """
 
@@ -206,18 +205,28 @@ object Queries {
   def insertContracts[F[_]: cats.Foldable: Functor, CK: JsonWriter, PL: JsonWriter](
       dbcs: F[DBContract[SurrogateTpId, CK, PL, Seq[String]]])(
       implicit log: LogHandler,
-      pas: Put[Array[String]]): ConnectionIO[Int] =
-    Update[DBContract[SurrogateTpId, JsValue, JsValue, Array[String]]](
+        pas: Put[Array[String]]): ConnectionIO[Int] = {
+    println("insert contracts")
+    println(dbcs.toList)
+    val r = Update[(String, SurrogateTpId, JsValue, JsValue, String)](
       """
-        INSERT INTO contract
-        VALUES (?, ?, ?::jsonb, ?::jsonb, ?, ?, ?)
-        ON CONFLICT (contract_id) DO NOTHING
+        INSERT INTO contract(contract_id, tpid, key, payload, agreement_text)
+        VALUES (?, ?, ?, ?, ?)
       """,
       logHandler0 = log
-    ).updateMany(dbcs.map(_.mapKeyPayloadParties(_.toJson, _.toJson, _.toArray)))
+    ).updateMany(dbcs.map(_.mapKeyPayloadParties(x => JsObject(Seq(("key", x.toJson : JsValue)).toMap) : JsValue, _.toJson, _.toArray))
+      .map {
+        case c =>
+//          println(c)
+          (c.contractId, c.templateId, c.key, c.payload, c.agreementText)
+        })
+    println("inserted")
+    r
+  }
 
   def deleteContracts[F[_]: Foldable](cids: F[String])(
-      implicit log: LogHandler): ConnectionIO[Int] = {
+    implicit log: LogHandler): ConnectionIO[Int] = {
+    println("delete")
     cids.toVector match {
       case Vector(hd, tl @ _*) =>
         (sql"DELETE FROM contract WHERE contract_id IN ("
@@ -250,6 +259,7 @@ object Queries {
       gvs: Get[Vector[String]],
       pvs: Put[Vector[String]]): Query0[DBContract[Unit, JsValue, JsValue, Vector[String]]] = {
     val partyVector = parties.toVector
+    println("selecting")
     val q = sql"""SELECT contract_id, key, payload, signatories, observers, agreement_text
                   FROM contract AS c
                   WHERE (signatories && $partyVector::text[] OR observers && $partyVector::text[])
