@@ -71,6 +71,9 @@ da_scala_binary(
         "maven_coordinates=com.daml:http-json-deploy:__VERSION__",
         "no_scala_version_suffix",
     ],
+    runtime_deps = [
+    "@maven//:com_oracle_database_jdbc_ojdbc8",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         ":http-json",

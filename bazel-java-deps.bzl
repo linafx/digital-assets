@@ -29,6 +29,7 @@ def install_java_deps():
             "com.h2database:h2:1.4.200",
             "com.lihaoyi:pprint_2.12:0.5.3",
             "commons-io:commons-io:2.5",
+            "com.oracle.database.jdbc:ojdbc8:19.8.0.0",
             "com.sparkjava:spark-core:2.9.1",
             "com.squareup:javapoet:1.11.1",
             "com.storm-enroute:scalameter_2.12:0.10.1",

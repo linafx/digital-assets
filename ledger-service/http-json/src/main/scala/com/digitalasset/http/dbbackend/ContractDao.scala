@@ -4,7 +4,7 @@
 package com.daml.http.dbbackend
 
 import cats.effect._
-import cats.syntax.apply._
+// import cats.syntax.apply._
 import com.daml.http.domain
 import com.daml.http.json.JsonProtocol.LfValueDatabaseCodec
 import doobie.LogHandler
@@ -37,7 +37,7 @@ object ContractDao {
   }
 
   def initialize(implicit log: LogHandler): ConnectionIO[Unit] =
-    Queries.dropAllTablesIfExist *> Queries.initDatabase
+    Queries.initDatabase
 
   def lastOffset(parties: OneAnd[Set, domain.Party], templateId: domain.TemplateId.RequiredPkg)(
       implicit log: LogHandler): ConnectionIO[Map[domain.Party, domain.Offset]] = {
