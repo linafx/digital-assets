@@ -41,7 +41,7 @@ object ContractDao {
 
   def lastOffset(parties: OneAnd[Set, domain.Party], templateId: domain.TemplateId.RequiredPkg)(
       implicit log: LogHandler): ConnectionIO[Map[domain.Party, domain.Offset]] = {
-    import doobie.postgres.implicits._
+//    import doobie.postgres.implicits._
     for {
       tpId <- Queries.surrogateTemplateId(
         templateId.packageId,

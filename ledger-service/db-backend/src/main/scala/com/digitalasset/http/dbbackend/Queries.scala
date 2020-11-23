@@ -14,6 +14,7 @@ import scalaz.syntax.functor._
 import scalaz.syntax.std.option._
 import scalaz.std.AllInstances._
 import spray.json._
+import cats.data.NonEmptyList
 import cats.instances.list._
 import cats.Applicative
 import cats.syntax.applicative._
@@ -53,8 +54,22 @@ object Queries {
 
   val dropContractsTable: Fragment = dropTableIfExists("contract")
 
-  val createPartyArrType: Fragment = sql"""
-      CREATE TYPE party_arr AS VARRAY(500) OF NVARCHAR2(100)
+  val createSignatoriesTable: Fragment = sql"""
+      CREATE TABLE
+        signatories
+          (contract_id NVARCHAR2(100) NOT NULL REFERENCES contract(contract_id)
+          ,party NVARCHAR2(100) NOT NULL
+          ,UNIQUE (contract_id, party)
+          )
+    """
+
+  val createObserversTable: Fragment = sql"""
+      CREATE TABLE
+        observers
+          (contract_id NVARCHAR2(100) NOT NULL REFERENCES contract(contract_id)
+          ,party NVARCHAR2(100) NOT NULL
+          ,UNIQUE (contract_id, party)
+          )
     """
 
   val createContractsTable: Fragment = sql"""
@@ -66,8 +81,6 @@ object Queries {
          CONSTRAINT ensure_json_key CHECK (key IS JSON)
         ,payload BLOB NOT NULL
          CONSTRAINT ensure_json_payload CHECK (payload IS JSON)
-        ,signatories party_arr NOT NULL
-        ,observers party_arr NOT NULL
         ,agreement_text NVARCHAR2(100) NOT NULL
         )
     """
@@ -115,8 +128,9 @@ object Queries {
   private[http] def initDatabase(implicit log: LogHandler): ConnectionIO[Unit] =
     (createTemplateIdsTable.update.run
       *> createOffsetTable.update.run
-      *> createPartyArrType.update.run
       *> createContractsTable.update.run
+      *> createSignatoriesTable.update.run
+      *> createObserversTable.update.run
       *> indexContractsTable.update.run).void
 
   def surrogateTemplateId(packageId: String, moduleName: String, entityName: String)(
@@ -135,13 +149,15 @@ object Queries {
     }
 
   def lastOffset(parties: OneAnd[Set, String], tpid: SurrogateTpId)(
-      implicit log: LogHandler,
-      pls: Put[Vector[String]]): ConnectionIO[Map[String, String]] = {
-    val partyVector = parties.toVector
-    sql"""SELECT party, last_offset FROM ledger_offset WHERE (party = ANY(${partyVector}) AND tpid = $tpid)"""
-      .query[(String, String)]
-      .to[Vector]
-      .map(_.toMap)
+      implicit log: LogHandler): ConnectionIO[Map[String, String]] = {
+    val partyVector: NonEmptyList[String] =
+      NonEmptyList(parties.head, parties.tail.toList)
+    val q = fr"""
+    SELECT party, last_offset FROM ledger_offset WHERE tpid = $tpid AND
+    """ ++ Fragments.in(fr"party", partyVector)
+    q.query[(String, String)]
+     .to[Vector]
+     .map(_.toMap)
   }
 
   /** Consistency of the whole database mostly pivots around the offset update
