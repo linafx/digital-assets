@@ -189,10 +189,39 @@ class ValueCoderSpec
     Right(value) shouldEqual fromToBytes
   }
 
+  def normalize(value0: Value[ContractId], version: TransactionVersion): Value[ContractId] = {
+
+    import scala.Ordering.Implicits._
+
+    def go(value: Value[ContractId]): Value[ContractId] =
+      value match {
+        case ValueRecord(_, fields) =>
+          ValueRecord(None, fields.map { case (_, value) => None -> go(value) })
+        case ValueVariant(_, variant, value) =>
+          ValueVariant(None, variant, go(value))
+        case _: ValueCidlessLeaf | _: ValueContractId[_] => value
+        case ValueList(values) =>
+          ValueList(values.map(go))
+        case ValueOptional(value) =>
+          ValueOptional(value.map(go))
+        case ValueTextMap(value) =>
+          ValueTextMap(value.mapValue(go))
+        case ValueGenMap(entries) =>
+          ValueGenMap(entries.map { case (k, v) => go(k) -> go(v) })
+      }
+
+    if (version >= TransactionVersion.minTypeErasure)
+      go(value0)
+    else
+      value0
+
+  }
+
   def testRoundTripWithVersion(
       value0: Value[ContractId],
       version: TransactionVersion,
   ): Assertion = {
+    val normalizedValue = normalize(value0, version)
     val encoded: proto.VersionedValue = assertRight(
       ValueCoder
         .encodeVersionedValue(ValueCoder.CidEncoder, VersionedValue(version, value0))
@@ -201,7 +230,7 @@ class ValueCoderSpec
       ValueCoder.decodeVersionedValue(ValueCoder.CidDecoder, encoded)
     )
 
-    decoded.value shouldEqual value0
+    decoded.value shouldEqual normalizedValue
     decoded.version shouldEqual version
 
     // emulate passing encoded proto message over wire
@@ -212,7 +241,7 @@ class ValueCoderSpec
       ValueCoder.decodeVersionedValue(ValueCoder.CidDecoder, encodedSentOverWire)
     )
 
-    decodedSentOverWire.value shouldEqual value0
+    decodedSentOverWire.value shouldEqual normalizedValue
     decodedSentOverWire.version shouldEqual version
   }
 }

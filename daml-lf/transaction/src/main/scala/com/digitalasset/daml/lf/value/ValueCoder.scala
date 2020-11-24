@@ -133,7 +133,7 @@ object ValueCoder {
   private[this] def decodeValueVersion(vs: String): Either[DecodeError, TransactionVersion] =
     vs match {
       case "6" => Right(TransactionVersion.V10)
-      case "10" => Left(DecodeError("Unsupported value version 10"))
+      case TransactionVersion.V10.protoValue => Left(DecodeError("Unsupported value version 10"))
       case _ => TransactionVersion.fromString(vs).left.map(DecodeError)
     }
 
@@ -186,7 +186,11 @@ object ValueCoder {
 
     def assertSince(minVersion: TransactionVersion, description: => String) =
       if (version < minVersion)
-        throw Err(s"$description is not supported by value version $version")
+        throw Err(s"$description is not supported by transaction version $version")
+
+    def assertUntil(minVersion: TransactionVersion, description: => String) =
+      if (version >= minVersion)
+        throw Err(s"$description is not supported by transaction version $version")
 
     def go(nesting: Int, protoValue: proto.Value): Value[Cid] = {
       if (nesting > MAXIMUM_NESTING) {
@@ -235,7 +239,11 @@ object ValueCoder {
             val variant = protoValue.getVariant
             val id =
               if (variant.getVariantId == ValueOuterClass.Identifier.getDefaultInstance) None
-              else
+              else {
+                assertUntil(
+                  TransactionVersion.minTypeErasure,
+                  "variant_id field in message Variant",
+                )
                 decodeIdentifier(variant.getVariantId).fold(
                   { err =>
                     throw Err(err.errorMessage)
@@ -244,13 +252,15 @@ object ValueCoder {
                     Some(id)
                   },
                 )
+              }
             ValueVariant(id, identifier(variant.getConstructor), go(newNesting, variant.getValue))
 
           case proto.Value.SumCase.ENUM =>
             val enum = protoValue.getEnum
             val id =
               if (enum.getEnumId == ValueOuterClass.Identifier.getDefaultInstance) None
-              else
+              else {
+                assertUntil(TransactionVersion.minTypeErasure, "enum_id field in message Enum")
                 decodeIdentifier(enum.getEnumId).fold(
                   { err =>
                     throw Err(err.errorMessage)
@@ -259,13 +269,15 @@ object ValueCoder {
                     Some(id)
                   },
                 )
+              }
             ValueEnum(id, identifier(enum.getValue))
 
           case proto.Value.SumCase.RECORD =>
             val record = protoValue.getRecord
             val id =
               if (record.getRecordId == ValueOuterClass.Identifier.getDefaultInstance) None
-              else
+              else {
+                assertUntil(TransactionVersion.minTypeErasure, "record_id field in message Record")
                 decodeIdentifier(record.getRecordId).fold(
                   { err =>
                     throw Err(err.errorMessage)
@@ -274,10 +286,20 @@ object ValueCoder {
                     Some(id)
                   },
                 )
+              }
             ValueRecord(
               id,
               ImmArray(protoValue.getRecord.getFieldsList.asScala.map(fld => {
-                val lbl = if (fld.getLabel.isEmpty) None else Option(identifier(fld.getLabel))
+                val lbl =
+                  if (fld.getLabel.isEmpty) {
+                    None
+                  } else {
+                    assertUntil(
+                      TransactionVersion.minTypeErasure,
+                      "label field in message RecordField",
+                    )
+                    Option(identifier(fld.getLabel))
+                  }
                 (lbl, go(newNesting, fld.getValue))
               })),
             )
@@ -410,13 +432,15 @@ object ValueCoder {
                 val b = proto.RecordField
                   .newBuilder()
                   .setValue(go(newNesting, f._2))
-                f._1.map(b.setLabel)
+                if (valueVersion < TransactionVersion.minTypeErasure)
+                  f._1.map(b.setLabel)
                 b.build()
               })
               .toSeq
               .asJava
             val recordBuilder = proto.Record.newBuilder().addAllFields(protoFields)
-            id.foreach(i => recordBuilder.setRecordId(encodeIdentifier(i)))
+            if (valueVersion < TransactionVersion.minTypeErasure)
+              id.foreach(i => recordBuilder.setRecordId(encodeIdentifier(i)))
             builder
               .setRecord(recordBuilder)
               .build()
@@ -426,14 +450,16 @@ object ValueCoder {
               .newBuilder()
               .setConstructor(con)
               .setValue(go(newNesting, arg))
-            id.foreach(i => protoVar.setVariantId(encodeIdentifier(i)))
+            if (valueVersion < TransactionVersion.minTypeErasure)
+              id.foreach(i => protoVar.setVariantId(encodeIdentifier(i)))
             builder.setVariant(protoVar).build()
 
           case ValueEnum(id, value) =>
             val protoEnum = proto.Enum
               .newBuilder()
               .setValue(value)
-            id.foreach(i => protoEnum.setEnumId(encodeIdentifier(i)))
+            if (valueVersion < TransactionVersion.minTypeErasure)
+              id.foreach(i => protoEnum.setEnumId(encodeIdentifier(i)))
             builder.setEnum(protoEnum).build()
 
           case ValueOptional(mbV) =>

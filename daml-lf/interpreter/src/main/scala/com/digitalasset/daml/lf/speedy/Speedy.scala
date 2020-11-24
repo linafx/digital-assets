@@ -19,6 +19,7 @@ import com.daml.lf.transaction.TransactionVersion
 import com.daml.lf.value.{Value => V}
 import org.slf4j.LoggerFactory
 
+import scala.annotation.tailrec
 import scala.jdk.CollectionConverters._
 import scala.util.control.NoStackTrace
 
@@ -260,7 +261,7 @@ private[lf] object Speedy {
     }
 
     /** Push a single location to the continuation stack for the sake of
-      *        maintaining a stack trace.
+      * maintaining a stack trace.
       */
     def pushLocation(loc: Location): Unit = {
       lastLocation = Some(loc)
@@ -289,13 +290,13 @@ private[lf] object Speedy {
     }
 
     /** Push an entire stack trace to the continuation stack. The first
-      *        element of the list will be pushed last.
+      * element of the list will be pushed last.
       */
     def pushStackTrace(locs: List[Location]): Unit =
       locs.reverse.foreach(pushLocation)
 
     /** Compute a stack trace from the locations in the continuation stack.
-      *        The last seen location will come last.
+      * The last seen location will come last.
       */
     def stackTrace(): ImmArray[Location] = {
       val s = ImmArray.newBuilder[Location]
@@ -350,7 +351,7 @@ private[lf] object Speedy {
       }
 
     /** Reuse an existing speedy machine to evaluate a new expression.
-      *      Do not use if the machine is partway though an existing evaluation.
+      * Do not use if the machine is partway though an existing evaluation.
       *      i.e. run() has returned an `SResult` requiring a callback.
       */
     def setExpressionToEvaluate(expr: SExpr): Unit = {
@@ -474,7 +475,7 @@ private[lf] object Speedy {
     }
 
     /** This function is used to enter an ANF application.  The function has been evaluated to
-      *      a value, and so have the arguments - they just need looking up
+      * a value, and so have the arguments - they just need looking up
       */
     // TODO: share common code with executeApplication
     private[speedy] def enterApplication(vfun: SValue, newArgs: Array[SExprAtomic]): Unit = {
@@ -582,11 +583,11 @@ private[lf] object Speedy {
     }
 
     /** Evaluate the first 'n' arguments in 'args'.
-      *      'args' will contain at least 'n' expressions, but it may contain more(!)
+      * 'args' will contain at least 'n' expressions, but it may contain more(!)
       *
-      *      This is because, in the call from 'executeApplication' below, although over-applied
-      *      arguments are pushed into a continuation, they are not removed from the original array
-      *      which is passed here as 'args'.
+      * This is because, in the call from 'executeApplication' below, although over-applied
+      * arguments are pushed into a continuation, they are not removed from the original array
+      * which is passed here as 'args'.
       */
     private[speedy] def evaluateArguments(
         actuals: util.ArrayList[SValue],
@@ -642,94 +643,171 @@ private[lf] object Speedy {
       )
     }
 
+    @tailrec
+    private[this] def destructApp(typ: Type, tyArgs: List[Type] = List.empty): (Type, List[Type]) =
+      typ match {
+        case TApp(tyFun, tyArg) => destructApp(tyFun, tyArg :: tyArgs)
+        case otherwise => (otherwise, tyArgs)
+      }
+
+    // note: all the types in params must be closed.
+    private[this] def replaceParameters(params: Map[TypeVarName, Type], typ0: Type): Type = {
+      def go(typ: Type): Type =
+        typ match {
+          case TVar(v) =>
+            params.getOrElse(
+              v,
+              crash(s"Got out of bounds type variable $v when replacing parameters"),
+            )
+          case TApp(tyfun, arg) => TApp(go(tyfun), go(arg))
+          case _: TForall | _: TStruct | _: TSynApp | _: TVar =>
+            crash(
+              s"Unexpected type $typ application when replacing parameters in value import -- all types should be serializable, and $typ are not."
+            )
+          case _ =>
+            typ
+        }
+
+      go(typ0)
+    }
+
     // This translates a well-typed LF value (typically coming from the ledger)
     // to speedy value and set the control of with the result.
     // All the contract IDs contained in the value are considered global.
     // Raises an exception if missing a package.
-    private[speedy] def importValue(value: V[V.ContractId]): Unit = {
-      def go(value0: V[V.ContractId]): SValue =
-        value0 match {
-          case V.ValueList(vs) => SList(vs.map[SValue](go))
-          case V.ValueContractId(coid) =>
-            addGlobalCid(coid)
-            SContractId(coid)
-          case V.ValueInt64(x) => SInt64(x)
-          case V.ValueNumeric(x) => SNumeric(x)
-          case V.ValueText(t) => SText(t)
-          case V.ValueTimestamp(t) => STimestamp(t)
-          case V.ValueParty(p) => SParty(p)
-          case V.ValueBool(b) => SBool(b)
-          case V.ValueDate(x) => SDate(x)
-          case V.ValueUnit => SUnit
-          case V.ValueRecord(Some(id), fs) =>
-            val values = new util.ArrayList[SValue](fs.length)
-            val names = fs.map {
-              case (Some(f), v) =>
-                values.add(go(v))
-                f
-              case (None, _) => crash("SValue.fromValue: record missing field name")
-            }
-            SRecord(id, names, values)
-          case V.ValueRecord(None, _) =>
-            crash("SValue.fromValue: record missing identifier")
-          case V.ValueVariant(None, _variant @ _, _value @ _) =>
-            crash("SValue.fromValue: variant without identifier")
-          case V.ValueEnum(None, constructor @ _) =>
-            crash("SValue.fromValue: enum without identifier")
-          case V.ValueOptional(mbV) =>
-            SOptional(mbV.map(go))
-          case V.ValueTextMap(entries) =>
-            SGenMap(
-              isTextMap = true,
-              entries = entries.iterator.map { case (k, v) => SText(k) -> go(v) },
-            )
-          case V.ValueGenMap(entries) =>
-            SGenMap(
-              isTextMap = false,
-              entries = entries.iterator.map { case (k, v) => go(k) -> go(v) },
-            )
-          case V.ValueVariant(Some(id), variant, arg) =>
-            compiledPackages.getSignature(id.packageId) match {
-              case Some(pkg) =>
-                pkg.lookupDefinition(id.qualifiedName).fold(crash, identity) match {
-                  case DDataType(_, _, data: DataVariant) =>
-                    SVariant(id, variant, data.constructorRank(variant), go(arg))
+    private[speedy] def importValue(typ0: Type, value0: V[V.ContractId]): Unit = {
+
+      def go(ty: Type, value: V[V.ContractId]): SValue = {
+        def typeMismatch = crash(s"mismatching type: $ty and value: $value")
+
+        val (tyFun, tyArgs) = destructApp(ty)
+        tyFun match {
+          case TBuiltin(_) =>
+            tyArgs match {
+              case Nil =>
+                value match {
+                  case V.ValueInt64(value) =>
+                    SValue.SInt64(value)
+                  case V.ValueNumeric(value) =>
+                    SValue.SNumeric(value)
+                  case V.ValueText(value) =>
+                    SValue.SText(value)
+                  case V.ValueTimestamp(value) =>
+                    SValue.STimestamp(value)
+                  case V.ValueDate(value) =>
+                    SValue.SDate(value)
+                  case V.ValueParty(value) =>
+                    SValue.SParty(value)
+                  case V.ValueBool(b) =>
+                    if (b) SValue.SValue.True else SValue.SValue.False
+                  case V.ValueUnit =>
+                    SValue.SValue.Unit
                   case _ =>
-                    crash(s"definition for variant $id not found")
+                    typeMismatch
                 }
-              case None =>
-                throw SpeedyHungry(
-                  SResultNeedPackage(
-                    id.packageId,
-                    pkg => {
-                      compiledPackages = pkg
-                      returnValue = go(value)
-                    },
-                  )
-                )
-            }
-          case V.ValueEnum(Some(id), constructor) =>
-            compiledPackages.getSignature(id.packageId) match {
-              case Some(pkg) =>
-                pkg.lookupDefinition(id.qualifiedName).fold(crash, identity) match {
-                  case DDataType(_, _, data: DataEnum) =>
-                    SEnum(id, constructor, data.constructorRank(constructor))
+              case elemType :: Nil =>
+                value match {
+                  case V.ValueContractId(cid) =>
+                    addGlobalCid(cid)
+                    SValue.SContractId(cid)
+                  case V.ValueNumeric(d) =>
+                    elemType match {
+                      case TNat(s) =>
+                        data.Numeric.fromBigDecimal(s, d).fold(crash, SValue.SNumeric)
+                      case _ =>
+                        typeMismatch
+                    }
+                  case V.ValueOptional(mb) =>
+                    mb match {
+                      case Some(value) => SValue.SOptional(Some(go(elemType, value)))
+                      case None => SValue.SValue.None
+                    }
+                  // list
+                  case V.ValueList(ls) =>
+                    SValue.SList(ls.map(go(elemType, _)))
+
+                  // textMap
+                  case V.ValueTextMap(entries) =>
+                    SValue.SGenMap(
+                      isTextMap = true,
+                      entries = entries.iterator.map { case (k, v) =>
+                        SValue.SText(k) -> go(elemType, v)
+                      },
+                    )
                   case _ =>
-                    crash(s"definition for variant $id not found")
+                    typeMismatch
                 }
-              case None =>
-                throw SpeedyHungry(
-                  SResultNeedPackage(
-                    id.packageId,
-                    pkg => {
-                      compiledPackages = pkg
-                      returnValue = go(value)
-                    },
-                  )
-                )
+              case keyType :: valueType :: Nil =>
+                value match {
+                  // genMap
+                  case V.ValueGenMap(entries) =>
+                    SValue.SGenMap(
+                      isTextMap = false,
+                      entries = entries.iterator.map { case (k, v) =>
+                        go(keyType, k) -> go(valueType, v)
+                      },
+                    )
+                  case _ =>
+                    typeMismatch
+                }
+              case _ =>
+                typeMismatch
             }
+          case TTyCon(tyCon) =>
+            val signature = compiledPackages.signatures(tyCon.packageId)
+            value match {
+              case V.ValueRecord(_, fields) =>
+                signature.lookupRecord(tyCon.qualifiedName) match {
+                  case Right((params, DataRecord(fieldsDef))) =>
+                    lazy val subst = (params.toSeq.view.map(_._1) zip tyArgs).toMap
+                    val n = fields.length
+                    var i = 0
+                    val values = new util.ArrayList[SValue](n)
+                    while (i < n) {
+                      val typDef = fieldsDef(i)._2
+                      val typ = if (tyArgs.isEmpty) {
+                        // optimization
+                        typDef
+                      } else {
+                        replaceParameters(subst, typDef)
+                      }
+                      values.add(go(typ, fields(i)._2))
+                      i += 1
+                    }
+                    SRecord(tyCon, fieldsDef.map(_._1), values)
+                  case Left(err) => crash(err)
+                }
+              case V.ValueVariant(_, constructor, value) =>
+                signature.lookupVariant(tyCon.qualifiedName) match {
+                  case Right((params, variantDef)) =>
+                    val rank = variantDef.constructorRank(constructor)
+                    val typDef = variantDef.variants(rank)._2
+                    val typ = if (tyArgs.isEmpty) {
+                      // optimization
+                      typDef
+                    } else {
+                      val subst = (params.toSeq.view.map(_._1) zip tyArgs).toMap
+                      replaceParameters(subst, typDef)
+                    }
+                    SValue.SVariant(tyCon, constructor, rank, go(typ, value))
+                  case Left(err) => crash(err)
+                }
+              case V.ValueEnum(_, constructor) =>
+                signature.lookupEnum(tyCon.qualifiedName) match {
+                  case Right(enumDef) =>
+                    val rank = enumDef.constructorRank(constructor)
+                    SValue.SEnum(tyCon, constructor, rank)
+                  case Left(err) => crash(err)
+                }
+              case _ =>
+                typeMismatch
+            }
+          case _ =>
+            typeMismatch
         }
-      returnValue = go(value)
+      }
+
+      returnValue = go(typ0, value0)
     }
 
   }
