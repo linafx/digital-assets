@@ -486,7 +486,7 @@ private class JdbcLedgerDao(
           ParametersTable.updateLedgerEnd(offsetStep)
         )
         Ok
-      }
+      }daml-lf/transaction/src/main/scala/com/digitalasset/daml/lf/value/ValueVersion.scala
 
   override def storeRejection(
       submitterInfo: Option[SubmitterInfo],
