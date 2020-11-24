@@ -221,7 +221,21 @@ object Queries {
           (c.contractId, c.templateId, c.key, c.payload, c.agreementText)
         })
     println("inserted")
-    r
+    val r2 = Update[(String, String)](
+      """
+        INSERT INTO signatories(contract_id, party)
+        VALUES (?, ?)
+      """,
+      logHandler0 = log
+    ).updateMany(dbcs.toList.flatMap(c => c.signatories.map(s => (c.contractId, s))))
+    val r3 = Update[(String, String)](
+      """
+        INSERT INTO observers(contract_id, party)
+        VALUES (?, ?)
+      """,
+      logHandler0 = log
+    ).updateMany(dbcs.toList.flatMap(c => c.observers.map(s => (c.contractId, s))))
+    r *> r2 *> r3
   }
 
   def deleteContracts[F[_]: Foldable](cids: F[String])(
@@ -256,24 +270,24 @@ object Queries {
       tpid: SurrogateTpId,
       predicate: Fragment)(
       implicit log: LogHandler,
-      gvs: Get[Vector[String]],
-      pvs: Put[Vector[String]]): Query0[DBContract[Unit, JsValue, JsValue, Vector[String]]] = {
-    val partyVector = parties.toVector
+      gvs: Get[Vector[String]]
+  ): Query0[DBContract[Unit, JsValue, JsValue, Vector[String]]] = {
+    val _ = (parties, predicate)
+    // val partyVector = parties.toVector
     println("selecting")
-    val q = sql"""SELECT contract_id, key, payload, signatories, observers, agreement_text
-                  FROM contract AS c
-                  WHERE (signatories && $partyVector::text[] OR observers && $partyVector::text[])
-                   AND tpid = $tpid AND (""" ++ predicate ++ sql")"
-    q.query[(String, JsValue, JsValue, Vector[String], Vector[String], String)].map {
-      case (cid, key, payload, signatories, observers, agreement) =>
+    val q = sql"""SELECT contract_id, key, payload, agreement_text
+                  FROM contract
+                  WHERE tpid = $tpid"""
+    q.query[(String, JsValue, JsValue, Option[String])].map {
+      case (cid, key, payload, agreement) =>
         DBContract(
           contractId = cid,
           templateId = (),
           key = key,
           payload = payload,
-          signatories = signatories,
-          observers = observers,
-          agreementText = agreement)
+          signatories = Vector(),
+          observers = Vector(),
+          agreementText = agreement.getOrElse(""))
     }
   }
 
