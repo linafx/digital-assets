@@ -331,7 +331,6 @@ object Node {
       x => f(x.key)
 
   }
-
 }
 
 final case class NodeId(index: Int)
