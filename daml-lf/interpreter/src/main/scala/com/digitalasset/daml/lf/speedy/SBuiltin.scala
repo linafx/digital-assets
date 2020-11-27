@@ -443,7 +443,7 @@ private[lf] object SBuiltin {
       val func = args.get(0)
       val init = args.get(1)
       val list = args.get(2).asInstanceOf[SList].list
-      machine.pushKont(KFoldl(machine, func, list))
+      machine.pushKont(new machine.KFoldl(func, list))
       machine.returnValue = init
     }
   }
@@ -485,14 +485,14 @@ private[lf] object SBuiltin {
       val list = args.get(2)
       if (func.arity - func.actuals.size >= 2) {
         val array = list.asInstanceOf[SList].list.toImmArray
-        machine.pushKont(KFoldr(machine, func, array, array.length))
+        machine.pushKont(new machine.KFoldr(func, array, array.length))
         machine.returnValue = init
       } else {
         val stack = list.asInstanceOf[SList].list
         stack.pop match {
           case None => machine.returnValue = init
           case Some((head, tail)) =>
-            machine.pushKont(KFoldr1Map(machine, func, tail, FrontStack.empty, init))
+            machine.pushKont(new machine.KFoldr1Map(func, tail, FrontStack.empty, init))
             machine.enterApplication(func, Array(SEValue(head)))
         }
       }

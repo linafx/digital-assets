@@ -108,7 +108,7 @@ object SExpr {
     General case: 'fun' and 'args' are any kind of expression */
   final case class SEAppGeneral(fun: SExpr, args: Array[SExpr]) extends SExpr with SomeArrayEquals {
     def execute(machine: Machine): Unit = {
-      machine.pushKont(KArg(machine, args))
+      machine.pushKont(new machine.KArg(args))
       machine.ctrl = fun
     }
   }
@@ -238,7 +238,7 @@ object SExpr {
   /** Pattern match. */
   final case class SECase(scrut: SExpr, alts: Array[SCaseAlt]) extends SExpr with SomeArrayEquals {
     def execute(machine: Machine): Unit = {
-      machine.pushKont(KMatch(machine, alts))
+      machine.pushKont(new machine.KMatch(alts))
       machine.ctrl = scrut
     }
 
@@ -264,14 +264,14 @@ object SExpr {
       with SomeArrayEquals {
     def execute(machine: Machine): Unit = {
       val vscrut = scrut.lookupValue(machine)
-      executeMatchAlts(machine, alts, vscrut)
+      machine.executeMatchAlts(alts, vscrut)
     }
   }
 
   /** A let-expression with a single RHS */
   final case class SELet1General(rhs: SExpr, body: SExpr) extends SExpr with SomeArrayEquals {
     def execute(machine: Machine): Unit = {
-      machine.pushKont(KPushTo(machine, machine.env, body))
+      machine.pushKont(new machine.KPushTo(machine.env, body))
       machine.ctrl = rhs
     }
   }
@@ -335,7 +335,7 @@ object SExpr {
     */
   final case class SECatch(body: SExpr, handler: SExpr, fin: SExpr) extends SExpr {
     def execute(machine: Machine): Unit = {
-      machine.pushKont(KCatch(machine, handler, fin))
+      machine.pushKont(new machine.KCatch(handler, fin))
       machine.ctrl = body
     }
   }
@@ -351,7 +351,7 @@ object SExpr {
     */
   final case class SELabelClosure(label: Profile.Label, expr: SExpr) extends SExpr {
     def execute(machine: Machine): Unit = {
-      machine.pushKont(KLabelClosure(machine, label))
+      machine.pushKont(new machine.KLabelClosure(label))
       machine.ctrl = expr
     }
   }

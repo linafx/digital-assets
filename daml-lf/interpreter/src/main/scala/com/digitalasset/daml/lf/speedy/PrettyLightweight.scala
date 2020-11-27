@@ -5,8 +5,8 @@ package com.daml.lf
 package speedy
 
 import java.util
-import scala.collection.JavaConverters._
 
+import scala.collection.JavaConverters._
 import com.daml.lf.speedy.Speedy._
 import com.daml.lf.speedy.SExpr._
 import com.daml.lf.speedy.SValue._
@@ -14,25 +14,26 @@ import com.daml.lf.speedy.SValue._
 private[speedy] object PrettyLightweight { // lightweight pretty printer for CEK machine states
 
   def ppMachine(m: Machine): String = {
-    s"[${m.envBase}] ${ppEnv(m.env)} -- ${ppCtrl(m.ctrl, m.returnValue)} -- ${ppKontStack(m.kontStack)}"
-  }
 
-  def ppCtrl(e: SExpr, v: SValue): String =
-    if (v != null) {
-      s"V-${pp(v)}"
-    } else {
-      s"E-${pp(e)}"
+    def ppCtrl(e: SExpr, v: SValue): String =
+      if (v != null) {
+        s"V-${pp(v)}"
+      } else {
+        s"E-${pp(e)}"
+      }
+
+    def ppEnv(env: Env): String = {
+      s"#${env.size()}={${commas(env.asScala.map(pp))}}"
     }
 
-  def ppEnv(env: Env): String = {
-    s"#${env.size()}={${commas(env.asScala.map(pp))}}"
-  }
+    def ppKontStack(ks: util.ArrayList[m.Kont]): String = {
+      s"[${ppKont(ks.get(ks.size - 1))}... #${ks.size()}]" // head kont & size
+    }
 
-  def ppKontStack(ks: util.ArrayList[Kont]): String = {
-    s"[${ppKont(ks.get(ks.size - 1))}... #${ks.size()}]" // head kont & size
-  }
+    def ppKont(k: m.Kont): String = k.getClass.getSimpleName
 
-  def ppKont(k: Kont): String = k.getClass.getSimpleName
+    s"[${m.envBase}] ${ppEnv(m.env)} -- ${ppCtrl(m.ctrl, m.returnValue)} -- ${ppKontStack(m.kontStack)}"
+  }
 
   def pp(v: SELoc) = v match {
     case SELocS(n) => s"S#$n"
