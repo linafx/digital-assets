@@ -16,13 +16,20 @@ private[validator] class RawToDamlLedgerStateReaderWithFingerprintsAdapter(
 )(implicit executionContext: ExecutionContext)
     extends DamlLedgerStateReaderWithFingerprints {
   override def read(keys: Seq[DamlStateKey], validateCached: Seq[(DamlStateKey, Fingerprint)])
-    : Future[Seq[(Option[DamlKvutils.DamlStateValue], Fingerprint)]] =
+    : Future[(Seq[(Option[DamlKvutils.DamlStateValue], Fingerprint)], Seq[(DamlStateKey, (Option[DamlKvutils.DamlStateValue], Fingerprint))])] = {
     ledgerStateReaderWithFingerprints
       .read(
         keys.map(keySerializationStrategy.serializeStateKey),
         validateCached.map{case (k,v) => keySerializationStrategy.serializeStateKey(k) -> v})
-      .map(_.map {
-        case (valueMaybe, fingerprint) =>
-          valueMaybe.map(deserializeDamlStateValue) -> fingerprint
-      })
+      .map{
+        case (nonCached, invalidatedCached) =>
+          (nonCached.map {
+            case (valueMaybe, fingerprint) =>
+              valueMaybe.map(deserializeDamlStateValue) -> fingerprint
+          }, invalidatedCached.map{
+            case (key, (maybeValue, fingerprint)) =>
+              keySerializationStrategy.deserializeStateKey(key) -> (maybeValue.map(deserializeDamlStateValue) -> fingerprint)
+          })
+      }
+  }
 }
