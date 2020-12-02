@@ -4,7 +4,7 @@
 package com.daml.ledger.validator.preexecution
 
 import com.daml.ledger.participant.state.kvutils.DamlKvutils.{DamlStateKey, DamlStateValue}
-import com.daml.ledger.participant.state.kvutils.{DamlKvutils, Fingerprint}
+import com.daml.ledger.participant.state.kvutils.Fingerprint
 import com.daml.ledger.validator.LedgerStateOperations.{Key, Value}
 
 import scala.concurrent.Future
@@ -20,6 +20,5 @@ trait LedgerStateReaderWithFingerprints {
 }
 
 trait DamlLedgerStateReaderWithFingerprints {
-  def read(keys: Seq[DamlStateKey], validateCached: Seq[(DamlStateKey, Fingerprint)])
-  : Future[(Seq[(Option[DamlKvutils.DamlStateValue], Fingerprint)], Seq[(DamlStateKey, (Option[DamlKvutils.DamlStateValue], Fingerprint))])]
+  def read(keys: Seq[DamlStateKey], validateCached: Seq[(DamlStateKey, Fingerprint)]): Future[Seq[(Option[DamlStateValue], Fingerprint)]]
 }

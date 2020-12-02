@@ -13,9 +13,8 @@ import com.daml.ledger.validator.RawToDamlLedgerStateReaderAdapter.deserializeDa
 private[validator] class RawToDamlLedgerStateReaderWithFingerprintsAdapter(
     ledgerStateReaderWithFingerprints: LedgerStateReaderWithFingerprints,
     keySerializationStrategy: StateKeySerializationStrategy
-)(implicit executionContext: ExecutionContext)
-    extends DamlLedgerStateReaderWithFingerprints {
-  override def read(keys: Seq[DamlStateKey], validateCached: Seq[(DamlStateKey, Fingerprint)])
+)(implicit executionContext: ExecutionContext) {
+  def read(keys: Seq[DamlStateKey], validateCached: Seq[(DamlStateKey, Fingerprint)])
     : Future[(Seq[(Option[DamlKvutils.DamlStateValue], Fingerprint)], Seq[(DamlStateKey, (Option[DamlKvutils.DamlStateValue], Fingerprint))])] = {
     ledgerStateReaderWithFingerprints
       .read(

@@ -20,10 +20,10 @@ import scala.concurrent.{ExecutionContext, Future}
 class CachingDamlLedgerStateReaderWithFingerprints(
     val cache: StateCacheWithFingerprints,
     shouldCache: DamlStateKey => Boolean,
-    delegate: DamlLedgerStateReaderWithFingerprints)(implicit executionContext: ExecutionContext)
+    delegate: RawToDamlLedgerStateReaderWithFingerprintsAdapter)(implicit executionContext: ExecutionContext)
     extends DamlLedgerStateReaderWithFingerprints {
   override def read(keys: Seq[DamlStateKey], validateCached: Seq[(DamlStateKey, Fingerprint)])
-  : Future[(Seq[(Option[DamlKvutils.DamlStateValue], Fingerprint)], Seq[(DamlStateKey, (Option[DamlKvutils.DamlStateValue], Fingerprint))])] = {
+  : Future[Seq[(Option[DamlKvutils.DamlStateValue], Fingerprint)]] = {
     @SuppressWarnings(Array("org.wartremover.warts.Any")) // Required to make `.view` work.
     val cachedValues: Map[DamlStateKey, (Option[DamlStateValue], Fingerprint)] = keys.view
       .map(key => key -> cache.getIfPresent(key))
@@ -36,7 +36,7 @@ class CachingDamlLedgerStateReaderWithFingerprints(
 
     val keysToRead = (keys.toSet -- cachedValues.keySet).toSeq
     val mutableValueQuerySeq = mutablesCached.view.map{case (k, (_, fp)) => k -> fp}.toSeq
-    if (keysToRead.nonEmpty || mutableValueQuerySeq.nonEmpty) {
+    val result = if (keysToRead.nonEmpty || mutableValueQuerySeq.nonEmpty) {
       for {
         (nonCached, invalidatedCached) <- delegate.read(keysToRead, mutableValueQuerySeq)
       } yield {
@@ -47,13 +47,14 @@ class CachingDamlLedgerStateReaderWithFingerprints(
             cache.put(key, value -> fingerprint)
         }
         val all = immutables ++ mutablesCached ++ readValues
-        (keys.map(all(_)), Seq.empty)
+        keys.map(all(_))
       }
     } else {
       Future {
-        (keys.map(cachedValues(_)), Seq.empty)
+        keys.map(cachedValues(_))
       }
     }
+    result
   }
 
   private def isImmutable(key: DamlStateKey): Boolean =
