@@ -25,7 +25,7 @@ class LedgerStateReaderWithFingerprintsFromValues[LogResult](
     valueToFingerprint: Option[Value] => Fingerprint)(implicit executionContext: ExecutionContext)
     extends LedgerStateReaderWithFingerprints {
 
-  override def read(keys: Seq[Key]): Future[Seq[(Option[Value], Fingerprint)]] =
+  override def read(keys: Seq[Key], validateCached: Seq[(Key, Fingerprint)]): Future[Seq[(Option[Value], Fingerprint)]] =
     for {
       readResult <- ledgerStateOperations.readState(keys)
     } yield readResult.map(maybeValue => maybeValue -> valueToFingerprint(maybeValue))
