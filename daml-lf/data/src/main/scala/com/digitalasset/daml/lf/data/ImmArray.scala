@@ -4,7 +4,6 @@
 package com.daml.lf.data
 
 import ScalazEqual.{equalBy, orderBy, toIterableForScalazInstances}
-
 import scalaz.syntax.applicative._
 import scalaz.{Applicative, Equal, Foldable, Order, Traverse}
 
@@ -385,85 +384,66 @@ object ImmArray extends ImmArrayInstances {
   implicit def `ImmArray canBuildFrom`[A]: CanBuildFrom[ImmArray[_], A, ImmArray[A]] =
     new IACanBuildFrom
 
-  private def copyArraySeq[A](
-      src: mutable.ArraySeq[A],
-      srcStart: Int,
-      dst: mutable.ArraySeq[A],
-      dstStart: Int,
-      len: Int,
-  ): Unit =
-    System.arraycopy(src.array, srcStart, dst.array, dstStart, len)
+  private[this] abstract class GenBuilder[A](initialCapacity: Int)
+      extends mutable.Builder[A, ImmArray[A]] {
+    protected var array: mutable.ArraySeq[A] = new mutable.ArraySeq[A](initialCapacity max 1)
+    protected var length: Int = 0
+    final protected def capacity = array.size
 
-  def newBuilder[A](initialCapacity: Int = 4): mutable.Builder[A, ImmArray[A]] =
-    new mutable.Builder[A, ImmArray[A]] {
-      private[this] var length = 0
-      private[this] var array = new mutable.ArraySeq[A](initialCapacity max 1)
-      private[this] def capacity = array.size
+    protected def cursor: Int
 
-      override def +=(elem: A): this.type = {
-        if (length == capacity) {
-          val newArray = new mutable.ArraySeq[A](length * 2)
-          copyArraySeq(array, 0, newArray, 0, length)
-          array = newArray
-        }
-        array(length) = elem
-        length += 1
-        this
+    // invariant length <= newArray.size
+    protected def copyArraySeq(newArray: mutable.ArraySeq[A]): Unit
+
+    final override def +=(elem: A): this.type = {
+      if (length == capacity) {
+        val newArray = new mutable.ArraySeq[A](length * 2)
+        copyArraySeq(newArray)
+        array = newArray
       }
-
-      override def clear(): Unit = length = 0
-
-      override def result(): ImmArray[A] = {
-        val result =
-          if (length == 0) {
-            empty[A]
-          } else if (length == capacity) {
-            new ImmArray[A](0, length, array)
-          } else {
-            val newArray = new mutable.ArraySeq[A](length)
-            copyArraySeq(array, 0, newArray, 0, length)
-            new ImmArray[A](0, length, newArray)
-          }
-        // to be use one does not reuse the builder
-        array = null
-        result
-      }
+      array(cursor) = elem
+      length += 1
+      this
     }
 
-  def newReverseBuilder[A](initialCapacity: Int = 4): mutable.Builder[A, ImmArray[A]] =
-    new mutable.Builder[A, ImmArray[A]] {
-      private[this] var length = 0
-      private[this] var array = new mutable.ArraySeq[A](initialCapacity)
-      private[this] def capacity = array.size
+    final override def clear(): Unit = length = 0
 
-      override def +=(elem: A): this.type = {
-        if (length == capacity) {
-          val newArray = new mutable.ArraySeq[A](length * 2)
-          copyArraySeq(array, 0, newArray, length, length)
-          array = newArray
+    final override def result(): ImmArray[A] = {
+      val result =
+        if (length == 0) {
+          empty[A]
+        } else if (length == capacity) {
+          new ImmArray[A](0, length, array)
+        } else {
+          val newArray = new mutable.ArraySeq[A](length)
+          copyArraySeq(newArray)
+          new ImmArray[A](0, length, newArray)
         }
-        length += 1
-        array(capacity - length) = elem
-        this
-      }
+      // to be sure no one reuse the builder
+      array = null
+      result
+    }
+  }
 
-      override def clear(): Unit = length = 0
+  def newBuilder[A](initialCapacity: Int = 4): mutable.Builder[A, ImmArray[A]] =
+    new GenBuilder[A](initialCapacity) {
+      override protected def cursor: Int = length
 
-      override def result(): ImmArray[A] = {
-        val result =
-          if (length == 0) {
-            empty
-          } else if (length == capacity) {
-            new ImmArray[A](capacity - length, length, array)
-          } else {
-            val newArray = new mutable.ArraySeq[A](length)
-            copyArraySeq(array, capacity - length, newArray, 0, length)
-            new ImmArray[A](0, length, newArray)
-          }
-        // to be use one does not reuse the builder
-        array = null
-        result
-      }
+      override protected def copyArraySeq(newArray: mutable.ArraySeq[A]): Unit =
+        System.arraycopy(array.array, 0, newArray.array, 0, length)
+    }
+  def newReverseBuilder[A](initialCapacity: Int = 4): mutable.Builder[A, ImmArray[A]] =
+    new GenBuilder[A](initialCapacity) {
+      override protected def cursor: Int = capacity - length - 1
+
+      override protected def copyArraySeq(newArray: mutable.ArraySeq[A]): Unit =
+        System.arraycopy(
+          array.array,
+          array.size - length,
+          newArray.array,
+          newArray.size - length,
+          length,
+        )
     }
 
   /** Note: we define this purely to be able to write `toSeq`. We cannot return
