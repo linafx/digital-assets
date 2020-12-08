@@ -71,7 +71,7 @@ private[kvutils] class TransactionCommitter(
     "validate_contract_keys" -> validateContractKeys,
     "validate_model_conformance" -> validateModelConformance,
     "blind" -> blind,
-    "remove_unnecessary_nodes" -> removeUnnecessaryNodes,
+//    "remove_unnecessary_nodes" -> removeUnnecessaryNodes,
     "build_final_log_entry" -> buildFinalLogEntry,
   )
 
@@ -298,7 +298,7 @@ private[kvutils] class TransactionCommitter(
         commitContext,
         transactionEntry.copy(
           submission = transactionEntry.submission.toBuilder
-            .setBlindingInfo(Conversions.encodeBlindingInfo(blindingInfo))
+//            .setBlindingInfo(Conversions.encodeBlindingInfo(blindingInfo))
             .build),
         blindingInfo,
       )
