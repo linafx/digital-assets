@@ -76,6 +76,7 @@ private[sandbox] object SqlLedger {
       eventsPageSize: Int,
       metrics: Metrics,
       lfValueTranslationCache: LfValueTranslation.Cache,
+      validatePartyAllocation: Boolean = false,
   )(implicit mat: Materializer, loggingContext: LoggingContext)
       extends ResourceOwner[Ledger] {
 
@@ -225,6 +226,7 @@ private[sandbox] object SqlLedger {
         eventsPageSize,
         metrics,
         lfValueTranslationCache,
+        validatePartyAllocation,
       )
 
     private def dispatcherOwner(ledgerEnd: Offset): ResourceOwner[Dispatcher[Offset]] =
@@ -364,17 +366,34 @@ private final class SqlLedger(
               offset,
               reason,
           ),
-          _ =>
+          _ => {
+            val divulgedContracts = Nil
+            // This indexer-ledger does not trim fetch and lookupByKey nodes in the transaction,
+            // so it doesn't need to pre-compute blinding information.
+            val blindingInfo = None
+
+            val preparedInsert = ledgerDao.prepareTransactionInsert(
+              submitterInfo = Some(submitterInfo),
+              workflowId = transactionMeta.workflowId,
+              transactionId = transactionId,
+              ledgerEffectiveTime = transactionMeta.ledgerEffectiveTime.toInstant,
+              offset = offset,
+              transaction = transactionCommitter.commitTransaction(transactionId, transaction),
+              divulgedContracts = divulgedContracts,
+              blindingInfo = blindingInfo
+            )
             ledgerDao.storeTransaction(
+              preparedInsert,
               Some(submitterInfo),
-              transactionMeta.workflowId,
               transactionId,
               recordTime,
               transactionMeta.ledgerEffectiveTime.toInstant,
               offset,
               transactionCommitter.commitTransaction(transactionId, transaction),
-              Nil,
-          )
+              divulgedContracts,
+              blindingInfo,
+            )
+          }
         )
         .transform(
           _.map(_ => ()).recover {

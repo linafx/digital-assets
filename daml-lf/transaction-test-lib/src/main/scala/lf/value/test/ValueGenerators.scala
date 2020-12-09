@@ -7,7 +7,13 @@ package test
 
 import com.daml.lf.data.Ref._
 import com.daml.lf.data._
-import com.daml.lf.transaction.Node.{KeyWithMaintainers, NodeCreate, NodeExercises, NodeFetch}
+import com.daml.lf.transaction.Node.{
+  GenNode,
+  KeyWithMaintainers,
+  NodeCreate,
+  NodeExercises,
+  NodeFetch
+}
 import com.daml.lf.transaction.VersionTimeline.Implicits._
 import com.daml.lf.transaction.{
   BlindingInfo,
@@ -15,6 +21,8 @@ import com.daml.lf.transaction.{
   NodeId,
   TransactionVersion,
   TransactionVersions,
+  VersionTimeline,
+  VersionedTransaction,
   Transaction => Tx
 }
 import com.daml.lf.value.Value.{NodeId => _, _}
@@ -166,7 +174,7 @@ object ValueGenerators {
   } yield Bytes fromByteArray ab
 
   val cidV0Gen: Gen[ContractId.V0] =
-    Gen.alphaStr.map(t => Value.ContractId.V0.assertFromString('#' +: t))
+    Gen.alphaStr.map(t => Value.ContractId.V0.assertFromString('#' +: t.take(254)))
   private val cidV1Gen: Gen[ContractId.V1] =
     Gen.zip(genHash, genSuffixes) map {
       case (h, b) => ContractId.V1.assertBuild(h, b)
@@ -235,7 +243,7 @@ object ValueGenerators {
   def party: Gen[Party] = {
     Gen
       .nonEmptyListOf(Gen.oneOf(simpleChars))
-      .map(s => Party.assertFromString(s.mkString))
+      .map(s => Party.assertFromString(s.take(255).mkString))
   }
 
   def valueGen: Gen[Value[ContractId]] = valueGen(0)
@@ -276,16 +284,18 @@ object ValueGenerators {
     */
   val malformedCreateNodeGen: Gen[NodeCreate.WithTxValue[Value.ContractId]] = {
     for {
+      version <- transactionVersionGen
       coid <- coidGen
       coinst <- contractInstanceGen
       signatories <- genNonEmptyParties
       stakeholders <- genNonEmptyParties
       key <- Gen.option(keyWithMaintainersGen)
-    } yield NodeCreate(coid, coinst, None, signatories, stakeholders, key)
+    } yield NodeCreate(coid, coinst, None, signatories, stakeholders, key, version)
   }
 
   val fetchNodeGen: Gen[NodeFetch.WithTxValue[ContractId]] = {
     for {
+      version <- transactionVersionGen
       coid <- coidGen
       templateId <- idGen
       actingParties <- genNonEmptyParties
@@ -294,13 +304,23 @@ object ValueGenerators {
       key <- Gen.option(keyWithMaintainersGen)
       byKey <- Gen.oneOf(true, false)
     } yield
-      NodeFetch(coid, templateId, None, Some(actingParties), signatories, stakeholders, key, byKey)
+      NodeFetch(
+        coid,
+        templateId,
+        None,
+        actingParties,
+        signatories,
+        stakeholders,
+        key,
+        byKey,
+        version)
   }
 
   /** Makes exercise nodes with some random child IDs. */
   val danglingRefExerciseNodeGen
     : Gen[NodeExercises[NodeId, Value.ContractId, Tx.Value[Value.ContractId]]] = {
     for {
+      version <- transactionVersionGen
       targetCoid <- coidGen
       templateId <- idGen
       choiceId <- nameGen
@@ -330,11 +350,11 @@ object ValueGenerators {
         stakeholders,
         signatories,
         choiceObservers = choiceObservers,
-        false,
         children,
         Some(exerciseResultValue),
         Some(KeyWithMaintainers(key, maintainers)),
-        byKey = byKey,
+        byKey,
+        version,
       )
   }
 
@@ -438,6 +458,23 @@ object ValueGenerators {
     }
   }
 
+  def noDanglingRefGenVersionedTransaction: Gen[VersionedTransaction[NodeId, ContractId]] = {
+    import VersionTimeline.Implicits._
+    for {
+      tx <- noDanglingRefGenTransaction
+      txVer <- transactionVersionGen
+      nodeVersionGen = transactionVersionGen.filter(v => !(txVer precedes v))
+      nodes <- tx.fold(Gen.const(HashMap.empty[NodeId, GenNode.WithTxValue[NodeId, ContractId]])) {
+        case (acc, (nodeId, node)) =>
+          for {
+            hashMap <- acc
+            version <- nodeVersionGen
+          } yield hashMap.updated(nodeId, node.updateVersion(version))
+      }
+    } yield VersionedTransaction(txVer, nodes, tx.roots)
+
+  }
+
   val genBlindingInfo: Gen[BlindingInfo] = {
     val nodePartiesGen = Gen.mapOf(
       arbitrary[Int]
@@ -467,7 +504,7 @@ object ValueGenerators {
     stringVersionGen.map(ValueVersion).filter(x => !ValueVersions.acceptedVersions.contains(x))
 
   def transactionVersionGen: Gen[TransactionVersion] =
-    Gen.oneOf(TransactionVersions.acceptedVersions.toSeq)
+    Gen.oneOf(TransactionVersions.acceptedVersions)
 
   def unsupportedTransactionVersionGen: Gen[TransactionVersion] =
     stringVersionGen

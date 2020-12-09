@@ -30,7 +30,7 @@ import Control.Monad.Extra
 import qualified CmdLineParser as Cmd (warnMsg)
 import Data.IORef
 import Data.List.Extra
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, mapMaybe)
 import DynFlags (parseDynamicFilePragma)
 import qualified EnumSet as ES
 import qualified Data.Map.Strict as Map
@@ -286,6 +286,10 @@ dataDependableExtensions = ES.fromList $ xExtensionsSet ++
   , InstanceSigs
     -- convenient syntactic sugar that does not impact the type level at all
   , MultiWayIf
+    -- the two extensions don't require any additional support for
+    -- data-dependencies to work, except for putting them into the files used
+    -- for reconstructing the interfaces, which we already do
+  , TypeOperators, UndecidableInstances
     -- there's no way for our users to actually use this and listing it here
     -- removes a lot of warning from out stdlib, script and trigger builds
     -- NOTE: This should not appear on any list of extensions that are
@@ -400,7 +404,7 @@ adjustDynFlags options@Options{..} (GhcVersionHeader versionHeader) tmpDir dflag
                 -- sometimes this is required by CPP?
             }
 
-    cppFlags = map LF.featureCppFlag (LF.allFeaturesForVersion optDamlLfVersion)
+    cppFlags = mapMaybe LF.featureCppFlag (LF.allFeaturesForVersion optDamlLfVersion)
 
     -- We need to add platform info in order to run CPP. To prevent
     -- .hi file incompatibilities, we set the platform the same way

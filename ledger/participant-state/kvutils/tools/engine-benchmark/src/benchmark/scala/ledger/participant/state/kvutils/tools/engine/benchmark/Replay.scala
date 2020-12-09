@@ -8,7 +8,10 @@ import java.nio.file.{Path, Paths}
 import java.util.concurrent.TimeUnit
 
 import com.daml.ledger.participant.state.kvutils.Conversions._
-import com.daml.ledger.participant.state.kvutils.export.{SubmissionInfo, v2}
+import com.daml.ledger.participant.state.kvutils.export.{
+  ProtobufBasedLedgerDataImporter,
+  SubmissionInfo
+}
 import com.daml.ledger.participant.state.kvutils.{Envelope, DamlKvutils => Proto}
 import com.daml.ledger.participant.state.v1.ParticipantId
 import com.daml.lf.archive.{Decode, UniversalArchiveReader}
@@ -34,11 +37,19 @@ import scala.collection.JavaConverters._
 final case class TxEntry(
     tx: SubmittedTransaction,
     participantId: ParticipantId,
-    submitter: Ref.Party,
+    submitters: List[Ref.Party],
     ledgerTime: Time.Timestamp,
     submissionTime: Time.Timestamp,
     submissionSeed: crypto.Hash,
-)
+) {
+  // Note: this method will be removed when the entire kvutils code base
+  // supports multi-party submissions
+  def singleSubmitterOrThrow(): Ref.Party =
+    if (submitters.length == 1)
+      submitters.head
+    else
+      sys.error("Multi-party submissions are not supported")
+}
 
 final case class BenchmarkState(
     name: String,
@@ -84,7 +95,7 @@ class Replay {
   def bench(): Unit = {
     val result = engine
       .replay(
-        benchmark.transaction.submitter,
+        benchmark.transaction.submitters.toSet,
         benchmark.transaction.tx,
         benchmark.transaction.ledgerTime,
         benchmark.transaction.participantId,
@@ -119,7 +130,7 @@ class Replay {
     // before running the bench, we validate the transaction first to be sure everything is fine.
     val result = engine
       .validate(
-        benchmark.transaction.submitter,
+        benchmark.transaction.submitters.toSet,
         benchmark.transaction.tx,
         benchmark.transaction.ledgerTime,
         benchmark.transaction.participantId,
@@ -177,7 +188,8 @@ object Replay {
           TxEntry(
             tx = tx,
             participantId = participantId,
-            submitter = Ref.Party.assertFromString(entry.getSubmitterInfo.getSubmitter),
+            submitters = entry.getSubmitterInfo.getSubmittersList.asScala.toList
+              .map(Ref.Party.assertFromString),
             ledgerTime = parseTimestamp(entry.getLedgerEffectiveTime),
             submissionTime = parseTimestamp(entry.getSubmissionTime),
             submissionSeed = parseHash(entry.getSubmissionSeed)
@@ -206,7 +218,7 @@ object Replay {
 
   private def loadBenchmarks(dumpFile: Path): Map[String, BenchmarkState] = {
     println(s"%%% load ledger export file  $dumpFile...")
-    val importer = v2.ProtobufBasedLedgerDataImporter(dumpFile)
+    val importer = ProtobufBasedLedgerDataImporter(dumpFile)
     try {
       val transactions = importer.read().map(_._1).flatMap(decodeSubmissionInfo)
       if (transactions.isEmpty) sys.error("no transaction find")

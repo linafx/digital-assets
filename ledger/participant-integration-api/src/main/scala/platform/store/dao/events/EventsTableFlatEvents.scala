@@ -8,10 +8,10 @@ import com.daml.ledger.participant.state.v1.Offset
 import com.daml.ledger.TransactionId
 import com.daml.platform.store.Conversions._
 
-private[events] trait EventsTableFlatEvents { this: EventsTable =>
+private[events] object EventsTableFlatEvents {
 
   private val createdFlatEventParser: RowParser[EventsTable.Entry[Raw.FlatEvent.Created]] =
-    createdEventRow map {
+    EventsTable.createdEventRow map {
       case eventOffset ~ transactionId ~ nodeIndex ~ eventSequentialId ~ eventId ~ contractId ~ ledgerEffectiveTime ~ templateId ~ commandId ~ workflowId ~ eventWitnesses ~ createArgument ~ createSignatories ~ createObservers ~ createAgreementText ~ createKeyValue =>
         EventsTable.Entry(
           eventOffset = eventOffset,
@@ -36,7 +36,7 @@ private[events] trait EventsTableFlatEvents { this: EventsTable =>
     }
 
   private val archivedFlatEventParser: RowParser[EventsTable.Entry[Raw.FlatEvent.Archived]] =
-    archivedEventRow map {
+    EventsTable.archivedEventRow map {
       case eventOffset ~ transactionId ~ nodeIndex ~ eventSequentialId ~ eventId ~ contractId ~ ledgerEffectiveTime ~ templateId ~ commandId ~ workflowId ~ eventWitnesses =>
         EventsTable.Entry(
           eventOffset = eventOffset,
@@ -108,7 +108,12 @@ private[events] trait EventsTableFlatEvents { this: EventsTable =>
   ): SimpleSql[Row] = {
     val witnessesWhereClause =
       sqlFunctions.arrayIntersectionWhereClause("flat_event_witnesses", requestingParty)
-    SQL"select #$selectColumns, array[$requestingParty] as event_witnesses, case when submitter = $requestingParty then command_id else '' end as command_id from participant_events where transaction_id = $transactionId and #$witnessesWhereClause order by event_sequential_id"
+    SQL"""select #$selectColumns, array[$requestingParty] as event_witnesses,
+                 case when submitters = array[$requestingParty] then command_id else '' end as command_id
+          from participant_events
+          join parameters on participant_pruned_up_to_inclusive is null or event_offset > participant_pruned_up_to_inclusive
+          where transaction_id = $transactionId and #$witnessesWhereClause
+          order by event_sequential_id"""
   }
 
   private def multiPartyLookup(sqlFunctions: SqlFunctions)(
@@ -117,7 +122,15 @@ private[events] trait EventsTableFlatEvents { this: EventsTable =>
   ): SimpleSql[Row] = {
     val witnessesWhereClause =
       sqlFunctions.arrayIntersectionWhereClause("flat_event_witnesses", requestingParties)
-    SQL"select #$selectColumns, flat_event_witnesses as event_witnesses, case when submitter in ($requestingParties) then command_id else '' end as command_id from participant_events where transaction_id = $transactionId and #$witnessesWhereClause group by (#$groupByColumns) order by event_sequential_id"
+    val submittersInPartiesClause =
+      sqlFunctions.arrayIntersectionWhereClause("submitters", requestingParties)
+    SQL"""select #$selectColumns, flat_event_witnesses as event_witnesses,
+                 case when #$submittersInPartiesClause then command_id else '' end as command_id
+          from participant_events
+          join parameters on participant_pruned_up_to_inclusive is null or event_offset > participant_pruned_up_to_inclusive
+          where transaction_id = $transactionId and #$witnessesWhereClause
+          group by (#$groupByColumns)
+          order by event_sequential_id"""
   }
 
   private def getFlatTransactionsQueries(sqlFunctions: SqlFunctions) =
@@ -140,7 +153,7 @@ private[events] trait EventsTableFlatEvents { this: EventsTable =>
   private def getActiveContractsQueries(sqlFunctions: SqlFunctions) =
     new EventsTableFlatEventsRangeQueries.GetActiveContracts(
       selectColumns = selectColumns,
-      sqlFunctions = sqlFunctions
+      sqlFunctions = sqlFunctions,
     )
 
   def preparePagedGetActiveContracts(sqlFunctions: SqlFunctions)(

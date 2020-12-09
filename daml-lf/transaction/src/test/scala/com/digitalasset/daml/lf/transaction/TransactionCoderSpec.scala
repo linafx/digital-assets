@@ -4,27 +4,30 @@
 package com.daml.lf
 package transaction
 
-import com.daml.lf.EitherAssertions
 import com.daml.lf.data.ImmArray
 import com.daml.lf.data.Ref.{Identifier, PackageId, Party, QualifiedName}
-import com.daml.lf.transaction.Node.{GenNode, NodeCreate, NodeExercises, NodeFetch}
+import com.daml.lf.transaction.Node._
 import com.daml.lf.transaction.{Transaction => Tx, TransactionOuterClass => proto}
-import com.daml.lf.value.Value.{ContractInst, ValueParty, VersionedValue}
+import com.daml.lf.value.Value.{ContractId, ContractInst, ValueParty, VersionedValue}
 import com.daml.lf.value.ValueCoder.{DecodeError, EncodeError}
+import com.daml.lf.value.test.ValueGenerators.transactionVersionGen
 import com.daml.lf.value.{Value, ValueCoder, ValueVersion, ValueVersions}
-import com.daml.lf.transaction.TransactionVersions._
-import com.daml.lf.transaction.VersionTimeline.Implicits._
-import org.scalatest.prop.PropertyChecks
-import org.scalatest.{Inside, Matchers, WordSpec}
+import org.scalacheck.{Arbitrary, Gen}
+import org.scalatest.Inside
+import org.scalatest.matchers.should.Matchers
+import org.scalatest.wordspec.AnyWordSpec
+import org.scalatestplus.scalacheck.ScalaCheckPropertyChecks
 
-import scala.collection.immutable.HashMap
+import scala.collection.JavaConverters._
 
 class TransactionCoderSpec
-    extends WordSpec
+    extends AnyWordSpec
     with Matchers
     with Inside
     with EitherAssertions
-    with PropertyChecks {
+    with ScalaCheckPropertyChecks {
+
+  import VersionTimeline.Implicits._
 
   import com.daml.lf.value.test.ValueGenerators._
 
@@ -34,127 +37,150 @@ class TransactionCoderSpec
   implicit override val generatorDrivenConfig: PropertyCheckConfiguration =
     PropertyCheckConfiguration(minSuccessful = 1000, sizeRange = 10)
 
+  private val vDev: TransactionVersion = TransactionVersion("dev")
+  private val v10: TransactionVersion = TransactionVersion("10")
+
+  private[this] val transactionVersions = Table("transaction version", v10, vDev)
+
   "encode-decode" should {
+
     "do contractInstance" in {
-      forAll(contractInstanceGen) { coinst: ContractInst[Tx.Value[Value.ContractId]] =>
-        Right(coinst) shouldEqual TransactionCoder.decodeContractInstance(
-          ValueCoder.CidDecoder,
-          TransactionCoder.encodeContractInstance(ValueCoder.CidEncoder, coinst).toOption.get,
-        )
-      }
+      forAll(contractInstanceGen)(
+        coinst =>
+          Right(coinst) shouldEqual TransactionCoder.decodeContractInstance(
+            ValueCoder.CidDecoder,
+            TransactionCoder.encodeContractInstance(ValueCoder.CidEncoder, coinst).toOption.get,
+        ))
     }
 
     "do NodeCreate" in {
-      forAll(malformedCreateNodeGen, valueVersionGen()) {
-        (node: NodeCreate[Value.ContractId, Tx.Value[Value.ContractId]], _: ValueVersion) =>
-          val encodedNode = TransactionCoder
+      forAll(malformedCreateNodeGen, transactionVersionGen, transactionVersionGen) {
+        (createNode, version1, version2) =>
+          val (nodeVersion, txVersion) = inIncreasingOrder(version1, version2)
+          val versionedNode = createNode.updateVersion(nodeVersion)
+          val Right(encodedNode) = TransactionCoder
             .encodeNode(
               TransactionCoder.NidEncoder,
               ValueCoder.CidEncoder,
-              defaultTransactionVersion,
+              txVersion,
               NodeId(0),
-              node,
+              versionedNode,
             )
-            .toOption
-            .get
-          Right((NodeId(0), node)) shouldEqual TransactionCoder.decodeNode(
+
+          Right((NodeId(0), versionedNode)) shouldEqual TransactionCoder.decodeVersionedNode(
             TransactionCoder.NidDecoder,
             ValueCoder.CidDecoder,
-            defaultTransactionVersion,
+            txVersion,
             encodedNode,
           )
 
-          Right(node.informeesOfNode) shouldEqual
+          Right(createNode.informeesOfNode) shouldEqual
             TransactionCoder
-              .protoNodeInfo(defaultTransactionVersion, encodedNode)
+              .protoNodeInfo(txVersion, encodedNode)
               .map(_.informeesOfNode)
       }
     }
 
     "do NodeFetch" in {
-      forAll(fetchNodeGen, valueVersionGen()) {
-        (node: NodeFetch.WithTxValue[Value.ContractId], _: ValueVersion) =>
+      forAll(fetchNodeGen, transactionVersionGen, transactionVersionGen) {
+        (fetchNode, version1, version2) =>
+          val (nodeVersion, txVersion) = inIncreasingOrder(version1, version2)
+
+          val versionedNode = withoutByKeyFlag(fetchNode).updateVersion(nodeVersion)
           val encodedNode =
             TransactionCoder
               .encodeNode(
                 TransactionCoder.NidEncoder,
                 ValueCoder.CidEncoder,
-                defaultTransactionVersion,
+                txVersion,
                 NodeId(0),
-                node,
+                versionedNode,
               )
               .toOption
               .get
-          Right((NodeId(0), withoutByKeyFlag(node))) shouldEqual TransactionCoder.decodeNode(
-            TransactionCoder.NidDecoder,
-            ValueCoder.CidDecoder,
-            defaultTransactionVersion,
-            encodedNode,
-          )
-          Right(node.informeesOfNode) shouldEqual
+          Right((NodeId(0), versionedNode)) shouldEqual TransactionCoder
+            .decodeVersionedNode(
+              TransactionCoder.NidDecoder,
+              ValueCoder.CidDecoder,
+              txVersion,
+              encodedNode,
+            )
+          Right(fetchNode.informeesOfNode) shouldEqual
             TransactionCoder
-              .protoNodeInfo(defaultTransactionVersion, encodedNode)
+              .protoNodeInfo(txVersion, encodedNode)
               .map(_.informeesOfNode)
       }
     }
 
     "do NodeExercises" in {
-      forAll(danglingRefExerciseNodeGen) {
-        node: NodeExercises[NodeId, Value.ContractId, Tx.Value[Value.ContractId]] =>
-          val encodedNode =
+      forAll(danglingRefExerciseNodeGen, transactionVersionGen, transactionVersionGen) {
+        (exerciseNode, version1, version2) =>
+          val (nodeVersion, txVersion) = inIncreasingOrder(version1, version2)
+
+          val normalizedNode = minimalistNode(nodeVersion)(exerciseNode)
+          val versionedNode = normalizedNode.updateVersion(nodeVersion)
+          val Right(encodedNode) =
             TransactionCoder
               .encodeNode(
                 TransactionCoder.NidEncoder,
                 ValueCoder.CidEncoder,
-                defaultTransactionVersion,
+                txVersion,
                 NodeId(0),
-                node,
+                versionedNode,
               )
-              .toOption
-              .get
-          Right((NodeId(0), withoutByKeyFlag(node))) shouldEqual TransactionCoder.decodeNode(
-            TransactionCoder.NidDecoder,
-            ValueCoder.CidDecoder,
-            defaultTransactionVersion,
-            encodedNode,
-          )
+          Right((NodeId(0), versionedNode)) shouldEqual TransactionCoder
+            .decodeVersionedNode(
+              TransactionCoder.NidDecoder,
+              ValueCoder.CidDecoder,
+              txVersion,
+              encodedNode,
+            )
 
-          Right(node.informeesOfNode) shouldEqual
+          Right(normalizedNode.informeesOfNode) shouldEqual
             TransactionCoder
-              .protoNodeInfo(defaultTransactionVersion, encodedNode)
+              .protoNodeInfo(txVersion, encodedNode)
               .map(_.informeesOfNode)
       }
     }
 
-    "do transactions with version override" in
-      forAll(noDanglingRefGenTransaction, minSuccessful(50)) { tx =>
-        forAll(transactionVersionGen, minSuccessful(5)) { txVer =>
-          inside(
-            TransactionCoder
-              .encodeTransactionWithCustomVersion(
-                TransactionCoder.NidEncoder,
-                ValueCoder.CidEncoder,
-                VersionedTransaction(txVer, tx),
-              ),
-          ) {
-            case Left(EncodeError(msg)) =>
-              // fuzzy sort of "failed because of the version override" test
-              msg should include(txVer.toString)
-            case Right(encodedTx) =>
-              val decodedVersionedTx = assertRight(
-                TransactionCoder
-                  .decodeTransaction(
-                    TransactionCoder.NidDecoder,
-                    ValueCoder.CidDecoder,
-                    encodedTx,
-                  ),
-              )
-              decodedVersionedTx.transaction shouldBe minimalistTx(txVer, tx)
-          }
+    "do transactions" in
+      forAll(noDanglingRefGenVersionedTransaction, minSuccessful(50)) { tx =>
+        val tx2 = VersionedTransaction(
+          tx.version,
+          tx.nodes.transform((_, node) =>
+            minimalistNode(node.version)(node.updateVersion(node.version))),
+          tx.roots,
+        )
+        inside(
+          TransactionCoder
+            .encodeTransactionWithCustomVersion(
+              TransactionCoder.NidEncoder,
+              ValueCoder.CidEncoder,
+              tx2,
+            ),
+        ) {
+          case Left(EncodeError(msg)) =>
+            // fuzzy sort of "failed because of the version override" test
+            msg should include(tx2.version.protoValue)
+          case Right(encodedTx) =>
+            val decodedVersionedTx = assertRight(
+              TransactionCoder
+                .decodeTransaction(
+                  TransactionCoder.NidDecoder,
+                  ValueCoder.CidDecoder,
+                  encodedTx,
+                ),
+            )
+            decodedVersionedTx shouldBe tx2
         }
       }
 
-    "succeed with encoding under later version if succeeded under earlier version" in
+    "succeed with encoding under later version if succeeded under earlier version" in {
+      def overrideNodeVersions[Nid, Cid](tx: GenTransaction.WithTxValue[Nid, Cid]) = {
+        tx.copy(nodes = tx.nodes.transform((_, node) =>
+          node.updateVersion(TransactionVersions.minVersion)))
+      }
+
       forAll(noDanglingRefGenTransaction, minSuccessful(50)) { tx =>
         forAll(transactionVersionGen, transactionVersionGen, minSuccessful(20)) {
           (txVer1, txVer2) =>
@@ -171,7 +197,7 @@ class TransactionCoderSpec
                         .encodeTransactionWithCustomVersion(
                           TransactionCoder.NidEncoder,
                           ValueCoder.CidEncoder,
-                          VersionedTransaction(txVer, tx),
+                          VersionedTransaction(txVer, versionNodes(txVer, tx.nodes), tx.roots),
                         ),
                 ),
               ) {
@@ -189,14 +215,16 @@ class TransactionCoderSpec
                       )),
                   ) {
                     case (Right(decWithMin), Right(decWithMax)) =>
-                      decWithMin.transaction shouldBe minimalistTx(txvMin, tx)
-                      decWithMin.transaction shouldBe
-                        minimalistTx(txvMin, decWithMax.transaction)
+                      overrideNodeVersions(decWithMin.transaction) shouldBe
+                        overrideNodeVersions(minimalistTx(txvMin, tx))
+                      overrideNodeVersions(decWithMin.transaction) shouldBe
+                        overrideNodeVersions(minimalistTx(txvMin, decWithMax.transaction))
                   }
               }
             }
         }
       }
+    }
 
     "transactions decoding should fail when unsupported value version received" in
       forAll(noDanglingRefGenTransaction, minSuccessful(50)) { tx =>
@@ -210,7 +238,10 @@ class TransactionCoderSpec
                 .encodeTransactionWithCustomVersion(
                   TransactionCoder.NidEncoder,
                   ValueCoder.CidEncoder,
-                  VersionedTransaction(defaultTransactionVersion, txWithBadValVersion),
+                  VersionedTransaction(
+                    defaultTransactionVersion,
+                    versionNodes(defaultTransactionVersion, txWithBadValVersion.nodes),
+                    txWithBadValVersion.roots),
                 ),
             )
 
@@ -234,7 +265,10 @@ class TransactionCoderSpec
                 .encodeTransactionWithCustomVersion(
                   TransactionCoder.NidEncoder,
                   ValueCoder.CidEncoder,
-                  VersionedTransaction(badTxVer, tx),
+                  VersionedTransaction(
+                    badTxVer,
+                    tx.nodes.mapValues(_.updateVersion(badTxVer)),
+                    tx.roots),
                 ),
             )
 
@@ -250,30 +284,9 @@ class TransactionCoderSpec
         }
       }
 
-    "fetch decoding should fail when unsupported value version received" in forAll(
-      fetchNodeGen,
-      minSuccessful(5)) { node =>
-      inside(
-        TransactionCoder.encodeNode(
-          TransactionCoder.NidEncoder,
-          ValueCoder.CidEncoder,
-          defaultTransactionVersion,
-          NodeId(0),
-          node)) {
-        case Right(cn) if cn.hasFetch =>
-          val badVersion = "I do not exist"
-          TransactionCoder.decodeNode(
-            TransactionCoder.NidDecoder,
-            ValueCoder.CidDecoder,
-            defaultTransactionVersion,
-            cn.toBuilder.setFetch(cn.getFetch.toBuilder.setValueVersion(badVersion)).build
-          ) should ===(Left(DecodeError(s"Unsupported template ID version $badVersion")))
-      }
-    }
-
     "do tx with a lot of root nodes" in {
       val node =
-        Node.NodeCreate[Value.ContractId, Value.VersionedValue[Value.ContractId]](
+        NodeCreate[ContractId, Value.VersionedValue[ContractId]](
           coid = absCid("#test-cid"),
           coinst = ContractInst(
             Identifier(
@@ -290,93 +303,213 @@ class TransactionCoderSpec
           signatories = Set(Party.assertFromString("alice")),
           stakeholders = Set(Party.assertFromString("alice"), Party.assertFromString("bob")),
           key = None,
+          version = TransactionVersions.minVersion,
         )
-      val nodes = ImmArray((1 to 10000).map { nid =>
-        NodeId(nid) -> node
-      })
-      val tx = TransactionVersions.assertAsVersionedTransaction(
-        GenTransaction(nodes = HashMap(nodes.toSeq: _*), roots = nodes.map(_._1)))
 
-      tx shouldEqual TransactionCoder
-        .decodeTransaction(
-          TransactionCoder.NidDecoder,
-          ValueCoder.CidDecoder,
-          TransactionCoder
-            .encodeTransaction(
-              TransactionCoder.NidEncoder,
-              ValueCoder.CidEncoder,
-              tx,
-            )
-            .right
-            .get,
+      forEvery(transactionVersions) { version =>
+        val versionedNode = node.updateVersion(version)
+        val roots = ImmArray.ImmArraySeq.range(0, 10000).map(NodeId(_)).toImmArray
+        val nodes = roots.iterator.map(nid => nid -> versionedNode).toMap
+        val tx = VersionedTransaction(
+          version,
+          nodes = nodes.mapValues(_.copy(version = version)),
+          roots = roots
         )
-        .right
-        .get
-    }
-  }
 
-  "encode" should {
-    // FIXME: https://github.com/digital-asset/daml/issues/7709
-    // replace all occurrences of "dev" by "11", once "11" is released
-    "fail iff try to encode choice observers in version < dev" in {
-      forAll(noDanglingRefGenTransaction) { tx =>
-        val shouldFail = hasChoiceObserves(tx)
-
-        val fails = TransactionCoder
-          .encodeTransaction(
-            TransactionCoder.NidEncoder,
-            ValueCoder.CidEncoder,
-            VersionedTransaction(
-              TransactionVersion("10"),
-              minimalistTx(TransactionVersion("dev"), tx)),
+        val decoded = TransactionCoder
+          .decodeTransaction(
+            TransactionCoder.NidDecoder,
+            ValueCoder.CidDecoder,
+            TransactionCoder
+              .encodeTransaction(
+                TransactionCoder.NidEncoder,
+                ValueCoder.CidEncoder,
+                tx,
+              )
+              .right
+              .get,
           )
-          .isLeft
-
-        fails shouldBe shouldFail
+          .right
+          .get
+        tx shouldEqual decoded
       }
     }
   }
 
-  "decode" should {
+  "encodeVersionedNode" should {
+
     // FIXME: https://github.com/digital-asset/daml/issues/7709
     // replace all occurrences of "dev" by "11", once "11" is released
-    "fail if try to decode choice observers in version < dev" in {
-      forAll(noDanglingRefGenTransaction) { tx =>
-        whenever(hasChoiceObserves(tx)) {
+    "fail iff try to encode choice observers in version < dev" in {
+      val normalize = minimalistNode(v10)
 
-          val encoded = TransactionCoder.encodeTransaction(
-            TransactionCoder.NidEncoder,
-            ValueCoder.CidEncoder,
-            VersionedTransaction(
-              TransactionVersion("dev"),
-              minimalistTx(TransactionVersion("dev"), tx)),
-          )
+      forAll(danglingRefExerciseNodeGen, minSuccessful(10)) { node =>
+        val shouldFail = node.choiceObservers.nonEmpty
 
-          TransactionCoder.decodeTransaction(
+        val normalized = normalize(node) match {
+          case exe: NodeExercises.WithTxValue[NodeId, ContractId] =>
+            exe.copy(choiceObservers = node.choiceObservers)
+          case otherwise => otherwise
+        }
+
+        forEvery(transactionVersions) { txVersion =>
+          val result = TransactionCoder
+            .encodeNode(
+              TransactionCoder.NidEncoder,
+              ValueCoder.CidEncoder,
+              txVersion,
+              NodeId(0),
+              normalized.updateVersion(v10),
+            )
+
+          result.isLeft shouldBe shouldFail
+        }
+      }
+    }
+
+    "fail if try to encode a node in a version newer than the transaction" in {
+
+      forAll(danglingRefGenNode, transactionVersionGen, transactionVersionGen, minSuccessful(10)) {
+        case ((nodeId, node), version1, version2) =>
+          whenever(version1 != version2) {
+            val (txVersion, nodeVersion) = inIncreasingOrder(version1, version2)
+
+            val normalizedNode = minimalistNode(nodeVersion)(node)
+
+            TransactionCoder
+              .encodeNode(
+                TransactionCoder.NidEncoder,
+                ValueCoder.CidEncoder,
+                txVersion,
+                nodeId,
+                normalizedNode.updateVersion(nodeVersion),
+              ) shouldBe 'left
+          }
+      }
+    }
+
+  }
+
+  "decodeVersionedNode" should {
+
+    """ignore field version if enclosing Transaction message is of version 10""" in {
+      val normalize = minimalistNode(v10)
+
+      forAll(danglingRefGenNode, Gen.asciiStr, minSuccessful(10)) {
+        case ((nodeId, node), str) =>
+          val normalizedNode = normalize(node.updateVersion(v10))
+
+          val Right(encoded) = for {
+            encoded <- TransactionCoder
+              .encodeNode(
+                TransactionCoder.NidEncoder,
+                ValueCoder.CidEncoder,
+                v10,
+                nodeId,
+                normalizedNode
+              )
+          } yield encoded.toBuilder.setVersion(str).build()
+
+          TransactionCoder.decodeVersionedNode(
             TransactionCoder.NidDecoder,
             ValueCoder.CidDecoder,
-            encoded.right.get.toBuilder.setVersion("10").build()
-          ) shouldBe 'left
+            v10,
+            encoded,
+          ) shouldBe Right(nodeId -> normalizedNode)
+      }
+    }
+
+    // FIXME: https://github.com/digital-asset/daml/issues/7709
+    // enable the test when we have more that one version newer than 10
+    "fail if try to decode a node in a version newer than the enclosing Transaction message version" ignore {
+
+      forAll(
+        danglingRefGenNode,
+        transactionVersionGen.filter(_ != v10),
+        transactionVersionGen.filter(_ != v10),
+        minSuccessful(10)) {
+        case ((nodeId, node), version1, version2) =>
+          whenever(version1 != version2) {
+            val (txVersion, nodeVersion) = inIncreasingOrder(version1, version2)
+
+            val normalizedNode = minimalistNode(nodeVersion)(node).updateVersion(nodeVersion)
+
+            val Right(encoded) = TransactionCoder
+              .encodeNode(
+                TransactionCoder.NidEncoder,
+                ValueCoder.CidEncoder,
+                nodeVersion,
+                nodeId,
+                normalizedNode,
+              )
+
+            TransactionCoder.decodeVersionedNode(
+              TransactionCoder.NidDecoder,
+              ValueCoder.CidDecoder,
+              txVersion,
+              encoded,
+            ) shouldBe 'left
+          }
+      }
+    }
+
+    // FIXME: https://github.com/digital-asset/daml/issues/7709
+    // replace all occurrences of "dev" by "11", once "11" is released
+    "ignore field observers in version < dev" in {
+      val normalize = minimalistNode(v10)
+
+      forAll(
+        Arbitrary.arbInt.arbitrary,
+        danglingRefExerciseNodeGen,
+        Gen.listOf(Gen.asciiStr),
+        minSuccessful(50),
+      ) { (nodeIdx, node, strings) =>
+        val nodeId = NodeId(nodeIdx)
+        val normalizedNode = normalize(node).updateVersion(v10)
+
+        val Right(encoded) =
+          for {
+            encoded <- TransactionCoder
+              .encodeNode(
+                TransactionCoder.NidEncoder,
+                ValueCoder.CidEncoder,
+                v10,
+                nodeId,
+                normalizedNode,
+              )
+          } yield
+            encoded.toBuilder
+              .setExercise(encoded.getExercise.toBuilder.addAllObservers(strings.asJava).build)
+              .build()
+
+        forEvery(transactionVersions) { txVersion =>
+          val result = TransactionCoder.decodeVersionedNode(
+            TransactionCoder.NidDecoder,
+            ValueCoder.CidDecoder,
+            txVersion,
+            encoded
+          )
+
+          result shouldBe Right(nodeId -> normalizedNode)
         }
       }
     }
   }
 
   private def isTransactionWithAtLeastOneVersionedValue(
-      tx: GenTransaction.WithTxValue[NodeId, Value.ContractId],
+      tx: GenTransaction.WithTxValue[NodeId, ContractId],
   ): Boolean =
     tx.nodes.values
       .exists {
-        case _: Node.NodeCreate[_, _] | _: Node.NodeExercises[_, _, _] |
-            _: Node.NodeLookupByKey[_, _] =>
+        case _: NodeCreate[_, _] | _: NodeExercises[_, _, _] | _: NodeLookupByKey[_, _] =>
           true
-        case f: Node.NodeFetch[_, _] => f.key.isDefined
+        case f: NodeFetch[_, _] => f.key.isDefined
       }
 
   private def changeAllValueVersions(
-      tx: GenTransaction.WithTxValue[NodeId, Value.ContractId],
+      tx: GenTransaction.WithTxValue[NodeId, ContractId],
       ver: ValueVersion,
-  ): GenTransaction.WithTxValue[NodeId, Value.ContractId] =
+  ): GenTransaction.WithTxValue[NodeId, ContractId] =
     tx.map3(identity, identity, _.copy(version = ver))
 
   def withoutExerciseResult[Nid, Cid, Val](gn: GenNode[Nid, Cid, Val]): GenNode[Nid, Cid, Val] =
@@ -402,11 +535,11 @@ class TransactionCoderSpec
 
   // FIXME: https://github.com/digital-asset/daml/issues/7622
   // Fix the usage of this function in the test, once `byKey` is added to the serialization format.
-  def withoutByKeyFlag[Nid, Cid, Val](gn: GenNode[Nid, Cid, Val]): GenNode[Nid, Cid, Val] =
+  def withoutByKeyFlag[Nid, Cid](gn: GenNode.WithTxValue[Nid, Cid]): GenNode.WithTxValue[Nid, Cid] =
     gn match {
-      case ne: NodeExercises[Nid, Cid, Val] =>
+      case ne: NodeExercises.WithTxValue[Nid, Cid] =>
         ne.copy(byKey = false)
-      case fe: NodeFetch[Cid, Val] =>
+      case fe: NodeFetch.WithTxValue[Cid] =>
         fe.copy(byKey = false)
       case _ => gn
     }
@@ -424,33 +557,71 @@ class TransactionCoderSpec
       case _ => false
     }
 
-  def transactionWithout[Nid, Cid, Val](
-      t: GenTransaction[Nid, Cid, Val],
-      f: GenNode[Nid, Cid, Val] => GenNode[Nid, Cid, Val],
-  ): GenTransaction[Nid, Cid, Val] =
-    t copy (nodes = t.nodes.transform((_, gn) => f(gn)))
-
-  def minimalistTx[Nid, Cid, Val](
-      txvMin: TransactionVersion,
-      tx: GenTransaction[Nid, Cid, Val],
-  ): GenTransaction[Nid, Cid, Val] = {
+  def minimalistNode(txvMin: TransactionVersion)
+    : Node.GenNode.WithTxValue[NodeId, ContractId] => Node.GenNode.WithTxValue[NodeId, ContractId] = {
     def condApply(
         before: TransactionVersion,
-        f: GenNode[Nid, Cid, Val] => GenNode[Nid, Cid, Val],
-    ): GenNode[Nid, Cid, Val] => GenNode[Nid, Cid, Val] =
+        f: GenNode.WithTxValue[NodeId, ContractId] => GenNode.WithTxValue[NodeId, ContractId],
+    ): GenNode.WithTxValue[NodeId, ContractId] => GenNode.WithTxValue[NodeId, ContractId] = {
+      if (txvMin precedes before) f else identity
+    }
+
+    condApply(TransactionVersions.minChoiceObservers, withoutChoiceObservers)
+      .compose(withoutByKeyFlag[NodeId, ContractId])
+
+  }
+
+  def nodesWithout(
+      nodes: Map[NodeId, GenNode.WithTxValue[NodeId, ContractId]],
+      f: GenNode.WithTxValue[NodeId, ContractId] => GenNode.WithTxValue[NodeId, ContractId],
+  ) =
+    nodes.transform((_, gn) => f(gn))
+
+  def minimalistNodes(
+      txvMin: TransactionVersion,
+      nodes: Map[NodeId, GenNode.WithTxValue[NodeId, ContractId]],
+  ): Map[NodeId, GenNode.WithTxValue[NodeId, ContractId]] =
+    nodes.transform((_, gn) => minimalistNode(txvMin)(gn))
+
+  // FIXME: https://github.com/digital-asset/daml/issues/7709
+  // The following function should be usefull to test choice observers
+  def minimalistTx(
+      txvMin: TransactionVersion,
+      nodes: Map[NodeId, GenNode.WithTxValue[NodeId, ContractId]],
+  ): Map[NodeId, GenNode.WithTxValue[NodeId, ContractId]] = {
+
+    def condApply(
+        before: TransactionVersion,
+        f: GenNode.WithTxValue[NodeId, ContractId] => GenNode.WithTxValue[NodeId, ContractId],
+    ): GenNode.WithTxValue[NodeId, ContractId] => GenNode.WithTxValue[NodeId, ContractId] =
       if (txvMin precedes before) f else identity
 
-    transactionWithout(
-      tx,
-      condApply(minMaintainersInExercise, withoutMaintainersInExercise)
-        .compose(condApply(minContractKeyInExercise, withoutContractKeyInExercise))
-        .compose(condApply(minExerciseResult, withoutExerciseResult))
-        .compose(condApply(minChoiceObservers, withoutChoiceObservers))
-        .compose(withoutByKeyFlag[Nid, Cid, Val]),
+    nodesWithout(
+      nodes,
+      condApply(TransactionVersions.minChoiceObservers, withoutChoiceObservers)
+        .compose(withoutByKeyFlag[NodeId, ContractId]),
     )
   }
 
-  private def absCid(s: String): Value.ContractId =
-    Value.ContractId.assertFromString(s)
+  def minimalistTx(
+      txvMin: TransactionVersion,
+      tx: GenTransaction.WithTxValue[NodeId, ContractId]
+  ) =
+    tx.copy(nodes = minimalistNodes(txvMin, tx.nodes))
+
+  private def absCid(s: String): ContractId =
+    ContractId.assertFromString(s)
+
+  private def versionNodes[Nid, Cid](
+      version: TransactionVersion,
+      nodes: Map[Nid, GenNode[Nid, Cid, Tx.Value[Cid]]],
+  ): Map[Nid, GenNode.WithTxValue[Nid, Cid]] =
+    nodes.mapValues(_.updateVersion(version))
+
+  private[this] def inIncreasingOrder(version1: TransactionVersion, version2: TransactionVersion) =
+    if (version1 precedes version2)
+      (version1, version2)
+    else
+      (version2, version1)
 
 }

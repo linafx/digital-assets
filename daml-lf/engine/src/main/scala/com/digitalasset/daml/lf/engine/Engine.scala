@@ -98,7 +98,7 @@ class Engine(val config: EngineConfig = EngineConfig.Stable) {
         case (processedCmds, globalCids) =>
           interpretCommands(
             validating = false,
-            submitters = Set(cmds.submitter),
+            submitters = cmds.submitters,
             commands = processedCmds,
             ledgerTime = cmds.ledgerEffectiveTime,
             submissionTime = submissionTime,
@@ -161,7 +161,7 @@ class Engine(val config: EngineConfig = EngineConfig.Stable) {
     } yield (tx, meta)
 
   def replay(
-      submitter: Party,
+      submitters: Set[Party],
       tx: SubmittedTransaction,
       ledgerEffectiveTime: Time.Timestamp,
       participantId: Ref.ParticipantId,
@@ -173,7 +173,7 @@ class Engine(val config: EngineConfig = EngineConfig.Stable) {
       (commands, globalCids) = commandsWithCids
       result <- interpretCommands(
         validating = true,
-        submitters = Set(submitter),
+        submitters = submitters,
         commands = commands,
         ledgerTime = ledgerEffectiveTime,
         submissionTime = submissionTime,
@@ -199,7 +199,7 @@ class Engine(val config: EngineConfig = EngineConfig.Stable) {
     *  @param ledgerEffectiveTime time when the transaction is claimed to be submitted
     */
   def validate(
-      submitter: Party,
+      submitters: Set[Party],
       tx: SubmittedTransaction,
       ledgerEffectiveTime: Time.Timestamp,
       participantId: Ref.ParticipantId,
@@ -209,7 +209,7 @@ class Engine(val config: EngineConfig = EngineConfig.Stable) {
     //reinterpret
     for {
       result <- replay(
-        submitter,
+        submitters,
         tx,
         ledgerEffectiveTime,
         participantId,
@@ -217,13 +217,9 @@ class Engine(val config: EngineConfig = EngineConfig.Stable) {
         submissionSeed,
       )
       (rtx, _) = result
-      validationResult <- if (tx.transaction isReplayedBy rtx.transaction) {
-        ResultDone.Unit
-      } else {
-        ResultError(
-          ValidationError(
-            s"recreated and original transaction mismatch $tx expected, but $rtx is recreated"))
-      }
+      validationResult <- Tx
+        .isReplayedBy(tx, rtx)
+        .fold(e => ResultError(ReplayMismatch(e)), _ => ResultDone.Unit)
     } yield validationResult
   }
 
@@ -285,8 +281,6 @@ class Engine(val config: EngineConfig = EngineConfig.Stable) {
         expr = SExpr.SEApp(sexpr, Array(SExpr.SEValue.Token)),
         globalCids = globalCids,
         committers = submitters,
-        inputValueVersions = config.allowedInputValueVersions,
-        outputTransactionVersions = config.allowedOutputTransactionVersions,
         validating = validating,
         checkAuthorization = checkAuthorization,
       )
@@ -358,10 +352,7 @@ class Engine(val config: EngineConfig = EngineConfig.Stable) {
       }
     }
 
-    onLedger.ptx.finish(
-      onLedger.outputTransactionVersions,
-      compiledPackages.packageLanguageVersion,
-    ) match {
+    onLedger.ptx.finish match {
       case PartialTransaction.CompleteTransaction(tx) =>
         val meta = Tx.Metadata(
           submissionSeed = None,
@@ -380,8 +371,6 @@ class Engine(val config: EngineConfig = EngineConfig.Stable) {
         ResultDone((tx, meta))
       case PartialTransaction.IncompleteTransaction(ptx) =>
         ResultError(Error(s"Interpretation error: ended with partial result: $ptx"))
-      case PartialTransaction.SerializationError(msg) =>
-        ResultError(SerializationError(msg))
     }
   }
 

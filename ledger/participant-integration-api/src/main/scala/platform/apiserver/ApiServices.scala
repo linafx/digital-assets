@@ -30,6 +30,7 @@ import com.daml.platform.apiserver.services._
 import com.daml.platform.apiserver.services.admin.{
   ApiConfigManagementService,
   ApiPackageManagementService,
+  ApiParticipantPruningService,
   ApiPartyManagementService
 }
 import com.daml.platform.apiserver.services.transaction.ApiTransactionService
@@ -126,7 +127,7 @@ private[daml] object ApiServices {
     private def createServices(ledgerId: LedgerId, ledgerConfigProvider: LedgerConfigProvider)(
         implicit executionContext: ExecutionContext): List[BindableService] = {
 
-      engine.info.pretty.foreach(logger.info(_))
+      logger.info(engine.info.toString)
 
       val apiTransactionService =
         ApiTransactionService.create(ledgerId, transactionsService)
@@ -278,12 +279,16 @@ private[daml] object ApiServices {
               timeProvider,
               ledgerConfiguration)
 
+        val apiParticipantPruningService =
+          ApiParticipantPruningService.createApiService(indexService, writeService)
+
         List(
           new CommandSubmissionServiceAuthorization(apiSubmissionService, authorizer),
           new CommandServiceAuthorization(apiCommandService, authorizer),
           new PartyManagementServiceAuthorization(apiPartyManagementService, authorizer),
           new PackageManagementServiceAuthorization(apiPackageManagementService, authorizer),
           new ConfigManagementServiceAuthorization(apiConfigManagementService, authorizer),
+          new ParticipantPruningServiceAuthorization(apiParticipantPruningService, authorizer),
         )
       }
     }

@@ -23,11 +23,12 @@ import com.daml.ledger.participant.state.v1.{
 }
 import com.daml.lf.data.Ref
 import com.daml.lf.data.Ref.{PackageId, Party}
-import com.daml.lf.transaction.GlobalKey
+import com.daml.lf.transaction.{BlindingInfo, GlobalKey}
 import com.daml.lf.value.Value
 import com.daml.lf.value.Value.{ContractId, ContractInst}
 import com.daml.logging.LoggingContext
-import com.daml.platform.store.dao.events.TransactionsReader
+import com.daml.platform.store.dao.events.{TransactionsReader, TransactionsWriter}
+import com.daml.platform.store.dao.events.TransactionsWriter.PreparedInsert
 import com.daml.platform.store.entries.{
   ConfigurationEntry,
   LedgerEntry,
@@ -122,14 +123,14 @@ private[platform] trait LedgerReadDao extends ReportsHealth {
   /** Deduplicates commands.
     *
     * @param commandId The command Id
-    * @param submitter The submitting party
+    * @param submitters The submitting parties
     * @param submittedAt The time when the command was submitted
     * @param deduplicateUntil The time until which the command should be deduplicated
     * @return whether the command is a duplicate or not
     */
   def deduplicateCommand(
       commandId: CommandId,
-      submitter: Ref.Party,
+      submitters: List[Ref.Party],
       submittedAt: Instant,
       deduplicateUntil: Instant,
   )(implicit loggingContext: LoggingContext): Future[CommandDeduplicationResult]
@@ -157,17 +158,25 @@ private[platform] trait LedgerReadDao extends ReportsHealth {
     * window before they could send a retry.
     *
     * @param commandId The command Id
-    * @param submitter The submitting party
+    * @param submitters The submitting parties
     * @return
     */
   def stopDeduplicatingCommand(
       commandId: CommandId,
-      submitter: Ref.Party,
+      submitters: List[Ref.Party],
   )(implicit loggingContext: LoggingContext): Future[Unit]
+
+  /**
+    * Prunes participant events and completions in archived history and remembers largest
+    * pruning offset processed thus far.
+    *
+    * @param pruneUpToInclusive offset up to which to prune archived history inclusively
+    * @return
+    */
+  def prune(pruneUpToInclusive: Offset)(implicit loggingContext: LoggingContext): Future[Unit]
 }
 
 private[platform] trait LedgerWriteDao extends ReportsHealth {
-
   def maxConcurrentConnections: Int
 
   /**
@@ -181,15 +190,27 @@ private[platform] trait LedgerWriteDao extends ReportsHealth {
       implicit loggingContext: LoggingContext,
   ): Future[Unit]
 
-  def storeTransaction(
+  def prepareTransactionInsert(
       submitterInfo: Option[SubmitterInfo],
       workflowId: Option[WorkflowId],
+      transactionId: TransactionId,
+      ledgerEffectiveTime: Instant,
+      offset: Offset,
+      transaction: CommittedTransaction,
+      divulgedContracts: Iterable[DivulgedContract],
+      blindingInfo: Option[BlindingInfo],
+  )(implicit loggingContext: LoggingContext): TransactionsWriter.PreparedInsert
+
+  def storeTransaction(
+      preparedInsert: PreparedInsert,
+      submitterInfo: Option[SubmitterInfo],
       transactionId: TransactionId,
       recordTime: Instant,
       ledgerEffectiveTime: Instant,
       offset: Offset,
       transaction: CommittedTransaction,
       divulged: Iterable[DivulgedContract],
+      blindingInfo: Option[BlindingInfo],
   )(implicit loggingContext: LoggingContext): Future[PersistenceResponse]
 
   def storeRejection(

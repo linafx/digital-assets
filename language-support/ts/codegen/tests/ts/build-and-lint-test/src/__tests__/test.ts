@@ -5,9 +5,10 @@ import { ChildProcess, spawn } from 'child_process';
 import { promises as fs } from 'fs';
 import waitOn from 'wait-on';
 import { encode } from 'jwt-simple';
-import Ledger, { Event, Stream } from  '@daml/ledger';
-import { Int } from '@daml/types';
+import Ledger, { Event, Stream, PartyInfo } from  '@daml/ledger';
+import { Int, emptyMap, Map } from '@daml/types';
 import pEvent from 'p-event';
+import _ from 'lodash';
 
 import * as buildAndLint from '@daml.js/build-and-lint-1.0.0'
 
@@ -102,6 +103,10 @@ function promisifyStream<T extends object, K, I extends string, State>(
   };
   const close = () => stream.close();
   return {next, close};
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 describe('decoders for recursive types do not loop', () => {
@@ -255,6 +260,12 @@ test('create + fetch & exercise', async () => {
   alice6KeyStream.close();
   personStream.close();
 
+  const map: Map<buildAndLint.Main.Expr2<Int>, Int> =
+    emptyMap<buildAndLint.Main.Expr2<Int>, Int>()
+      .set({tag: 'Add2', value: {lhs:{tag: 'Lit2', value: '1'}, rhs:{tag: 'Lit2', value: '2'}}}, '3')
+      .set({tag: 'Add2', value: {lhs:{tag: 'Lit2', value: '5'}, rhs:{tag: 'Lit2', value: '4'}}}, '9')
+      .set({tag: 'Add2', value: {lhs:{tag: 'Lit2', value: '2'}, rhs:{tag: 'Lit2', value: '1'}}}, '3')
+      .set({tag: 'Add2', value: {lhs:{tag: 'Lit2', value: '3'}, rhs:{tag: 'Lit2', value: '1'}}}, '4');
   const allTypes: buildAndLint.Main.AllTypes = {
     unit: {},
     bool: true,
@@ -295,6 +306,7 @@ test('create + fetch & exercise', async () => {
     rec: {'recOptional': null, 'recList': [], 'recTextMap': {}},
     voidRecord: null,
     voidEnum: null,
+    genMap: map,
   };
   const allTypesContract = await aliceLedger.create(buildAndLint.Main.AllTypes, allTypes);
   expect(allTypesContract.payload).toEqual(allTypes);
@@ -312,13 +324,34 @@ test('create + fetch & exercise', async () => {
   expect(nonTopLevelContracts).toEqual([nonTopLevelContract]);
 });
 
+test("createAndExercise", async () => {
+  const ledger = new Ledger({token: ALICE_TOKEN, httpBaseUrl: httpBaseUrl()});
+
+  const [result, events] = await ledger.createAndExercise(
+    buildAndLint.Main.Person.Birthday,
+    {name: 'Alice', party: ALICE_PARTY, age: '5', friends: []},
+    {});
+  expect(events).toMatchObject(
+    [{created: {templateId: buildAndLint.Main.Person.templateId,
+                signatories: [ALICE_PARTY],
+                payload: {name: 'Alice', age: '5'}}},
+     {archived: {templateId: buildAndLint.Main.Person.templateId}},
+     {created: {templateId: buildAndLint.Main.Person.templateId,
+                signatories: [ALICE_PARTY],
+                payload: {name: 'Alice', age: '6'}}}]);
+  expect((events[0] as {created: {contractId: string}}).created.contractId).toEqual((events[1] as {archived: {contractId: string}}).archived.contractId);
+  expect(result).toEqual((events[2] as {created: {contractId: string}}).created.contractId);
+});
+
 test("multi-{key,query} stream", async () => {
   const ledger = new Ledger({token: ALICE_TOKEN, httpBaseUrl: httpBaseUrl()});
 
-  function collect<T extends object, K, I extends string, State>(stream: Stream<T, K, I, State>): [State, readonly Event<T, K, I>[]][] {
+  function collect<T extends object, K, I extends string, State>(stream: Stream<T, K, I, State>): Promise<[State, readonly Event<T, K, I>[]][]> {
     const res = [] as [State, readonly Event<T, K, I>[]][];
     stream.on('change', (state, events) => res.push([state, events]));
-    return res;
+    // wait until we’re live so that we get ordered transaction events
+    // rather than unordered acs events.
+    return new Promise(resolve => stream.on('live', () => resolve(res)));
   }
   async function create(t: string): Promise<void> {
     await ledger.create(buildAndLint.Main.Counter, {p: ALICE_PARTY, t, c: "0"});
@@ -328,9 +361,6 @@ test("multi-{key,query} stream", async () => {
   }
   async function archive(t: string): Promise<void> {
     await ledger.archiveByKey(buildAndLint.Main.Counter, {_1: ALICE_PARTY, _2: t});
-  }
-  function sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
   }
   async function close<T extends object, K, I extends string, State>(s: Stream<T, K, I, State>): Promise<void> {
     const p = pEvent(s, 'close');
@@ -344,13 +374,13 @@ test("multi-{key,query} stream", async () => {
     buildAndLint.Main.Counter,
     [{p: ALICE_PARTY, t: "included"},
      {c: {"%gt": 5}}]);
-  const queryResult = collect(q);
+  const queryResult = await collect(q);
   const ks = ledger.streamFetchByKeys(
     buildAndLint.Main.Counter,
     [{_1: ALICE_PARTY, _2: "included"},
      {_1: ALICE_PARTY, _2: "byKey"},
      {_1: ALICE_PARTY, _2: "included"}]);
-  const byKeysResult = collect(ks);
+  const byKeysResult = await collect(ks);
 
   await create("included");
   await create("byKey");
@@ -457,4 +487,84 @@ test("multi-{key,query} stream", async () => {
     ]
   );
 
+});
+
+test('stream close behaviour', async () => {
+  const url = 'ws' + httpBaseUrl().slice(4) + 'v1/stream/query';
+  const events: string[] = [];
+  const ws = new WebSocket(url, ['jwt.token.' + ALICE_TOKEN, 'daml.ws.auth']);
+  await new Promise(resolve => ws.addEventListener('open', () => resolve()));
+  const forCloseEvent = new Promise(resolve => ws.addEventListener('close', () => {
+    events.push('close');
+    resolve();
+  }));
+  events.push('before close');
+  ws.close();
+  events.push('after close');
+  await forCloseEvent;
+
+  expect(events).toEqual([
+    'before close',
+    'after close',
+    'close',
+  ]);
+});
+
+test('party API', async () => {
+  const p = (id: string): PartyInfo => ({identifier: id, displayName: id, isLocal: true});
+  const ledger = new Ledger({token: ALICE_TOKEN, httpBaseUrl: httpBaseUrl()});
+  const parties = await ledger.getParties([ALICE_PARTY, "unknown"]);
+  expect(parties).toEqual([p("Alice"), null]);
+  const rev = await ledger.getParties(["unknown", ALICE_PARTY]);
+  expect(rev).toEqual([null, p("Alice")]);
+
+  const allParties = await ledger.listKnownParties();
+  expect(_.sortBy(allParties, [(p: PartyInfo) => p.identifier])).toEqual([p("Alice"), p("Bob")]);
+
+  const newParty1 = await ledger.allocateParty({});
+  const newParty2 = await ledger.allocateParty({displayName: "Carol"});
+  await ledger.allocateParty({displayName: "Dave", identifierHint: "Dave"});
+
+  const allPartiesAfter = (await ledger.listKnownParties()).map((pi) => pi.identifier);
+
+  expect(_.sortBy(allPartiesAfter)).toEqual(_.sortBy(["Alice", "Bob", "Dave", newParty1.identifier, newParty2.identifier]));
+
+});
+
+test('package API', async () => {
+  // expect().toThrow does not seem to work with async thunk
+  const expectFail = async <T>(p: Promise<T>): Promise<void> => {
+    try {
+      await p;
+      expect(true).toBe(false);
+    } catch (exc) {
+      expect(exc.status).toBe(500);
+      expect(exc.errors.length).toBe(1);
+    }
+  };
+  const ledger = new Ledger({token: ALICE_TOKEN, httpBaseUrl: httpBaseUrl()});
+
+  const packagesBefore = await ledger.listPackages();
+
+  expect(packagesBefore).toEqual(expect.arrayContaining([buildAndLint.packageId]));
+  expect(packagesBefore.length > 1).toBe(true);
+
+  const nonSense = Uint8Array.from([1, 2, 3, 4]);
+
+  await expectFail(ledger.uploadDarFile(nonSense));
+
+  const upDar = await fs.readFile(getEnv('UPLOAD_DAR'));
+  // throws on error
+  await ledger.uploadDarFile(upDar);
+
+  const packagesAfter = await ledger.listPackages();
+
+  expect(packagesAfter).toEqual(expect.arrayContaining([buildAndLint.packageId]));
+  expect(packagesAfter.length > packagesBefore.length).toBe(true);
+  expect(packagesAfter).toEqual(expect.arrayContaining(packagesBefore));
+
+  await expectFail(ledger.getPackage("non-sense"));
+
+  const downSuc = await ledger.getPackage(buildAndLint.packageId);
+  expect(downSuc.byteLength > 0).toBe(true);
 });

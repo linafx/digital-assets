@@ -15,7 +15,7 @@ import com.daml.lf.data.Ref._
 import com.daml.lf.data.Time
 import com.daml.lf.scenario.ScenarioLedger.TransactionId
 import com.daml.lf.scenario._
-import com.daml.lf.transaction.{NodeId, Transaction => Tx}
+import com.daml.lf.transaction.{NodeId, TransactionVersions, Transaction => Tx}
 import com.daml.lf.speedy.SError._
 import com.daml.lf.speedy.SValue._
 import com.daml.lf.speedy.SBuiltin._
@@ -41,6 +41,7 @@ private[lf] object Pretty {
 
   def prettyError(err: SError): Doc = {
     val ptx = PartialTransaction.initial(
+      (_ => TransactionVersions.minVersion),
       submissionTime = Time.Timestamp.MinValue,
       initialSeeds = InitialSeeding.NoSeed
     )
@@ -172,17 +173,12 @@ private[lf] object Pretty {
 
       case ScenarioErrorPartyAlreadyExists(party) =>
         text(s"Tried to allocate a party that already exists: $party")
-
-      case ScenarioErrorSerializationError(msg) =>
-        text(s"Cannot serialize the transaction: $msg")
     })
 
   private def prettyFailedAuthorization(id: NodeId, failure: FailedAuthorization): String = {
     failure match {
       case nc: FailedAuthorization.NoControllers =>
         s"node $id (${nc.templateId}) has no controllers"
-      case am: FailedAuthorization.ActorMismatch =>
-        s"node $id (${am.templateId}) controllers don't match given actors ${am.givenActors.mkString(",")}"
       case ma: FailedAuthorization.CreateMissingAuthorization =>
         s"node $id (${ma.templateId}) requires authorizers ${ma.requiredParties
           .mkString(",")}, but only ${ma.authorizingParties.mkString(",")} were given"
@@ -473,6 +469,7 @@ private[lf] object Pretty {
         case SEBuiltin(x) =>
           x match {
             case SBConsMany(n) => text(s"$$consMany[$n]")
+            case SBCons => text(s"$$cons")
             case SBRecCon(id, fields) =>
               text("$record") + char('[') + text(id.qualifiedName.toString) + char('^') + str(
                 fields.length,

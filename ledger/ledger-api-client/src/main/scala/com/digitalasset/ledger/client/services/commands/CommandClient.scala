@@ -19,6 +19,7 @@ import com.daml.ledger.api.v1.command_submission_service.CommandSubmissionServic
 import com.daml.ledger.api.v1.command_submission_service.SubmitRequest
 import com.daml.ledger.api.v1.completion.Completion
 import com.daml.ledger.api.v1.ledger_offset.LedgerOffset
+import com.daml.ledger.api.validation.CommandsValidator
 import com.daml.ledger.client.LedgerClient
 import com.daml.ledger.client.configuration.CommandClientConfiguration
 import com.daml.ledger.client.services.commands.CommandTrackerFlow.Materialized
@@ -74,8 +75,9 @@ final class CommandClient(
   def trackSingleCommand(submitRequest: SubmitRequest, token: Option[String] = None)(
       implicit mat: Materializer): Future[Completion] = {
     implicit val executionContext: ExecutionContextExecutor = mat.executionContext
+    val effectiveActAs = CommandsValidator.effectiveSubmitters(submitRequest.getCommands).actAs
     for {
-      tracker <- trackCommandsUnbounded[Unit](List(submitRequest.getCommands.party), token)
+      tracker <- trackCommandsUnbounded[Unit](effectiveActAs.toList, token)
       result <- Source.single(Ctx.unit(submitRequest)).via(tracker).runWith(Sink.head)
     } yield {
       result.value
@@ -85,6 +87,8 @@ final class CommandClient(
   /**
     * Tracks the results (including timeouts) of incoming commands.
     * Applies a maximum bound for in-flight commands which have been submitted, but not confirmed through command completions.
+    *
+    * The resulting flow will backpressure if downstream backpressures, independently of the number of in-flight commands.
     *
     * @param parties Commands that have a submitting party which is not part of this collection will fail the stream.
     */
@@ -102,6 +106,8 @@ final class CommandClient(
 
   /**
     * Tracks the results (including timeouts) of incoming commands.
+    *
+    * The resulting flow will backpressure if downstream backpressures, independently of the number of in-flight commands.
     *
     * @param parties Commands that have a submitting party which is not part of this collection will fail the stream.
     */
@@ -124,10 +130,11 @@ final class CommandClient(
   private def partyFilter[Context](allowedParties: Set[String]) =
     Flow[Ctx[Context, SubmitRequest]].map { elem =>
       val commands = elem.value.getCommands
-      if (allowedParties.contains(commands.party)) elem
+      val effectiveActAs = CommandsValidator.effectiveSubmitters(commands).actAs
+      if (effectiveActAs.subsetOf(allowedParties)) elem
       else
         throw new IllegalArgumentException(
-          s"Attempted submission and tracking of command ${commands.commandId} by party ${commands.party} while that party is not part of the subscription set $allowedParties.")
+          s"Attempted submission and tracking of command ${commands.commandId} by parties ${effectiveActAs} while some of those parties are not part of the subscription set $allowedParties.")
     }
 
   def completionSource(

@@ -50,6 +50,7 @@ object HttpService extends StrictLogging {
 
   val DefaultPackageReloadInterval: FiniteDuration = FiniteDuration(5, "s")
   val DefaultMaxInboundMessageSize: Int = 4194304
+  val DefaultHealthTimeoutSeconds: Int = 5
 
   // used only to populate a required field in LedgerClientConfiguration
   private val DummyApplicationId: ApplicationId = ApplicationId("HTTP-JSON-API-Gateway")
@@ -75,6 +76,7 @@ object HttpService extends StrictLogging {
     val packageReloadInterval: FiniteDuration
     val packageMaxInboundMessageSize: Option[Int]
     val maxInboundMessageSize: Int
+    val healthTimeoutSeconds: Int
   }
 
   trait DefaultStartSettings extends StartSettings {
@@ -82,6 +84,7 @@ object HttpService extends StrictLogging {
     override val packageReloadInterval: FiniteDuration = DefaultPackageReloadInterval
     override val packageMaxInboundMessageSize: Option[Int] = None
     override val maxInboundMessageSize: Int = DefaultMaxInboundMessageSize
+    override val healthTimeoutSeconds: Int = DefaultHealthTimeoutSeconds
   }
 
   def start(
@@ -96,7 +99,7 @@ object HttpService extends StrictLogging {
   ): Future[Error \/ ServerBinding] = {
     import startSettings._
 
-    implicit val settings: ServerSettings = ServerSettings(asys)
+    implicit val settings: ServerSettings = ServerSettings(asys).withTransparentHeadRequests(true)
 
     val tokenHolder = accessTokenFile.map(new TokenHolder(_))
 
@@ -166,6 +169,12 @@ object HttpService extends StrictLogging {
           () => packageService.reload(ec))
       )
 
+      healthService = new HealthService(
+        getLedgerEnd(pkgManagementClient, tokenHolder),
+        contractDao,
+        healthTimeoutSeconds
+      )
+
       (encoder, decoder) = buildJsonCodecs(packageService)
 
       jsonEndpoints = new Endpoints(
@@ -175,6 +184,7 @@ object HttpService extends StrictLogging {
         contractsService,
         partiesService,
         packageManagementService,
+        healthService,
         encoder,
         decoder,
       )
@@ -200,7 +210,7 @@ object HttpService extends StrictLogging {
       )
 
       binding <- liftET[Error](
-        Http().bindAndHandleAsync(allEndpoints, address, httpPort, settings = settings),
+        Http().newServerAt(address, httpPort).withSettings(settings).bind(allEndpoints)
       )
 
       _ <- either(portFile.cata(f => createPortFile(f, binding), \/-(()))): ET[Unit]
@@ -235,6 +245,18 @@ object HttpService extends StrictLogging {
       holderM: Option[TokenHolder],
   )(implicit ec: ExecutionContext): PackageService.ReloadPackageStore =
     (ids: Set[String]) => refreshToken(holderM).flatMap(_.traverseM(doLoad(packageClient, ids, _)))
+
+  // We can reuse the token we use for packages since both
+  // require only public claims
+  private[http] def getLedgerEnd(client: LedgerClient, holderM: Option[TokenHolder])(
+      implicit ec: ExecutionContext): () => Future[Unit] =
+    () => {
+      for {
+        token <- refreshToken(holderM).flatMap(x =>
+          toFuture(x: PackageService.Error \/ Option[String]))
+        _ <- client.transactionClient.getLedgerEnd(token)
+      } yield ()
+    }
 
   def stop(f: Future[Error \/ ServerBinding])(implicit ec: ExecutionContext): Future[Unit] = {
     logger.info("Stopping server...")

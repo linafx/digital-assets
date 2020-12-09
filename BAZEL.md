@@ -265,8 +265,10 @@ TO configure IntelliJ to use this JDK:
 3. Press the _plus_ button and select "Add JDK".
 4. Choose the _dev-env/jdk_ directory.
 5. Name it "DAML JDK" or something similar.
-6. Open _Project Settings_ →  _Project_.
-7. Select the DAML JDK from the _Project SDK_ list.
+6. Ensure there's sources attached under the _Sourcepath_ tab. If not, add them.
+   Press the _plus_ button and select _dev-env/jdk/lib/openjdk/src.zip_.
+7. Open _Project Settings_ →  _Project_.
+8. Select the DAML JDK from the _Project SDK_ list.
 
 ### Overview over Bazel IntelliJ Integration
 
@@ -351,6 +353,17 @@ for details.
 
 [rerun_failed_tests_issue]: https://github.com/bazelbuild/intellij/issues/446
 
+### Troubleshooting
+
+#### 'tools.dade-exec-nix-tool' not found
+
+If you get the error
+```
+error: attribute 'dade-exec-nix-tool' in selection path 'tools.dade-exec-nix-tool' not found
+```
+in the bazel console during project import, try starting IntelliJ from the root
+of the `daml` repository by calling `idea .`.
+
 ## Bazel Command Reference
 
 The following sections briefly list Bazel commands for the most common
@@ -402,24 +415,25 @@ detailed information.
 - Execute a specific Scala test-suite class
 
     ```
-    bazel test //ledger/sandbox:sandbox-scala-tests_test_suite_src_test_suite_scala_com_digitalasset_platform_sandbox_stores_ledger_sql_JdbcLedgerDaoSpec.scala
+    bazel test //ledger/participant-integration-api:participant-integration-api-tests_test_suite_src_test_suite_scala_platform_store_dao_JdbcLedgerDaoPostgresqlSpec.scala
     ```
 
 - Execute a test with a specific name
 
     ```
     bazel test \
-    //ledger/sandbox:sandbox-scala-tests_test_suite_src_test_suite_scala_com_digitalasset_platform_sandbox_stores_ledger_sql_JdbcLedgerDaoSpec.scala \
+    //ledger/participant-integration-api:participant-integration-api-tests_test_suite_src_test_suite_scala_platform_store_dao_JdbcLedgerDaoPostgresqlSpec.scala \
       --test_arg=-t \
-      --test_arg="JDBC Ledger DAO should be able to persist and load contracts without external offset"
+      --test_arg="JdbcLedgerDao (divulgence) should preserve divulged contracts"
     ```
 
-- Pass an argument to a test case in a Scala test-suite
+- Execute tests that include a string in their name
 
     ```
-    bazel test //ledger/sandbox:sandbox-scala-tests_test_suite_src_test_suite_scala_com_digitalasset_platform_sandbox_stores_ledger_sql_JdbcLedgerDaoSpec.scala \
+    bazel test \
+    //ledger/participant-integration-api:participant-integration-api-tests_test_suite_src_test_suite_scala_platform_store_dao_JdbcLedgerDaoPostgresqlSpec.scala \
       --test_arg=-z \
-      --test_arg="should return true"
+      --test_arg="preserve divulged"
     ```
 
     More broadly, for Scala tests you can pass through any of the args outlined in http://www.scalatest.org/user_guide/using_the_runner, separating into two instances of the --test-arg parameter as shown in the two examples above.

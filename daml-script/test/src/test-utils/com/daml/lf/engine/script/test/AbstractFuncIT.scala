@@ -10,6 +10,8 @@ import com.daml.lf.engine.script.RunnerConfig
 import com.daml.lf.speedy.SValue
 import com.daml.lf.speedy.SValue._
 import org.scalatest._
+import org.scalatest.matchers.should.Matchers
+import org.scalatest.wordspec.AsyncWordSpec
 import spray.json.{JsNumber, JsObject, JsString}
 
 abstract class AbstractFuncIT
@@ -256,7 +258,7 @@ abstract class AbstractFuncIT
     }
     "traceOrder" should {
       "emit trace statements in correct order" in {
-        def traceMsg(msg: String) = s"""[DA.Internal.Prelude:540]: "$msg""""
+        def traceMsg(msg: String) = s"""[DA.Internal.Prelude:532]: "$msg""""
         for {
           clients <- participantClients()
           _ = LogCollector.clear()

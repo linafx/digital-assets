@@ -81,7 +81,7 @@ da_scala_library(
     deps = [
         "//bazel_tools/runfiles:scala_runfiles",
         "//daml-lf/archive:daml_lf_archive_reader",
-        "//daml-lf/archive:daml_lf_dev_archive_java_proto",
+        "//daml-lf/archive:daml_lf_dev_archive_proto_java",
         "//daml-lf/data",
         "//daml-lf/interpreter",
         "//daml-lf/language",
@@ -122,6 +122,7 @@ da_scala_library(
                 "FuncTestsWallClock",
                 "Jwt",
                 "Tls",
+                "RunnerSpec",
                 "UnfoldStateSpec",
             ]
         ],
@@ -155,9 +156,11 @@ da_scala_library(
             "//ledger/test-common",
             "//libs-scala/ports",
             "//libs-scala/resources",
+            "//libs-scala/scalatest-utils",
             "//triggers/runner:trigger-runner-lib",
             "@maven//:com_typesafe_akka_akka_stream_2_12",
             "@maven//:org_scalacheck_scalacheck_2_12",
+            "@maven//:org_scalatestplus_scalacheck_1_14_2_12",
             "@maven//:org_scalaz_scalaz_core_2_12",
         ],
     )

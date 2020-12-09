@@ -8,7 +8,6 @@ load(
     "da_scala_test_suite",
 )
 load("//ledger/ledger-api-test-tool:conformance.bzl", "conformance_test")
-load("@io_bazel_rules_docker//java:image.bzl", "java_image")
 load("@os_info//:os_info.bzl", "is_windows")
 
 da_scala_library(
@@ -33,6 +32,7 @@ da_scala_library(
         "//libs-scala/concurrent",
         "//libs-scala/contextualized-logging",
         "//libs-scala/resources",
+        "//libs-scala/resources-akka",
         "@maven//:com_google_protobuf_protobuf_java",
         "@maven//:com_typesafe_akka_akka_actor_2_12",
         "@maven//:com_typesafe_akka_akka_stream_2_12",
@@ -101,6 +101,7 @@ da_scala_test_suite(
         "@maven//:com_typesafe_akka_akka_stream_2_12",
         "@maven//:io_dropwizard_metrics_metrics_core",
         "@maven//:org_mockito_mockito_core",
+        "@maven//:org_mockito_mockito_scala_2_12",
         "@maven//:org_scalactic_scalactic_2_12",
         "@maven//:org_scalatest_scalatest_2_12",
     ],
@@ -215,6 +216,21 @@ conformance_test(
 )
 
 conformance_test(
+    name = "conformance-test-participant-pruning",
+    ports = [6865],
+    server = ":app",
+    server_args = [
+        "--contract-id-seeding=testing-weak",
+        "--participant participant-id=example,port=6865",
+        "--batching enable=true,max-batch-size-bytes=262144",
+    ],
+    test_tool_args = [
+        "--verbose",
+        "--include=ParticipantPruningIT",
+    ],
+)
+
+conformance_test(
     name = "benchmark-performance-envelope",
     ports = [6865],
     server = ":app",
@@ -229,12 +245,3 @@ conformance_test(
         "--perf-tests=PerformanceEnvelope.TransactionSize.1000KB",
     ],
 )
-
-java_image(
-    name = "app-image",
-    base = "@java_base//image",
-    main_class = "com.daml.ledger.on.memory.Main",
-    resources = ["src/app/resources/logback.xml"],
-    visibility = ["//visibility:public"],
-    runtime_deps = [":ledger-on-memory-app"],
-) if not is_windows else None

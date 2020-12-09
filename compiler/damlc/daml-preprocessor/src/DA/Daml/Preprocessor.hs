@@ -14,6 +14,7 @@ import           DA.Daml.Preprocessor.EnumType
 
 import Development.IDE.Types.Options
 import qualified "ghc-lib" GHC
+import qualified "ghc-lib-parser" Bag as GHC
 import qualified "ghc-lib-parser" EnumSet as ES
 import qualified "ghc-lib-parser" SrcLoc as GHC
 import qualified "ghc-lib-parser" Module as GHC
@@ -24,9 +25,14 @@ import qualified "ghc-lib-parser" GHC.LanguageExtensions.Type as GHC
 import Outputable
 
 import           Control.Monad.Extra
-import           Data.List
+import           Data.List.NonEmpty (NonEmpty ((:|)))
+import qualified Data.List.NonEmpty as NE
+import           Data.List.Extra
 import           Data.Maybe
+import qualified Data.Set as Set
 import           System.FilePath (splitDirectories)
+
+import qualified Data.Generics.Uniplate.Data as Uniplate
 
 
 isInternal :: GHC.ModuleName -> Bool
@@ -70,9 +76,10 @@ damlPreprocessor dataDependableExtensions mbUnitId dflags x
             , checkVariantUnitConstructors x
             , checkLanguageExtensions dataDependableExtensions dflags x
             , checkImportsWrtDataDependencies x
+            , checkKinds x
             ]
         , preprocErrors = checkImports x ++ checkDataTypes x ++ checkModuleDefinition x ++ checkRecordConstructor x ++ checkModuleName x
-        , preprocSource = recordDotPreprocessor $ importDamlPreprocessor $ genericsPreprocessor mbUnitId $ enumTypePreprocessor "GHC.Types" x
+        , preprocSource = rewriteLets $ recordDotPreprocessor $ importDamlPreprocessor $ genericsPreprocessor mbUnitId $ enumTypePreprocessor "GHC.Types" x
         }
     where
       name = fmap GHC.unLoc $ GHC.hsmodName $ GHC.unLoc x
@@ -291,3 +298,189 @@ universeConDecl m = concat
     [ dd_cons
     | GHC.TyClD _ GHC.DataDecl{tcdDataDefn=GHC.HsDataDefn{dd_cons}} <- map GHC.unLoc $ GHC.hsmodDecls $ GHC.unLoc m
     ]
+
+-- | Emit a warning if GHC.Types.Symbol was used in a top-level kind signature.
+checkKinds :: GHC.ParsedSource -> [(GHC.SrcSpan, String)]
+checkKinds (GHC.L _ m) = do
+    GHC.L _ decl <- GHC.hsmodDecls m
+    checkDeclKinds decl
+  where
+    checkDeclKinds :: GHC.HsDecl GHC.GhcPs -> [(GHC.SrcSpan, String)]
+    checkDeclKinds = \case
+        GHC.TyClD _ GHC.SynDecl{..} -> checkQTyVars tcdTyVars
+        GHC.TyClD _ GHC.DataDecl{..} -> checkQTyVars tcdTyVars
+        GHC.TyClD _ GHC.ClassDecl{..} -> checkQTyVars tcdTyVars
+        _ -> []
+
+    checkQTyVars :: GHC.LHsQTyVars GHC.GhcPs -> [(GHC.SrcSpan, String)]
+    checkQTyVars = \case
+        GHC.HsQTvs{..} -> concatMap checkTyVarBndr hsq_explicit
+        _ -> []
+
+    checkTyVarBndr :: GHC.LHsTyVarBndr GHC.GhcPs -> [(GHC.SrcSpan, String)]
+    checkTyVarBndr (GHC.L _ var) = case var of
+        GHC.KindedTyVar _ _ kind -> checkKind kind
+        _ -> []
+
+    checkKind :: GHC.LHsKind GHC.GhcPs -> [(GHC.SrcSpan, String)]
+    checkKind (GHC.L _ kind) = case kind of
+        GHC.HsTyVar _ _ v -> checkRdrName v
+        GHC.HsFunTy _ k1 k2 -> checkKind k1 ++ checkKind k2
+        GHC.HsParTy _ k -> checkKind k
+        _ -> []
+
+    checkRdrName :: GHC.Located GHC.RdrName -> [(GHC.SrcSpan, String)]
+    checkRdrName (GHC.L loc name) = case name of
+        GHC.Unqual (GHC.occNameString -> "Symbol") ->
+            [(loc, symbolKindMsg)]
+        GHC.Qual (GHC.moduleNameString -> "GHC.Types") (GHC.occNameString -> "Symbol") ->
+            [(loc, ghcTypesSymbolMsg)]
+        _ -> []
+
+    symbolKindMsg :: String
+    symbolKindMsg = unlines
+        [ "Reference to Symbol kind will not be preserved during DAML compilation."
+        , "This will cause problems when importing this module via data-dependencies."
+        ]
+
+    ghcTypesSymbolMsg :: String
+    ghcTypesSymbolMsg = unlines
+        [ "Reference to GHC.Types.Symbol will not be preserved during DAML compilation."
+        , "This will cause problems when importing this module via data-dependencies."
+        ]
+
+-- | Issue #6788: Rewrite multi-binding let expressions,
+--
+--      let x1 = e1
+--          x2 = e2
+--          ...
+--          xn = en
+--      in b
+--
+-- Into a chain of single-binding let expressions,
+--
+--      let x1 = e1 in
+--        let x2 = e2 in
+--          ...
+--            let xn = en in
+--              b
+--
+-- Likewise, rewrite multi-binding let statements in a "do" block,
+--
+--      do
+--          ...
+--          let x1 = e1
+--              x2 = e2
+--              ...
+--              xn = en
+--          ...
+--
+-- Into single-binding let statements,
+--
+--      do
+--          ...
+--          let x1 = e1
+--          let x2 = e2
+--          ...
+--          let xn = en
+--          ...
+--
+rewriteLets :: GHC.ParsedSource -> GHC.ParsedSource
+rewriteLets = fmap onModule
+  where
+    onModule :: GHC.HsModule GHC.GhcPs -> GHC.HsModule GHC.GhcPs
+    onModule x = x { GHC.hsmodDecls = map onDecl $ GHC.hsmodDecls x }
+
+    onDecl :: GHC.LHsDecl GHC.GhcPs -> GHC.LHsDecl GHC.GhcPs
+    onDecl = fmap (Uniplate.descendBi onExpr)
+
+    onExpr :: GHC.LHsExpr GHC.GhcPs -> GHC.LHsExpr GHC.GhcPs
+    onExpr = Uniplate.transform $ \case
+        GHC.L loc (GHC.HsLet GHC.NoExt letBinds letBody) ->
+            foldr (\bind body -> GHC.L loc (GHC.HsLet GHC.NoExt bind body))
+                letBody
+                (sequenceLocalBinds letBinds)
+
+        GHC.L loc1 (GHC.HsDo GHC.NoExt doContext (GHC.L loc2 doStmts)) ->
+            GHC.L loc1 (GHC.HsDo GHC.NoExt doContext
+                (GHC.L loc2 (concatMap onStmt doStmts)))
+
+        x -> x
+
+    onStmt :: GHC.ExprLStmt GHC.GhcPs -> [GHC.ExprLStmt GHC.GhcPs]
+    onStmt = \case
+        GHC.L loc (GHC.LetStmt GHC.NoExt letBinds) ->
+            map (GHC.L loc . GHC.LetStmt GHC.NoExt) (sequenceLocalBinds letBinds)
+        x -> [x]
+
+    sequenceLocalBinds :: GHC.LHsLocalBinds GHC.GhcPs -> [GHC.LHsLocalBinds GHC.GhcPs]
+    sequenceLocalBinds = \case
+        GHC.L loc (GHC.HsValBinds GHC.NoExt valBinds)
+            | GHC.ValBinds GHC.NoExt bindBag sigs <- valBinds
+            , bind : binds <- GHC.bagToList bindBag
+            , notNull binds
+            -> makeLocalValBinds loc (bind :| binds) sigs
+        binds -> [binds]
+
+    makeLocalValBinds :: GHC.SrcSpan
+        -> NonEmpty (GHC.LHsBindLR GHC.GhcPs GHC.GhcPs)
+        -> [GHC.LSig GHC.GhcPs]
+        -> [GHC.LHsLocalBinds GHC.GhcPs]
+    makeLocalValBinds loc binds sigs =
+        let (bind1, bindRestM) = NE.uncons binds
+        in case bindRestM of
+            Nothing -> [ makeLocalValBind loc bind1 sigs ]
+            Just bindRest ->
+                let (sig1, sigRest) = peelRelevantSigs bind1 sigs
+                in makeLocalValBind loc bind1 sig1 : makeLocalValBinds loc bindRest sigRest
+
+    makeLocalValBind :: GHC.SrcSpan
+        -> GHC.LHsBindLR GHC.GhcPs GHC.GhcPs
+        -> [GHC.LSig GHC.GhcPs]
+        -> GHC.LHsLocalBinds GHC.GhcPs
+    makeLocalValBind loc bind sigs =
+        GHC.L loc (GHC.HsValBinds GHC.NoExt
+            (GHC.ValBinds GHC.NoExt (GHC.unitBag bind) sigs))
+
+    -- | List of names bound in HsBindLR
+    bindNames :: GHC.HsBindLR GHC.GhcPs GHC.GhcPs -> [GHC.RdrName]
+    bindNames = \case
+        GHC.FunBind { fun_id } -> [ GHC.unLoc fun_id ]
+        GHC.PatBind { pat_lhs } -> Uniplate.universeBi pat_lhs -- safe overapproximation
+        GHC.VarBind { var_id } -> [ var_id ]
+        GHC.PatSynBind _ GHC.PSB { psb_id } -> [ GHC.unLoc psb_id ]
+        GHC.PatSynBind _ GHC.XPatSynBind { } -> unexpected "XPatSynBind"
+        GHC.AbsBinds {} -> unexpected "AbsBinds"
+        GHC.XHsBindsLR {} -> unexpected "XHsBindsLR"
+
+    -- Given a binding and a set of signatures, split it into the signatures relevant to this binding and other signatures.
+    peelRelevantSigs :: GHC.LHsBindLR GHC.GhcPs GHC.GhcPs
+        -> [GHC.LSig GHC.GhcPs]
+        -> ([GHC.LSig GHC.GhcPs], [GHC.LSig GHC.GhcPs])
+    peelRelevantSigs bind sigs =
+        let names = Set.fromList (bindNames (GHC.unLoc bind))
+            (sigs1, sigs2) = unzip (map (peelRelevantSig names) sigs)
+        in (concat sigs1, concat sigs2)
+
+    peelRelevantSig :: Set.Set GHC.RdrName -> GHC.LSig GHC.GhcPs -> ([GHC.LSig GHC.GhcPs], [GHC.LSig GHC.GhcPs])
+    peelRelevantSig relevantNames = \case
+        GHC.L loc (GHC.TypeSig GHC.NoExt sigNames sigType) ->
+            partitionByRelevance relevantNames sigNames
+                (\ns -> GHC.L loc (GHC.TypeSig GHC.NoExt ns sigType))
+        GHC.L loc (GHC.PatSynSig GHC.NoExt sigNames sigType) ->
+            partitionByRelevance relevantNames sigNames
+                (\ns -> GHC.L loc (GHC.PatSynSig GHC.NoExt ns sigType))
+        _ -> unexpected "local signature"
+
+    partitionByRelevance :: Set.Set GHC.RdrName
+        -> [GHC.Located GHC.RdrName]
+        -> ([GHC.Located GHC.RdrName] -> t)
+        -> ([t], [t])
+    partitionByRelevance relevantNames sigNames f =
+        let (names1, names2) = partition ((`Set.member` relevantNames) . GHC.unLoc) sigNames
+            sigs1 = [ f names1 | notNull names1 ]
+            sigs2 = [ f names2 | notNull names2 ]
+        in (sigs1, sigs2)
+
+    unexpected :: String -> t
+    unexpected x = error (unwords ["Unexpected", x, "in daml-preprocessor"])

@@ -64,6 +64,7 @@ alias(
 da_scala_library(
     name = "sandbox-common-scala-tests-lib",
     srcs = glob(["src/test/lib/**/*.scala"]),
+    resources = glob(["src/test/resources/**/*"]),
     visibility = ["//visibility:public"],
     runtime_deps = [
         "@maven//:com_h2database_h2",
@@ -74,7 +75,7 @@ da_scala_library(
         ":sandbox-common",
         "//bazel_tools/runfiles:scala_runfiles",
         "//daml-lf/archive:daml_lf_archive_reader",
-        "//daml-lf/archive:daml_lf_dev_archive_java_proto",
+        "//daml-lf/archive:daml_lf_dev_archive_proto_java",
         "//daml-lf/data",
         "//language-support/scala/bindings",
         "//ledger-api/rs-grpc-bridge",

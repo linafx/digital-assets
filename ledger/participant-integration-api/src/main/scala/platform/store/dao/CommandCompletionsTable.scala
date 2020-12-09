@@ -14,6 +14,7 @@ import com.daml.ledger.api.v1.command_completion_service.CompletionStreamRespons
 import com.daml.ledger.api.v1.completion.Completion
 import com.daml.platform.store.CompletionFromTransaction.toApiCheckpoint
 import com.daml.platform.store.Conversions._
+import com.daml.platform.store.dao.events.SqlFunctions
 import io.grpc.Status.Code
 import com.google.rpc.status.Status
 
@@ -46,8 +47,13 @@ private[platform] object CommandCompletionsTable {
       startExclusive: Offset,
       endInclusive: Offset,
       applicationId: ApplicationId,
-      parties: Set[Ref.Party]): SimpleSql[Row] =
-    SQL"select completion_offset, record_time, command_id, transaction_id, status_code, status_message from participant_command_completions where completion_offset > $startExclusive and completion_offset <= $endInclusive and application_id = $applicationId and submitting_party in ($parties) order by completion_offset asc"
+      parties: Set[Ref.Party],
+      sqlFunctions: SqlFunctions,
+  ): SimpleSql[Row] = {
+    val submittersInPartiesClause =
+      sqlFunctions.arrayIntersectionWhereClause("submitters", parties)
+    SQL"select completion_offset, record_time, command_id, transaction_id, status_code, status_message from participant_command_completions where completion_offset > $startExclusive and completion_offset <= $endInclusive and application_id = $applicationId and #$submittersInPartiesClause order by completion_offset asc"
+  }
 
   def prepareCompletionInsert(
       submitterInfo: SubmitterInfo,
@@ -55,7 +61,8 @@ private[platform] object CommandCompletionsTable {
       transactionId: TransactionId,
       recordTime: Instant,
   ): SimpleSql[Row] =
-    SQL"insert into participant_command_completions(completion_offset, record_time, application_id, submitting_party, command_id, transaction_id) values ($offset, $recordTime, ${submitterInfo.applicationId}, ${submitterInfo.submitter}, ${submitterInfo.commandId}, $transactionId)"
+    SQL"insert into participant_command_completions(completion_offset, record_time, application_id, submitters, command_id, transaction_id) values ($offset, $recordTime, ${submitterInfo.applicationId}, ${submitterInfo.actAs
+      .toArray[String]}, ${submitterInfo.commandId}, $transactionId)"
 
   def prepareRejectionInsert(
       submitterInfo: SubmitterInfo,
@@ -64,7 +71,8 @@ private[platform] object CommandCompletionsTable {
       reason: RejectionReason,
   ): SimpleSql[Row] = {
     val (code, message) = toStatus(reason)
-    SQL"insert into participant_command_completions(completion_offset, record_time, application_id, submitting_party, command_id, status_code, status_message) values ($offset, $recordTime, ${submitterInfo.applicationId}, ${submitterInfo.submitter}, ${submitterInfo.commandId}, $code, $message)"
+    SQL"insert into participant_command_completions(completion_offset, record_time, application_id, submitters, command_id, status_code, status_message) values ($offset, $recordTime, ${submitterInfo.applicationId}, ${submitterInfo.actAs
+      .toArray[String]}, ${submitterInfo.commandId}, $code, $message)"
   }
 
   private def toStatus(rejection: RejectionReason): (Int, String) = {
@@ -77,5 +85,8 @@ private[platform] object CommandCompletionsTable {
         Code.PERMISSION_DENIED.value() -> rejection.description
     }
   }
+
+  def prepareCompletionsDelete(endInclusive: Offset): SimpleSql[Row] =
+    SQL"delete from participant_command_completions where completion_offset <= $endInclusive"
 
 }

@@ -216,6 +216,7 @@ da_scala_test_suite(
         "//ledger/participant-state/kvutils",
         "//ledger/participant-state/kvutils:kvutils-tests-lib",
         "//libs-scala/contextualized-logging",
+        "//libs-scala/flyway-testing",
         "//libs-scala/postgresql-testing",
         "//libs-scala/resources",
         "@maven//:com_typesafe_akka_akka_actor_2_12",
@@ -251,6 +252,20 @@ da_scala_test_suite(
             tags = db.get("conformance_test_tags", []),
             test_tool_args = db.get("conformance_test_tool_args", []) + [
                 "--verbose",
+            ],
+        ),
+        conformance_test(
+            name = "conformance-test-participant-pruning-{}".format(db["name"]),
+            ports = [6865],
+            server = ":conformance-test-{}-bin".format(db["name"]),
+            server_args = [
+                "--contract-id-seeding=testing-weak",
+                "--participant participant-id=conformance-test,port=6865",
+            ] + db.get("conformance_test_server_args", []),
+            tags = db.get("conformance_test_tags", []),
+            test_tool_args = db.get("conformance_test_tool_args", []) + [
+                "--verbose",
+                "--include=ParticipantPruningIT",
             ],
         ),
         conformance_test(

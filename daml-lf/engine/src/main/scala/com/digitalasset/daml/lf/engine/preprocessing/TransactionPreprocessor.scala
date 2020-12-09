@@ -34,7 +34,14 @@ private[preprocessing] final class TransactionPreprocessor(
     val (localCids, globalCids) = acc
 
     node match {
-      case Node.NodeCreate(coid @ _, coinst, optLoc @ _, sigs @ _, stks @ _, key @ _) =>
+      case Node.NodeCreate(
+          coid @ _,
+          coinst,
+          optLoc @ _,
+          sigs @ _,
+          stks @ _,
+          key @ _,
+          version @ _) =>
         val identifier = coinst.template
         if (globalCids(coid))
           fail("Conflicting discriminators between a global and local contract ID.")
@@ -56,19 +63,20 @@ private[preprocessing] final class TransactionPreprocessor(
           stakeholders @ _,
           signatories @ _,
           choiceObservers @ _,
-          controllersDifferFromActors @ _,
           children @ _,
           exerciseResult @ _,
           key @ _,
-          byKey @ _) =>
+          byKey @ _,
+          version @ _,
+          ) =>
         val templateId = template
         val (cmd, newCids) =
           commandPreprocessor.unsafePreprocessExercise(templateId, coid, choice, chosenVal.value)
         (cmd, (localCids | newCids.filterNot(globalCids), globalCids))
-      case Node.NodeFetch(coid, templateId, _, _, _, _, _, _) =>
+      case Node.NodeFetch(coid, templateId, _, _, _, _, _, _, _) =>
         val cmd = commandPreprocessor.unsafePreprocessFetch(templateId, coid)
         (cmd, acc)
-      case Node.NodeLookupByKey(templateId, _, key, _) =>
+      case Node.NodeLookupByKey(templateId, _, key, _, _) =>
         val keyValue = unsafeAsValueWithNoContractIds(key.key.value)
         val cmd = commandPreprocessor.unsafePreprocessLookupByKey(templateId, keyValue)
         (cmd, acc)
@@ -90,9 +98,9 @@ private[preprocessing] final class TransactionPreprocessor(
               fail(s"invalid transaction, root refers to non-existing node $id")
             case Some(node) =>
               node match {
-                case Node.NodeFetch(_, _, _, _, _, _, _, _) =>
+                case _: Node.NodeFetch[_, _] =>
                   fail(s"Transaction contains a fetch root node $id")
-                case Node.NodeLookupByKey(_, _, _, _) =>
+                case _: Node.NodeLookupByKey[_, _] =>
                   fail(s"Transaction contains a lookup by key root node $id")
                 case _ =>
                   val (cmd, acc) = unsafeTranslateNode(cids, node)

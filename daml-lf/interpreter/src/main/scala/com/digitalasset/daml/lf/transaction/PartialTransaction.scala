@@ -6,10 +6,8 @@ package speedy
 
 import com.daml.lf.data.Ref.{ChoiceName, Location, Party, TypeConName}
 import com.daml.lf.data.{BackStack, ImmArray, Ref, Time}
-import com.daml.lf.language.LanguageVersion
 import com.daml.lf.ledger.Authorize
 import com.daml.lf.ledger.FailedAuthorization
-
 import com.daml.lf.transaction.{
   GenTransaction,
   GlobalKey,
@@ -92,7 +90,6 @@ private[lf] object PartialTransaction {
     *  @param chosenValue The chosen value.
     *  @param signatories The signatories of the contract.
     *  @param stakeholders The stakeholders of the contract.
-    *  @param controllers The controllers of the choice.
     *  @param nodeId The node to be inserted once we've
     *                         finished this sub-transaction.
     *  @param parent The context in which the exercises is
@@ -110,7 +107,6 @@ private[lf] object PartialTransaction {
       chosenValue: Value[Value.ContractId],
       signatories: Set[Party],
       stakeholders: Set[Party],
-      controllers: Set[Party],
       choiceObservers: Set[Party],
       nodeId: NodeId,
       parent: Context,
@@ -118,9 +114,11 @@ private[lf] object PartialTransaction {
   )
 
   def initial(
+      pkg2TxVersion: Ref.PackageId => TransactionVersion,
       submissionTime: Time.Timestamp,
       initialSeeds: InitialSeeding,
   ) = PartialTransaction(
+    pkg2TxVersion,
     submissionTime = submissionTime,
     nextNodeIdx = 0,
     nodes = HashMap.empty,
@@ -134,9 +132,6 @@ private[lf] object PartialTransaction {
   sealed abstract class Result extends Product with Serializable
   final case class CompleteTransaction(tx: SubmittedTransaction) extends Result
   final case class IncompleteTransaction(ptx: PartialTransaction) extends Result
-  final case class SerializationError(msg: String) extends Result {
-    def prettyMessage: String = s"Cannot serialize the transaction: $msg"
-  }
 
 }
 
@@ -166,6 +161,7 @@ private[lf] object PartialTransaction {
   *              locally archived contract ids will succeed wrongly.
   */
 private[lf] case class PartialTransaction(
+    packageToTransactionVersion: Ref.PackageId => TransactionVersion,
     submissionTime: Time.Timestamp,
     nextNodeIdx: Int,
     nodes: HashMap[NodeId, PartialTransaction.Node],
@@ -230,23 +226,14 @@ private[lf] case class PartialTransaction(
     * - an error in case the transaction cannot be serialized using
     *   the `outputTransactionVersions`.
     */
-  def finish(
-      outputTransactionVersions: VersionRange[TransactionVersion],
-      packageLanguageVersion: Ref.PackageId => LanguageVersion,
-  ): PartialTransaction.Result =
-    if (context.exeContext.isEmpty && aborted.isEmpty)
-      TransactionVersions
-        .asVersionedTransaction(
-          outputTransactionVersions,
-          packageLanguageVersion,
-          context.children.toImmArray,
-          nodes
+  def finish: PartialTransaction.Result =
+    if (context.exeContext.isEmpty && aborted.isEmpty) {
+      CompleteTransaction(
+        SubmittedTransaction(
+          TransactionVersions.asVersionedTransaction(context.children.toImmArray, nodes)
         )
-        .fold(
-          SerializationError,
-          tx => CompleteTransaction(SubmittedTransaction(tx))
-        )
-    else
+      )
+    } else
       IncompleteTransaction(this)
 
   /** Extend the 'PartialTransaction' with a node for creating a
@@ -278,6 +265,7 @@ private[lf] case class PartialTransaction(
         signatories,
         stakeholders,
         key,
+        packageToTransactionVersion(coinst.template.packageId)
       )
       val nid = NodeId(nextNodeIdx)
       val ptx = copy(
@@ -316,11 +304,12 @@ private[lf] case class PartialTransaction(
       coid,
       templateId,
       optLocation,
-      Some(actingParties),
+      actingParties,
       signatories,
       stakeholders,
       key,
-      byKey
+      byKey,
+      packageToTransactionVersion(templateId.packageId),
     )
     mustBeActive(
       coid,
@@ -337,7 +326,13 @@ private[lf] case class PartialTransaction(
       result: Option[Value.ContractId],
   ): PartialTransaction = {
     val nid = NodeId(nextNodeIdx)
-    val node = Node.NodeLookupByKey(templateId, optLocation, key, result)
+    val node = Node.NodeLookupByKey(
+      templateId,
+      optLocation,
+      key,
+      result,
+      packageToTransactionVersion(templateId.packageId),
+    )
     insertLeafNode(node)
       .noteAuthFails(nid, CheckAuthorization.authorizeLookupByKey(node), auth)
   }
@@ -352,7 +347,6 @@ private[lf] case class PartialTransaction(
       actingParties: Set[Party],
       signatories: Set[Party],
       stakeholders: Set[Party],
-      controllers: Set[Party],
       choiceObservers: Set[Party],
       mbKey: Option[Node.KeyWithMaintainers[Value[Nothing]]],
       byKey: Boolean,
@@ -378,7 +372,6 @@ private[lf] case class PartialTransaction(
           chosenValue = chosenValue,
           signatories = signatories,
           stakeholders = stakeholders,
-          controllers = controllers,
           choiceObservers = choiceObservers,
           nodeId = nid,
           parent = context,
@@ -420,11 +413,11 @@ private[lf] case class PartialTransaction(
           stakeholders = ec.stakeholders,
           signatories = ec.signatories,
           choiceObservers = ec.choiceObservers,
-          controllersDifferFromActors = ec.controllers != ec.actingParties,
           children = context.children.toImmArray,
           exerciseResult = Some(value),
           key = ec.contractKey,
           byKey = ec.byKey,
+          version = packageToTransactionVersion(ec.templateId.packageId),
         )
         val nodeId = ec.nodeId
         val nodeSeed = ec.parent.nextChildrenSeed

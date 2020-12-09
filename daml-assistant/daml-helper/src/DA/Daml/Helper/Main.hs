@@ -8,6 +8,7 @@ import Control.Monad
 import DA.Bazel.Runfiles
 import Data.Foldable
 import Data.List.Extra
+import Numeric.Natural
 import Options.Applicative.Extended
 import System.Environment
 import System.Exit
@@ -231,7 +232,7 @@ commandParser = subparser $ fold
     codegenCmd = asum
         [ subparser $ fold
             [  command "java" $ info codegenJavaCmd forwardOptions
-            ,  command "scala" $ info codegenScalaCmd forwardOptions
+            ,  command "scala" $ info codegenScalaCmd (progDesc "(deprecated)" <> forwardOptions)
             ,  command "js" $ info codegenJavaScriptCmd forwardOptions
             ]
         ]
@@ -284,20 +285,20 @@ commandParser = subparser $ fold
         <*> fmap JsonFlag (switch $ long "json" <> help "Output party list in JSON")
 
     ledgerAllocatePartiesCmd = LedgerAllocateParties
-        <$> ledgerFlags (ShowJsonApi False)
+        <$> ledgerFlags (ShowJsonApi True)
         <*> many (argument str (metavar "PARTY" <> help "Parties to be allocated on the ledger (defaults to project parties if empty)"))
 
     -- same as allocate-parties but requires a single party.
     ledgerAllocatePartyCmd = LedgerAllocateParties
-        <$> ledgerFlags (ShowJsonApi False)
+        <$> ledgerFlags (ShowJsonApi True)
         <*> fmap (:[]) (argument str (metavar "PARTY" <> help "Party to be allocated on the ledger"))
 
     ledgerUploadDarCmd = LedgerUploadDar
-        <$> ledgerFlags (ShowJsonApi False)
+        <$> ledgerFlags (ShowJsonApi True)
         <*> optional (argument str (metavar "PATH" <> help "DAR file to upload (defaults to project DAR)"))
 
     ledgerFetchDarCmd = LedgerFetchDar
-        <$> ledgerFlags (ShowJsonApi False)
+        <$> ledgerFlags (ShowJsonApi True)
         <*> option str (long "main-package-id" <> metavar "PKGID" <> help "Fetch DAR for this package identifier.")
         <*> option str (short 'o' <> long "output" <> metavar "PATH" <> help "Save fetched DAR into this file.")
 
@@ -312,6 +313,7 @@ commandParser = subparser $ fold
         <*> hostFlag
         <*> portFlag
         <*> accessTokenFileFlag
+        <*> maxInboundSizeFlag
 
     sslConfig :: Parser (Maybe ClientSSLConfig)
     sslConfig = do
@@ -366,6 +368,12 @@ commandParser = subparser $ fold
         long "access-token-file"
         <> metavar "TOKEN_PATH"
         <> help "Path to the token-file for ledger authorization"
+
+    maxInboundSizeFlag :: Parser (Maybe Natural)
+    maxInboundSizeFlag = optional . option auto $
+        long "max-inbound-message-size"
+        <> metavar "INT"
+        <> help "Optional max inbound message size in bytes. This only affect connections via gRPC."
 
     timeoutOption :: Parser TimeoutSeconds
     timeoutOption = option auto $ mconcat

@@ -9,20 +9,19 @@ import com.daml.lf.data.{FrontStack, Ref}
 import com.daml.lf.speedy.SResult._
 import com.daml.lf.speedy.SValue._
 import com.daml.lf.speedy.SExpr.{SEApp, SEMakeClo, SEImportValue, SELocA}
-import com.daml.lf.speedy.SValue
-import com.daml.lf.transaction.TransactionVersions
-import com.daml.lf.value.{Value, ValueVersions}
+import com.daml.lf.value.{Value}
 import com.daml.lf.value.test.TypedValueGenerators.genAddend
 import com.daml.lf.value.test.ValueGenerators.{cidV0Gen, comparableCoidsGen}
 import com.daml.lf.PureCompiledPackages
 import org.scalacheck.{Arbitrary, Gen}
-import org.scalatest.prop.{
+import org.scalatest.prop.TableFor2
+import org.scalatestplus.scalacheck.{
   Checkers,
-  GeneratorDrivenPropertyChecks,
-  TableDrivenPropertyChecks,
-  TableFor2
+  ScalaCheckDrivenPropertyChecks,
+  ScalaCheckPropertyChecks
 }
-import org.scalatest.{Matchers, WordSpec}
+import org.scalatest.matchers.should.Matchers
+import org.scalatest.wordspec.AnyWordSpec
 import scalaz.{Order, Tag}
 import scalaz.syntax.order._
 import scalaz.scalacheck.{ScalazProperties => SzP}
@@ -30,11 +29,11 @@ import scalaz.scalacheck.{ScalazProperties => SzP}
 import scala.language.implicitConversions
 
 class OrderingSpec
-    extends WordSpec
+    extends AnyWordSpec
     with Matchers
     with Checkers
-    with GeneratorDrivenPropertyChecks
-    with TableDrivenPropertyChecks {
+    with ScalaCheckDrivenPropertyChecks
+    with ScalaCheckPropertyChecks {
 
   private val pkgId = Ref.PackageId.assertFromString("pkgId")
 
@@ -83,7 +82,7 @@ class OrderingSpec
     // SContractId V1 ordering is nontotal so arbitrary generation of them is unsafe to use
     implicit val cidArb: Arbitrary[Cid] = Arbitrary(cidV0Gen)
     implicit val svalueOrd: Order[SValue] = Order fromScalaOrdering Ordering
-    implicit val cidOrd: Order[Cid] = svalueOrd contramap SValue.SContractId
+    implicit val cidOrd: Order[Cid] = svalueOrd contramap SContractId
     val EmptyScope: Value.LookupVariantEnum = _ => None
 
     "match SValue Ordering" in forAll(genAddend, minSuccessful(100)) { va =>
@@ -114,8 +113,6 @@ class OrderingSpec
       noPackages,
       transactionSeed = seed,
       scenario = SEApp(SEMakeClo(Array(), 2, SELocA(0)), Array(SEImportValue(v))),
-      inputValueVersions = ValueVersions.Empty,
-      outputTransactionVersions = TransactionVersions.Empty
     )
 
     machine.run() match {

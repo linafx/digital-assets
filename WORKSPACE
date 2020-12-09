@@ -37,7 +37,7 @@ register_toolchains(
 load("//bazel_tools/dev_env_tool:dev_env_tool.bzl", "dadew", "dev_env_tool")
 load(
     "@io_tweag_rules_nixpkgs//nixpkgs:nixpkgs.bzl",
-    "nixpkgs_cc_configure_hermetic",
+    "nixpkgs_cc_configure",
     "nixpkgs_local_repository",
     "nixpkgs_package",
     "nixpkgs_python_configure",
@@ -102,11 +102,7 @@ common_nix_file_deps = [
 ]
 
 # Use Nix provisioned cc toolchain
-nixpkgs_cc_configure_hermetic(
-    # We override the Bazel's autodetect toolchain to avoid accidentaly
-    # dependencies on the inhermetic autodetected builtin include paths or
-    # builds failing due to Bazel not finding `cc` in `$PATH` or `$CC`.
-    name = "local_config_cc",
+nixpkgs_cc_configure(
     nix_file = "//nix:bazel-cc-toolchain.nix",
     nix_file_deps = common_nix_file_deps + [
         "//nix:tools/bazel-cc-toolchain/default.nix",
@@ -700,6 +696,10 @@ load("@maven//:defs.bzl", "pinned_maven_install")
 
 pinned_maven_install()
 
+load("@io_bazel_rules_scala//:scala_config.bzl", "scala_config")
+
+scala_config("2.12.12")
+
 load(
     "@io_bazel_rules_scala//scala:scala.bzl",
     "scala_repositories",
@@ -707,46 +707,37 @@ load(
 
 # note some dependencies in bazel-jvm-deps.bzl (e.g. silencer_plugin) refer to the current scala version:
 scala_repositories(
-    (
-        "2.12.12",
-        {
-            "scala_compiler": "9dfa682ad7c2859cdcf6a31b9734c8f1ee38e7e391aeafaef91967b6ce819b6b",
-            "scala_library": "1673ffe8792021f704caddfe92067ed1ec75229907f84380ad68fe621358c925",
-            "scala_reflect": "3c502791757c0c8208f00033d8c4d778ed446efa6f49a6f89b59c6f92b347774",
-        },
-    ),
     fetch_sources = True,
+    overriden_artifacts =
+        {
+            "io_bazel_rules_scala_scala_compiler": {
+                "artifact": "org.scala-lang:scala-compiler:2.12.12",
+                "sha256": "9dfa682ad7c2859cdcf6a31b9734c8f1ee38e7e391aeafaef91967b6ce819b6b",
+            },
+            "io_bazel_rules_scala_scala_library": {
+                "artifact": "org.scala-lang:scala-library:2.12.12",
+                "sha256": "1673ffe8792021f704caddfe92067ed1ec75229907f84380ad68fe621358c925",
+            },
+            "io_bazel_rules_scala_scala_reflect": {
+                "artifact": "org.scala-lang:scala-reflect:2.12.12",
+                "sha256": "3c502791757c0c8208f00033d8c4d778ed446efa6f49a6f89b59c6f92b347774",
+            },
+        },
 )
 
 load("@io_bazel_rules_scala//scala:toolchains.bzl", "scala_register_toolchains")
 
 scala_register_toolchains()
 
+load("@io_bazel_rules_scala//testing:scalatest.bzl", "scalatest_repositories", "scalatest_toolchain")
+
+scalatest_repositories()
+
+scalatest_toolchain()
+
 load("@io_bazel_rules_scala//jmh:jmh.bzl", "jmh_repositories")
 
 jmh_repositories()
-
-load("@io_bazel_rules_docker//repositories:repositories.bzl", container_repositories = "repositories")
-
-container_repositories()
-
-load("@io_bazel_rules_docker//repositories:deps.bzl", container_deps = "deps")
-
-container_deps()
-
-load("@io_bazel_rules_docker//container:container.bzl", "container_pull")
-
-container_pull(
-    name = "java_base",
-    digest = "sha256:17b8b592d923f375972a59e902426bfaa30900d18fdb5e451f48089258fd621c",
-    registry = "gcr.io",
-    repository = "distroless/java",
-    tag = "8",
-)
-
-load("@io_bazel_rules_docker//java:image.bzl", java_image_repositories = "repositories")
-
-java_image_repositories()
 
 # TODO (aherrmann) This wrapper is only used on Windows.
 #   Replace by an appropriate Windows only `dadew_tool` call.
@@ -823,8 +814,8 @@ yarn_install(
         "eslint/index.bzl": "def eslint_test(*args, **kwargs):\n    pass",
         "jest-cli/BUILD.bazel": 'exports_files(["index.bzl"])',
         "jest-cli/index.bzl": "def jest_test(*args, **kwargs):\n    pass",
-        "typescript/BUILD.bazel": 'exports_files(["index.bzl"])',
-        "typescript/index.bzl": "def tsc(*args, **kwargs):\n    pass",
+        "@bazel/typescript/BUILD.bazel": 'exports_files(["index.bzl"])',
+        "@bazel/typescript/index.bzl": "def ts_project(*args, **kwargs):\n    pass",
     },
 )
 
@@ -961,10 +952,10 @@ package(default_visibility = ["//visibility:public"])
 
 java_import(
     name = "lib",
-    jars = glob(["lib/**"]),
+    jars = glob(["lib/**/*.jar"]),
 )
 """,
-    sha256 = "dff85a80e893f1d4e99c3eb3cd62ed0fbb8a91d4b76aa2cc3394a635da968aed",
-    strip_prefix = "canton-0.18.2",
-    urls = ["https://www.canton.io/releases/canton-0.18.2.tar.gz"],
+    sha256 = "3c6ff12b65d9e6e85686383b811094d8b04d3f4033e725951fba95cc35bd804c",
+    strip_prefix = "canton-community-0.19.0",
+    urls = ["https://www.canton.io/releases/canton-community-0.19.0.tar.gz"],
 )

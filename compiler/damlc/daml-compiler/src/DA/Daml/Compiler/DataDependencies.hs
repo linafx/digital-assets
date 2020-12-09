@@ -459,8 +459,7 @@ generateSrcFromLf env = noLoc mod
         getOverlapMode :: LF.ExprValName -> Maybe (Located OverlapMode)
         getOverlapMode name = do
             dval <- NM.lookup (LFC.overlapModeName name) (LF.moduleValues (envMod env))
-            LF.EBuiltin (LF.BEText modeText) <- Just (LF.dvalBody dval)
-            mode <- LFC.decodeOverlapMode modeText
+            mode <- LFC.decodeOverlapMode (snd (LF.dvalBinder dval))
             Just (noLoc mode)
 
     hiddenRefMap :: HMS.HashMap Ref Bool
@@ -803,6 +802,10 @@ convBuiltInTy env =
         LF.BTNumeric -> mkGhcType env "Numeric"
         LF.BTAny -> mkLfInternalType env "Any"
         LF.BTTypeRep -> mkLfInternalType env "TypeRep"
+        LF.BTAnyException -> error "data-dependencies AnyException" -- TODO #8020
+        LF.BTGeneralError -> error "data-dependencies GeneralError" -- TODO #8020
+        LF.BTArithmeticError -> error "data-dependencies ArithmeticError" -- TODO #8020
+        LF.BTContractError -> error "data-dependencies ContractError" -- TODO #8020
 
 errTooManyNameComponents :: [T.Text] -> a
 errTooManyNameComponents cs =

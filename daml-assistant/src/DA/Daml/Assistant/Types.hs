@@ -65,6 +65,9 @@ data BuiltinCommand
     | Uninstall SdkVersion
     deriving (Eq, Show)
 
+newtype LookForProjectPath = LookForProjectPath
+    { unLookForProjectPath :: Bool }
+
 data Command
     = Builtin BuiltinCommand
     | Dispatch SdkCommandInfo UserCommandArgs
@@ -104,7 +107,7 @@ newtype RawInstallTarget = RawInstallTarget String deriving (Eq, Show)
 newtype ForceInstall = ForceInstall { unForceInstall :: Bool } deriving (Eq, Show)
 newtype QuietInstall = QuietInstall { unQuietInstall :: Bool } deriving (Eq, Show)
 newtype ActivateInstall = ActivateInstall { unActivateInstall :: Bool } deriving (Eq, Show)
-newtype SetPath = SetPath Bool deriving (Eq, Show)
+newtype SetPath = SetPath {unwrapSetPath :: YesNoAuto} deriving (Eq, Show)
 newtype InstallAssistant = InstallAssistant { unwrapInstallAssistant :: YesNoAuto } deriving (Eq, Show)
 newtype BashCompletions = BashCompletions { unwrapBashCompletions :: YesNoAuto } deriving (Eq, Show)
 newtype ZshCompletions = ZshCompletions { unwrapZshCompletions :: YesNoAuto } deriving (Eq, Show)

@@ -7,13 +7,16 @@ import java.sql.Connection
 import java.time.Instant
 import java.util.UUID
 
+import com.daml.ledger.api.domain.PartyDetails
+import com.daml.ledger.participant.state.v1.RejectionReason
 import com.daml.lf.transaction.GlobalKey
 import com.daml.lf.transaction.test.{TransactionBuilder => TxBuilder}
-import org.scalatest.{Matchers, WordSpec}
+import org.scalatest.matchers.should.Matchers
+import org.scalatest.wordspec.AnyWordSpec
 
 import scala.util.{Failure, Success, Try}
 
-final class PostCommitValidationSpec extends WordSpec with Matchers {
+final class PostCommitValidationSpec extends AnyWordSpec with Matchers {
 
   import PostCommitValidation._
   import PostCommitValidationSpec._
@@ -22,7 +25,11 @@ final class PostCommitValidationSpec extends WordSpec with Matchers {
 
     "run without prior history" should {
 
-      val store = new PostCommitValidation.BackedBy(noCommittedContract)
+      val store =
+        new PostCommitValidation.BackedBy(
+          noCommittedContract(parties = List.empty),
+          validatePartyAllocation = false,
+        )
 
       "accept a create with a key" in {
 
@@ -108,7 +115,7 @@ final class PostCommitValidationSpec extends WordSpec with Matchers {
 
         val error =
           store.validate(
-            transaction = TxBuilder.justCommitted(createContract, TxBuilder.fetch(createContract)),
+            transaction = TxBuilder.justCommitted(createContract, txBuilder.fetch(createContract)),
             transactionLedgerEffectiveTime = Instant.now(),
             divulged = Set.empty,
           )
@@ -123,7 +130,7 @@ final class PostCommitValidationSpec extends WordSpec with Matchers {
 
         val error =
           store.validate(
-            transaction = TxBuilder.justCommitted(TxBuilder.fetch(divulgedContract)),
+            transaction = TxBuilder.justCommitted(txBuilder.fetch(divulgedContract)),
             transactionLedgerEffectiveTime = Instant.now(),
             divulged = Set(divulgedContract.coid),
           )
@@ -138,7 +145,7 @@ final class PostCommitValidationSpec extends WordSpec with Matchers {
 
         val error =
           store.validate(
-            transaction = TxBuilder.justCommitted(TxBuilder.fetch(missingCreate)),
+            transaction = TxBuilder.justCommitted(txBuilder.fetch(missingCreate)),
             transactionLedgerEffectiveTime = Instant.now(),
             divulged = Set.empty,
           )
@@ -154,7 +161,7 @@ final class PostCommitValidationSpec extends WordSpec with Matchers {
         val error =
           store.validate(
             transaction = TxBuilder
-              .justCommitted(createContract, TxBuilder.lookupByKey(createContract, found = true)),
+              .justCommitted(createContract, txBuilder.lookupByKey(createContract, found = true)),
             transactionLedgerEffectiveTime = Instant.now(),
             divulged = Set.empty,
           )
@@ -170,7 +177,7 @@ final class PostCommitValidationSpec extends WordSpec with Matchers {
         val error =
           store.validate(
             transaction =
-              TxBuilder.justCommitted(TxBuilder.lookupByKey(missingCreate, found = true)),
+              TxBuilder.justCommitted(txBuilder.lookupByKey(missingCreate, found = true)),
             transactionLedgerEffectiveTime = Instant.now(),
             divulged = Set.empty,
           )
@@ -191,7 +198,7 @@ final class PostCommitValidationSpec extends WordSpec with Matchers {
         val error =
           store.validate(
             transaction =
-              TxBuilder.justCommitted(TxBuilder.lookupByKey(missingContract, found = false)),
+              TxBuilder.justCommitted(txBuilder.lookupByKey(missingContract, found = false)),
             transactionLedgerEffectiveTime = Instant.now(),
             divulged = Set.empty,
           )
@@ -210,13 +217,15 @@ final class PostCommitValidationSpec extends WordSpec with Matchers {
 
       val store = new PostCommitValidation.BackedBy(
         committedContracts(
-          committed(
+          parties = List.empty,
+          contractFixture = committed(
             id = committedContract.coid.coid,
             ledgerEffectiveTime = committedContractLedgerEffectiveTime,
             key = committedContract.key.map(x =>
               GlobalKey.assertBuild(committedContract.coinst.template, x.key))
-          )
-        )
+          ),
+        ),
+        validatePartyAllocation = false,
       )
 
       "reject a create that would introduce a duplicate key" in {
@@ -267,7 +276,7 @@ final class PostCommitValidationSpec extends WordSpec with Matchers {
 
         val error =
           store.validate(
-            transaction = TxBuilder.justCommitted(TxBuilder.fetch(committedContract)),
+            transaction = TxBuilder.justCommitted(txBuilder.fetch(committedContract)),
             transactionLedgerEffectiveTime = committedContractLedgerEffectiveTime,
             divulged = Set.empty,
           )
@@ -280,7 +289,7 @@ final class PostCommitValidationSpec extends WordSpec with Matchers {
 
         val error =
           store.validate(
-            transaction = TxBuilder.justCommitted(TxBuilder.fetch(committedContract)),
+            transaction = TxBuilder.justCommitted(txBuilder.fetch(committedContract)),
             transactionLedgerEffectiveTime = committedContractLedgerEffectiveTime.minusNanos(1),
             divulged = Set.empty,
           )
@@ -299,7 +308,7 @@ final class PostCommitValidationSpec extends WordSpec with Matchers {
         val error =
           store.validate(
             transaction =
-              TxBuilder.justCommitted(TxBuilder.lookupByKey(committedContract, found = true)),
+              TxBuilder.justCommitted(txBuilder.lookupByKey(committedContract, found = true)),
             transactionLedgerEffectiveTime = committedContractLedgerEffectiveTime,
             divulged = Set.empty,
           )
@@ -313,7 +322,7 @@ final class PostCommitValidationSpec extends WordSpec with Matchers {
         val error =
           store.validate(
             transaction =
-              TxBuilder.justCommitted(TxBuilder.lookupByKey(committedContract, found = false)),
+              TxBuilder.justCommitted(txBuilder.lookupByKey(committedContract, found = false)),
             transactionLedgerEffectiveTime = committedContractLedgerEffectiveTime,
             divulged = Set.empty,
           )
@@ -336,8 +345,10 @@ final class PostCommitValidationSpec extends WordSpec with Matchers {
 
       val store = new PostCommitValidation.BackedBy(
         committedContracts(
-          divulged(divulgedContract.coid.coid),
-        )
+          parties = List.empty,
+          contractFixture = divulged(divulgedContract.coid.coid),
+        ),
+        validatePartyAllocation = false,
       )
 
       "accept an exercise on the divulged contract" in {
@@ -357,7 +368,7 @@ final class PostCommitValidationSpec extends WordSpec with Matchers {
 
         val error =
           store.validate(
-            transaction = TxBuilder.justCommitted(TxBuilder.fetch(divulgedContract)),
+            transaction = TxBuilder.justCommitted(txBuilder.fetch(divulgedContract)),
             transactionLedgerEffectiveTime = Instant.now(),
             divulged = Set.empty,
           )
@@ -367,14 +378,34 @@ final class PostCommitValidationSpec extends WordSpec with Matchers {
       }
     }
 
-  }
+    "run with unallocated parties" should {
+      val store =
+        new PostCommitValidation.BackedBy(
+          noCommittedContract(List.empty),
+          validatePartyAllocation = true,
+        )
 
+      "reject" in {
+        val createWithKey = genTestCreate()
+        val error =
+          store.validate(
+            transaction = TxBuilder.justCommitted(createWithKey),
+            transactionLedgerEffectiveTime = Instant.now(),
+            divulged = Set.empty,
+          )
+
+        error shouldBe Some(RejectionReason.PartyNotKnownOnLedger("Some parties are unallocated"))
+      }
+    }
+  }
 }
 
 object PostCommitValidationSpec {
 
+  val txBuilder = new TxBuilder()
+
   private def genTestCreate(): TxBuilder.Create =
-    TxBuilder.create(
+    txBuilder.create(
       id = s"#${UUID.randomUUID}",
       template = "foo:bar:baz",
       argument = TxBuilder.record("field" -> "value"),
@@ -384,7 +415,7 @@ object PostCommitValidationSpec {
     )
 
   private def genTestExercise(create: TxBuilder.Create): TxBuilder.Exercise =
-    TxBuilder.exercise(
+    txBuilder.exercise(
       contract = create,
       choice = "SomeChoice",
       consuming = true,
@@ -401,7 +432,9 @@ object PostCommitValidationSpec {
   // Very dirty hack to have a contract store fixture without persistence
   private implicit val connection: Connection = null
 
-  private final case class ContractStoreFixture private (contracts: Set[ContractFixture])
+  private final case class ContractStoreFixture private (
+      contracts: Set[ContractFixture],
+      parties: List[PartyDetails])
       extends PostCommitValidationData {
 
     override def lookupContractKeyGlobally(key: Key)(
@@ -416,6 +449,12 @@ object PostCommitValidationSpec {
       if (lookup.isEmpty) Failure(notFound(ids))
       else Success(lookup.fold[Option[Instant]](None)(pickTheGreatest))
     }
+
+    override def lookupParties(parties: Seq[Party])(
+        implicit connection: Connection): List[PartyDetails] =
+      this.parties.filter { party =>
+        parties.contains(party.party)
+      }
   }
 
   private def pickTheGreatest(l: Option[Instant], r: Option[Instant]): Option[Instant] =
@@ -426,14 +465,15 @@ object PostCommitValidationSpec {
       s"One or more of the following contract identifiers has been found: ${contractIds.map(_.coid).mkString(", ")}"
     )
 
-  private val noCommittedContract: ContractStoreFixture =
-    ContractStoreFixture(Set.empty)
+  private def noCommittedContract(parties: List[PartyDetails]): ContractStoreFixture =
+    ContractStoreFixture(Set.empty, parties)
 
   private def committedContracts(
-      c: ContractFixture,
-      cs: ContractFixture*,
+      parties: List[PartyDetails],
+      contractFixture: ContractFixture,
+      contractFixtures: ContractFixture*,
   ): ContractStoreFixture =
-    ContractStoreFixture((c +: cs).toSet)
+    ContractStoreFixture((contractFixture +: contractFixtures).toSet, parties)
 
   private def committed(
       id: String,
@@ -452,5 +492,4 @@ object PostCommitValidationSpec {
       None,
       None,
     )
-
 }

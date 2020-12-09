@@ -13,16 +13,19 @@ import com.daml.lf.transaction.GenTransaction.{
   OrphanedNode
 }
 import com.daml.lf.transaction.Node.{GenNode, NodeCreate, NodeExercises}
+import com.daml.lf.value.Value.ContractId
 import com.daml.lf.value.{Value => V}
 import com.daml.lf.value.test.ValueGenerators.danglingRefGenNode
 import org.scalacheck.Gen
-import org.scalatest.prop.GeneratorDrivenPropertyChecks
-import org.scalatest.{FreeSpec, Matchers}
+import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
+import org.scalatest.matchers.should.Matchers
+import org.scalatest.freespec.AnyFreeSpec
 
 import scala.collection.immutable.HashMap
 import scala.language.implicitConversions
+import scala.util.Random
 
-class TransactionSpec extends FreeSpec with Matchers with GeneratorDrivenPropertyChecks {
+class TransactionSpec extends AnyFreeSpec with Matchers with ScalaCheckDrivenPropertyChecks {
   import TransactionSpec._
 
   "isWellFormed" - {
@@ -130,36 +133,63 @@ class TransactionSpec extends FreeSpec with Matchers with GeneratorDrivenPropert
    */
 
   "isReplayedBy" - {
-    // the whole-transaction-relevant parts are handled by equalForest testing
-    import Node.isReplayedBy
-    type CidVal[F[_, _]] = F[V.ContractId, V.VersionedValue[V.ContractId]]
-    val genEmptyNode
-      : Gen[Node.GenNode.WithTxValue[Nothing, V.ContractId]] = danglingRefGenNode map {
-      case (_, n: CidVal[Node.LeafOnlyNode]) => n
-      case (_, ne: Node.NodeExercises.WithTxValue[_, V.ContractId]) =>
-        ne copy (children = ImmArray.empty)
+    def genTrans(node: GenNode.WithTxValue[NodeId, ContractId]) = {
+      val nid = NodeId(1)
+      VersionedTransaction(node.version, HashMap(nid -> node), ImmArray(nid))
     }
 
+    def isReplayedBy(
+        n1: GenNode.WithTxValue[NodeId, ContractId],
+        n2: GenNode.WithTxValue[NodeId, ContractId],
+    ) = Transaction.isReplayedBy(genTrans(n1), genTrans(n2))
+
+    // the whole-transaction-relevant parts are handled by equalForest testing
+    type CidVal[F[_, _]] = F[V.ContractId, V.VersionedValue[V.ContractId]]
+    val genEmptyNode: Gen[GenNode.WithTxValue[Nothing, V.ContractId]] =
+      for {
+        entry <- danglingRefGenNode
+        node = entry match {
+          case (_, n: CidVal[Node.LeafOnlyNode]) => n
+          case (_, ne: Node.NodeExercises.WithTxValue[_, V.ContractId]) =>
+            ne.copy(children = ImmArray.empty)
+        }
+      } yield node
+
     "is reflexive" in forAll(genEmptyNode) { n =>
-      isReplayedBy(n, n) shouldBe true
+      isReplayedBy(n, n) shouldBe Right(())
+    }
+
+    "fail if version is different" in {
+      val versions = TransactionVersions.acceptedVersions.toIndexedSeq
+      def diffVersion(v: TransactionVersion) = {
+        val randomVersion = versions(Random.nextInt(versions.length - 1))
+        if (randomVersion != v) randomVersion else versions.last
+      }
+      forAll(genEmptyNode, minSuccessful(10)) { n =>
+        val m = n.updateVersion(diffVersion(n.version))
+        isReplayedBy(n, m) shouldBe 'left
+      }
     }
 
     "negation implies == negation" in forAll(genEmptyNode, genEmptyNode) { (na, nb) =>
-      whenever(!isReplayedBy(na, nb)) {
+      whenever(isReplayedBy(na, nb).isLeft) {
         na should not be nb
       }
     }
 
     "ignores location" in forAll(genEmptyNode) { n =>
-      val withoutLocation = n match {
-        case nc: CidVal[Node.NodeCreate] => nc copy (optLocation = None)
-        case nf: Node.NodeFetch.WithTxValue[V.ContractId] => nf copy (optLocation = None)
-        case ne: Node.NodeExercises.WithTxValue[Nothing, V.ContractId] =>
-          ne copy (optLocation = None)
-        case nl: CidVal[Node.NodeLookupByKey] => nl copy (optLocation = None)
+      val withoutLocation = {
+        val nodeWithoutLocation = n match {
+          case nc: CidVal[Node.NodeCreate] => nc copy (optLocation = None)
+          case nf: Node.NodeFetch.WithTxValue[V.ContractId] => nf copy (optLocation = None)
+          case ne: Node.NodeExercises.WithTxValue[Nothing, V.ContractId] =>
+            ne copy (optLocation = None)
+          case nl: CidVal[Node.NodeLookupByKey] => nl copy (optLocation = None)
+        }
+        nodeWithoutLocation
       }
-      isReplayedBy(withoutLocation, n) shouldBe true
-      isReplayedBy(n, withoutLocation) shouldBe true
+      isReplayedBy(withoutLocation, n) shouldBe Right(())
+      isReplayedBy(n, withoutLocation) shouldBe Right(())
     }
   }
 
@@ -234,7 +264,8 @@ object TransactionSpec {
       children = children,
       exerciseResult = if (hasExerciseResult) Some(V.ValueUnit) else None,
       key = None,
-      byKey = false
+      byKey = false,
+      version = TransactionVersions.minVersion,
     )
 
   val dummyCid = V.ContractId.V1.assertBuild(
@@ -257,6 +288,7 @@ object TransactionSpec {
       signatories = Set.empty,
       stakeholders = Set.empty,
       key = None,
+      version = TransactionVersions.minVersion,
     )
 
   implicit def toChoiceName(s: String): Ref.Name = Ref.Name.assertFromString(s)

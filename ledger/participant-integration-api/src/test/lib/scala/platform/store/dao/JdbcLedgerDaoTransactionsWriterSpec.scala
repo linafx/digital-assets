@@ -3,7 +3,11 @@
 
 package com.daml.platform.store.dao
 
-import org.scalatest.{AsyncFlatSpec, LoneElement, Matchers}
+import com.daml.lf.data.Ref
+import com.daml.lf.transaction.{BlindingInfo, NodeId}
+import org.scalatest.LoneElement
+import org.scalatest.flatspec.AsyncFlatSpec
+import org.scalatest.matchers.should.Matchers
 
 private[dao] trait JdbcLedgerDaoTransactionsWriterSpec extends LoneElement {
   this: AsyncFlatSpec with Matchers with JdbcLedgerDaoSuite =>
@@ -13,7 +17,7 @@ private[dao] trait JdbcLedgerDaoTransactionsWriterSpec extends LoneElement {
   behavior of "JdbcLedgerDao (TransactionsWriter)"
 
   it should "serialize a valid positive lookupByKey" in {
-    val keyValue = s"positive-lookup-by-key"
+    val keyValue = "positive-lookup-by-key"
 
     for {
       from <- ledgerDao.lookupLedgerEnd()
@@ -31,7 +35,7 @@ private[dao] trait JdbcLedgerDaoTransactionsWriterSpec extends LoneElement {
   }
 
   it should "serialize a valid fetch" in {
-    val keyValue = s"valid-fetch"
+    val keyValue = "valid-fetch"
 
     for {
       from <- ledgerDao.lookupLedgerEnd()
@@ -45,6 +49,21 @@ private[dao] trait JdbcLedgerDaoTransactionsWriterSpec extends LoneElement {
         create.commandId.get -> ok,
         fetch.commandId.get -> ok,
       )
+    }
+  }
+
+  it should "prefer pre-computed blinding info" in {
+    val mismatchingBlindingInfo =
+      BlindingInfo(Map(NodeId(0) -> Set(Ref.Party.assertFromString("zoe"))), Map())
+    for {
+      (_, tx) <- store(
+        offsetAndTx = singleCreate,
+        blindingInfo = Some(mismatchingBlindingInfo),
+        divulgedContracts = Map.empty,
+      )
+      result <- ledgerDao.lookupActiveOrDivulgedContract(nonTransient(tx).loneElement, alice)
+    } yield {
+      result shouldBe None
     }
   }
 

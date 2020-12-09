@@ -9,39 +9,59 @@ import com.daml.daml_lf_dev.DamlLf
 import com.daml.ledger.api.refinements.ApiTypes.Party
 import com.daml.lf.archive.Dar
 import com.daml.lf.data.Ref.PackageId
-import com.daml.lf.engine.trigger.{RunningTrigger}
+import com.daml.lf.engine.trigger.RunningTrigger
+import com.daml.lf.engine.trigger.Tagged.{AccessToken, RefreshToken}
+
+import scala.concurrent.{ExecutionContext, Future}
 
 final class InMemoryTriggerDao extends RunningTriggerDao {
   private var triggers: Map[UUID, RunningTrigger] = Map.empty
   private var triggersByParty: Map[Party, Set[UUID]] = Map.empty
 
-  override def addRunningTrigger(t: RunningTrigger): Either[String, Unit] = {
-    triggers += t.triggerInstance -> t
-    triggersByParty += t.triggerParty -> (triggersByParty.getOrElse(t.triggerParty, Set()) + t.triggerInstance)
-    Right(())
+  override def addRunningTrigger(t: RunningTrigger)(implicit ec: ExecutionContext): Future[Unit] =
+    Future {
+      triggers += t.triggerInstance -> t
+      triggersByParty += t.triggerParty -> (triggersByParty.getOrElse(t.triggerParty, Set()) + t.triggerInstance)
+      ()
+    }
+
+  override def getRunningTrigger(triggerInstance: UUID)(
+      implicit ec: ExecutionContext): Future[Option[RunningTrigger]] = Future {
+    triggers.get(triggerInstance)
   }
 
-  override def getRunningTrigger(triggerInstance: UUID): Either[String, Option[RunningTrigger]] = {
-    Right(triggers.get(triggerInstance))
-  }
-
-  override def removeRunningTrigger(triggerInstance: UUID): Either[String, Boolean] = {
+  override def updateRunningTriggerToken(
+      triggerInstance: UUID,
+      accessToken: AccessToken,
+      refreshToken: Option[RefreshToken])(implicit ec: ExecutionContext): Future[Unit] = Future {
     triggers.get(triggerInstance) match {
-      case None => Right(false)
       case Some(t) =>
-        triggers -= t.triggerInstance
-        triggersByParty += t.triggerParty -> (triggersByParty(t.triggerParty) - t.triggerInstance)
-        Right(true)
+        triggers += (triggerInstance -> t
+          .copy(triggerAccessToken = Some(accessToken), triggerRefreshToken = refreshToken))
+      case None => ()
     }
   }
 
-  override def listRunningTriggers(party: Party): Either[String, Vector[UUID]] = {
-    Right(triggersByParty.getOrElse(party, Set()).toVector.sorted)
+  override def removeRunningTrigger(triggerInstance: UUID)(
+      implicit ec: ExecutionContext): Future[Boolean] = Future {
+    triggers.get(triggerInstance) match {
+      case None => false
+      case Some(t) =>
+        triggers -= t.triggerInstance
+        triggersByParty += t.triggerParty -> (triggersByParty(t.triggerParty) - t.triggerInstance)
+        true
+    }
+  }
+
+  override def listRunningTriggers(party: Party)(
+      implicit ec: ExecutionContext): Future[Vector[UUID]] = Future {
+    triggersByParty.getOrElse(party, Set()).toVector.sorted
   }
 
   // This is only possible when running with persistence. For in-memory mode we do nothing.
-  override def persistPackages(dar: Dar[(PackageId, DamlLf.ArchivePayload)]): Either[String, Unit] =
-    Right(())
+  override def persistPackages(dar: Dar[(PackageId, DamlLf.ArchivePayload)])(
+      implicit ec: ExecutionContext): Future[Unit] =
+    Future.successful(())
 
   override def close() = ()
 }

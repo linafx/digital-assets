@@ -180,11 +180,6 @@ final class Conversions(
       case SError.ScenarioErrorPartyAlreadyExists(party) =>
         builder.setScenarioPartyAlreadyExists(party)
 
-      case SError.ScenarioErrorSerializationError(msg) =>
-        sys.error(
-          s"Cannot serialization a transaction: $msg"
-        )
-
       case wtc: SError.DamlEWronglyTypedContract =>
         sys.error(
           s"Got unexpected DamlEWronglyTypedContract error in scenario service: $wtc. Note that in the scenario service this error should never surface since contract fetches are all type checked.",
@@ -299,14 +294,6 @@ final class Conversions(
               .addAllRequiredAuthorizers(reqParties.map(convertParty).asJava)
           optLocation.map(loc => emaBuilder.setLocation(convertLocation(loc)))
           faBuilder.setExerciseMissingAuthorization(emaBuilder.build)
-        case FailedAuthorization.ActorMismatch(templateId, choiceId, optLocation, givenActors) =>
-          val amBuilder =
-            proto.FailedAuthorization.ActorMismatch.newBuilder
-              .setTemplateId(convertIdentifier(templateId))
-              .setChoiceId(choiceId)
-              .addAllGivenActors(givenActors.map(convertParty).asJava)
-          optLocation.map(loc => amBuilder.setLocation(convertLocation(loc)))
-          faBuilder.setActorMismatch(amBuilder.build)
         case FailedAuthorization.NoSignatories(templateId, optLocation) =>
           val nsBuilder =
             proto.FailedAuthorization.NoSignatories.newBuilder

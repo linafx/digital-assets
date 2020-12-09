@@ -67,6 +67,7 @@ import com.daml.platform.store.entries.{
   PartyLedgerEntry
 }
 import com.daml.platform.{ApiOffset, index}
+import io.grpc.Status
 import scalaz.syntax.tag.ToTagOps
 
 import scala.concurrent.Future
@@ -311,7 +312,7 @@ private[sandbox] final class InMemoryLedger(
             transactionMeta.ledgerEffectiveTime.toInstant,
             transactionId,
             transactionMeta.workflowId,
-            Some(submitterInfo.submitter),
+            submitterInfo.actAs,
             committedTransaction,
             disclosureForIndex,
             divulgence,
@@ -329,7 +330,7 @@ private[sandbox] final class InMemoryLedger(
                   Some(submitterInfo.commandId),
                   transactionId,
                   Some(submitterInfo.applicationId),
-                  Some(submitterInfo.submitter),
+                  submitterInfo.actAs,
                   transactionMeta.workflowId,
                   transactionMeta.ledgerEffectiveTime.toInstant,
                   recordTime,
@@ -348,14 +349,14 @@ private[sandbox] final class InMemoryLedger(
       implicit loggingContext: LoggingContext,
   ): Unit = {
     logger.warn(s"Publishing error to ledger: ${reason.description}")
-    stopDeduplicatingCommand(CommandId(submitterInfo.commandId), submitterInfo.submitter)
+    stopDeduplicatingCommand(CommandId(submitterInfo.commandId), submitterInfo.actAs)
     entries.publish(
       InMemoryLedgerEntry(
         LedgerEntry.Rejection(
           timeProvider.getCurrentTime,
           submitterInfo.commandId,
           submitterInfo.applicationId,
-          submitterInfo.submitter,
+          submitterInfo.actAs,
           reason)
       )
     )
@@ -570,18 +571,25 @@ private[sandbox] final class InMemoryLedger(
 
   private def deduplicationKey(
       commandId: CommandId,
-      submitter: Ref.Party,
-  ): String = commandId.unwrap + "%" + submitter
+      submitters: List[Ref.Party],
+  ): String = {
+    val submitterPart =
+      if (submitters.length == 1)
+        submitters.head
+      else
+        submitters.sorted(Ordering.String).distinct.mkString("%")
+    commandId.unwrap + "%" + submitterPart
+  }
 
   override def deduplicateCommand(
       commandId: CommandId,
-      submitter: Ref.Party,
+      submitters: List[Ref.Party],
       submittedAt: Instant,
       deduplicateUntil: Instant,
   )(implicit loggingContext: LoggingContext): Future[CommandDeduplicationResult] =
     Future.successful {
       this.synchronized {
-        val key = deduplicationKey(commandId, submitter)
+        val key = deduplicationKey(commandId, submitters)
         val entry = commands.get(key)
         if (entry.isEmpty) {
           // No previous entry - new command
@@ -611,16 +619,21 @@ private[sandbox] final class InMemoryLedger(
       }
     }
 
-  override def stopDeduplicatingCommand(commandId: CommandId, submitter: Party)(
+  override def stopDeduplicatingCommand(commandId: CommandId, submitters: List[Party])(
       implicit loggingContext: LoggingContext,
   ): Future[Unit] =
     Future.successful {
-      val key = deduplicationKey(commandId, submitter)
+      val key = deduplicationKey(commandId, submitters)
       this.synchronized {
         commands.remove(key)
         ()
       }
     }
+
+  override def prune(pruneUpToInclusive: Offset)(
+      implicit loggingContext: LoggingContext): Future[Unit] =
+    // sandbox-classic in-memory ledger does not support pruning
+    Future.failed(Status.UNIMPLEMENTED.asRuntimeException())
 }
 
 private[sandbox] object InMemoryLedger {

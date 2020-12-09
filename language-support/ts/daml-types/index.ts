@@ -1,18 +1,23 @@
 // Copyright (c) 2020 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 import * as jtv from '@mojotech/json-type-validation';
+import _ from 'lodash';
 
 /**
  * Interface for companion objects of serializable types. Its main purpose is
- * to describe the JSON encoding of values of the serializable type.
+ * to serialize and deserialize values between raw JSON and typed values.
  *
  * @typeparam T The template type.
  */
 export interface Serializable<T> {
   /**
-   * @internal The decoder for a contract of template T.
+   * @internal
    */
   decoder: jtv.Decoder<T>;
+  /**
+   * @internal Encodes T in expected shape for JSON API.
+   */
+  encode: (t: T) => unknown;
 }
 
 /**
@@ -29,7 +34,15 @@ export interface Template<T extends object, K = unknown, I extends string = stri
   /**
    * @internal
    */
+  sdkVersion: '0.0.0-SDKVERSION';
+  /**
+   * @internal
+   */
   keyDecoder: jtv.Decoder<K>;
+  /**
+   * @internal
+   */
+  keyEncode: (k: K) => unknown;
   Archive: Choice<T, {}, {}, K>;
 }
 
@@ -49,12 +62,20 @@ export interface Choice<T extends object, C, R, K = unknown> {
   template: () => Template<T, K>;
   /**
    * @internal Returns a decoder to decode the choice arguments.
+   *
+   * Note: we never need to decode the choice arguments, as they are sent over
+   * the API but not received.
    */
   argumentDecoder: jtv.Decoder<C>;
+  /**
+   * @internal
+   */
+  argumentEncode: (c: C) => unknown;
   /**
    * @internal Returns a deocoder to decode the return value.
    */
   resultDecoder: jtv.Decoder<R>;
+  // note: no encoder for result, as they cannot be sent, only received.
   /**
    * The choice name.
    */
@@ -73,7 +94,7 @@ export const registerTemplate = <T extends object>(template: Template<T>): void 
   const templateId = template.templateId;
   const oldTemplate = registeredTemplates[templateId];
   if (oldTemplate === undefined) {
-    registeredTemplates[templateId] = template;
+    registeredTemplates[templateId] = template as unknown as Template<object, unknown, string>;
     console.debug(`Registered template ${templateId}.`);
   } else {
     console.warn(`Trying to re-register template ${templateId}.`);
@@ -86,7 +107,7 @@ export const registerTemplate = <T extends object>(template: Template<T>): void 
 export const lookupTemplate = (templateId: string): Template<object> => {
   const template = registeredTemplates[templateId];
   if (template === undefined) {
-    throw Error(`Trying to look up template ${templateId}.`);
+    throw Error(`Failed to look up template ${templateId}. Make sure your @daml/types version agrees with the used DAML SDK version.`);
   }
   return template;
 }
@@ -136,6 +157,7 @@ export interface Unit {
  */
 export const Unit: Serializable<Unit> = {
   decoder: jtv.object({}),
+  encode: (t: Unit) => t,
 }
 
 /**
@@ -148,6 +170,7 @@ export type Bool = boolean;
  */
 export const Bool: Serializable<Bool> = {
   decoder: jtv.boolean(),
+  encode: (b: Bool) => b,
 }
 
 /**
@@ -162,6 +185,7 @@ export type Int = string;
  */
 export const Int: Serializable<Int> = {
   decoder: jtv.string(),
+  encode: (i: Int) => i,
 }
 
 /**
@@ -173,7 +197,7 @@ export const Int: Serializable<Int> = {
 export type Numeric = string;
 
 /**
- * The counterpart of DAML's Decimal type.
+ * The counterpart of DAML's `Decimal` type.
  *
  * In DAML, Decimal's are the same as Numeric with precision 10.
  *
@@ -187,6 +211,7 @@ export type Decimal = Numeric;
 export const Numeric = (_: number): Serializable<Numeric> =>
   ({
     decoder: jtv.string(),
+    encode: (n: Numeric): unknown => n,
   })
 
 /**
@@ -204,6 +229,7 @@ export type Text = string;
  */
 export const Text: Serializable<Text> = {
   decoder: jtv.string(),
+  encode: (t: Text) => t,
 }
 
 /**
@@ -218,6 +244,7 @@ export type Time = string;
  */
 export const Time: Serializable<Time> = {
   decoder: jtv.string(),
+  encode: (t: Time) => t,
 }
 
 /**
@@ -232,6 +259,7 @@ export type Party = string;
  */
 export const Party: Serializable<Party> = {
   decoder: jtv.string(),
+  encode: (p: Party) => p,
 }
 
 /**
@@ -248,6 +276,7 @@ export type List<T> = T[];
  */
 export const List = <T>(t: Serializable<T>): Serializable<T[]> => ({
   decoder: jtv.array(t.decoder),
+  encode: (l: List<T>): unknown => l.map((element: T) => t.encode(element)),
 });
 
 /**
@@ -262,7 +291,9 @@ export type Date = string;
  */
 export const Date: Serializable<Date> = {
   decoder: jtv.string(),
+  encode: (d: Date) => d,
 }
+
 
 /**
  * Used to `brand` [[ContractId]].
@@ -290,6 +321,7 @@ export type ContractId<T> = string & { [ContractIdBrand]: T }
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export const ContractId = <T>(_t: Serializable<T>): Serializable<ContractId<T>> => ({
   decoder: jtv.string() as jtv.Decoder<ContractId<T>>,
+  encode: (c: ContractId<T>): unknown => c,
 });
 
 /**
@@ -314,6 +346,7 @@ type OptionalInner<T> = null extends T ? [] | [Exclude<T, null>] : T
 class OptionalWorker<T> implements Serializable<Optional<T>> {
   decoder: jtv.Decoder<Optional<T>>;
   private innerDecoder: jtv.Decoder<OptionalInner<T>>;
+  encode: (o: Optional<T>) => unknown;
 
   constructor(payload: Serializable<T>) {
     if (payload instanceof OptionalWorker) {
@@ -329,10 +362,35 @@ class OptionalWorker<T> implements Serializable<Optional<T>> {
         jtv.constant<[]>([]),
         jtv.tuple([payloadInnerDecoder]),
       ) as jtv.Decoder<OptionalInner<T>>;
+      this.encode = (o: Optional<T>): unknown => {
+        if (o === null) {
+          // Top-level enclosing Optional where the type argument is also
+          // Optional and we represent None.
+          return null;
+        } else {
+          // The current type is Optional<Optional<...>> and the current value
+          // is Some x. Therefore the nested value is represented as [] for
+          // x = None or as [y] for x = Some y. In both cases mapping the
+          // encoder of the type parameter does the right thing.
+          return (o as unknown as T[]).map(nested => payload.encode(nested));
+        }
+      }
     } else {
       // NOTE(MH): `T` is not of the form `Optional<U>` here and hence `null`
       // does not extend `T`. Thus, `OptionalInner<T> = T`.
       this.innerDecoder = payload.decoder as jtv.Decoder<OptionalInner<T>>;
+      this.encode = (o: Optional<T>): unknown => {
+        if (o === null) {
+          // This branch is only reached if we are at the top-level and the
+          // entire type is a non-nested Optional, i.e. Optional<U> where U is
+          // not Optional. Recursive calls from the other branch would stop
+          // before reaching this case, as nested None are empty lists and
+          // never null.
+          return null;
+        } else {
+          return payload.encode(o as unknown as T);
+        }
+      }
     }
     this.decoder = jtv.oneOf(jtv.constant(null), this.innerDecoder);
   }
@@ -357,7 +415,108 @@ export type TextMap<T> = { [key: string]: T };
  * Companion object of the [[TextMap]] type.
  */
 export const TextMap = <T>(t: Serializable<T>): Serializable<TextMap<T>> => ({
-    decoder: jtv.dict(t.decoder),
+  decoder: jtv.dict(t.decoder),
+  encode: (tm: TextMap<T>): unknown => {
+    const out: {[key: string]: unknown} = {};
+    Object.keys(tm).forEach((k) => {
+      out[k] = t.encode(tm[k]);
+    });
+    return out;
+  }
 });
 
-// TODO(MH): `Map` type.
+/**
+ * The counterpart of DAML's `DA.Map.Map K V` type.
+ *
+ * This is an immutable map which compares keys via deep equality. The order of
+ * iteration is unspecified; the only guarantee is that the order in `keys` and
+ * `values` match, i.e. `m.get(k)` is (deep-, value-based) equal to
+ * `[...m.values()][[...m.keys()].findIndex((l) => _.isEqual(k, l))]`
+ *
+ * @typeparam K The type of the map keys.
+ * @typeparam V The type of the map values.
+ */
+export interface Map<K, V> {
+  get: (k: K) => V | undefined;
+  has: (k: K) => boolean;
+  set: (k: K, v: V) => Map<K, V>;
+  delete: (k: K) => Map<K, V>;
+  keys: () => Iterator<K, undefined, undefined>;
+  values: () => Iterator<V, undefined, undefined>;
+  entries: () => Iterator<[K, V], undefined, undefined>;
+  entriesArray: () => [K, V][];
+  forEach: <T, U>(f: (value: V, key: K, map: Map<K, V>) => T, u?: U) => void;
+}
+
+function* it<T>(arr: T[]): Iterator<T, undefined, undefined> {
+  for(let i = 0; i < arr.length; i++) {
+    yield _.cloneDeep(arr[i]);
+  }
+  return undefined;
+}
+
+// This code assumes that the decoder is only ever used in decoding values
+// straight from the API responses, and said raw responses are never reused
+// afterwards. This should be enforced by this class not being exported and the
+// daml-ledger module not letting raw JSON responses escape without going
+// through this.
+//
+// Without that assumption, the constructor would need to deep-copy its kvs
+// argument.
+class MapImpl<K, V> implements Map<K, V> {
+  private _kvs: [K, V][];
+  private _keys: K[];
+  private _values: V[];
+  constructor(kvs: [K, V][]) {
+    // sorting done so that generic object deep comparison would find equal
+    // maps equal (as defined by jest's expect().toEqual())
+    this._kvs = _.sortBy(kvs, kv => JSON.stringify(kv[0]));
+    this._keys = this._kvs.map(e => e[0]);
+    this._values = this._kvs.map(e => e[1]);
+  }
+  private _idx(k: K): number {
+    return this._keys.findIndex((l) => _.isEqual(k, l));
+  }
+  has(k: K): boolean {
+    return this._idx(k) !== -1;
+  }
+  get(k: K): V | undefined { return _.cloneDeep(this._values[this._idx(k)]); }
+  set(k: K, v: V): Map<K, V> {
+    if (this.has(k)) {
+      const cpy = this._kvs.slice();
+      cpy[this._idx(k)] = _.cloneDeep([k, v]);
+      return new MapImpl(cpy);
+    } else {
+      const head: [K, V][] = _.cloneDeep([[k, v]]);
+      return new MapImpl(head.concat(this._kvs));
+    }
+  }
+  delete(k: K): Map<K, V> {
+    const i = this._idx(k);
+    if (i !== -1) {
+      return new MapImpl(this._kvs.slice(0, i).concat(this._kvs.slice(i + 1)));
+    } else {
+      return this;
+    }
+  }
+  keys(): Iterator<K, undefined, undefined> { return it(this._keys); }
+  values(): Iterator<V, undefined, undefined> { return it(this._values); }
+  entries(): Iterator<[K, V], undefined, undefined> { return it(this._kvs); }
+  entriesArray(): [K, V][] { return _.cloneDeep(this._kvs); }
+  forEach<T, U>(f: (v: V, k: K, m: Map<K, V>) => T, u?: U): void {
+    const g = u ? f.bind(u) : f;
+    for(const [k, v] of this._kvs) {
+      g(v, k, this);
+    }
+  }
+}
+
+export const emptyMap = <K, V>(): Map<K, V> => new MapImpl<K, V>([]);
+
+/**
+ * Companion function of the [[GenMap]] type.
+ */
+export const Map = <K, V>(kd: Serializable<K>, vd: Serializable<V>): Serializable<Map<K, V>> => ({
+  decoder: jtv.array(jtv.tuple([kd.decoder, vd.decoder])).map(kvs => new MapImpl(kvs)),
+  encode: (m: Map<K, V>): unknown => m.entriesArray(),
+});

@@ -19,6 +19,7 @@ import           Data.Either
 import           Data.Functor.Identity
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.List as L
+import qualified Data.Map.Strict as Map
 import qualified Data.NameMap as NM
 import qualified Data.Text           as T
 import qualified Data.Text.Lazy      as TL
@@ -51,6 +52,8 @@ data EncodeEnv = EncodeEnv
     , internedDottedNames :: !(HMS.HashMap [Int32] Int32)
     , nextInternedDottedNameId :: !Int32
       -- ^ We track the size of `internedDottedNames` explicitly since `HMS.size` is `O(n)`.
+    , internedTypes :: !(Map.Map P.TypeSum Int32)
+    , nextInternedTypeId :: !Int32
     }
 
 initEncodeEnv :: Version -> WithInterning -> EncodeEnv
@@ -60,6 +63,8 @@ initEncodeEnv version withInterning =
     , internedStrings = HMS.empty
     , internedDottedNames = HMS.empty
     , nextInternedDottedNameId = 0
+    , internedTypes = Map.empty
+    , nextInternedTypeId = 0
     , ..
     }
 
@@ -128,6 +133,13 @@ encodeName'
 encodeName' unwrapName (unwrapName -> unmangled) = do
     Util.fromEither @TL.Text @Int32 <$> coerce (encodeNames @Identity) unmangled
 
+encodeNameId :: (a -> T.Text) -> a -> Encode Int32
+encodeNameId unwrapName (unwrapName -> unmangled) = do
+    (encoded :: Either TL.Text Int32) <- encodeName' id unmangled
+    case encoded of
+        Left _ -> error ("could not intern name " <> show unmangled)
+        Right id -> pure id
+
 encodeNames :: Traversable t => t T.Text -> Encode (Either (t TL.Text) (t Int32))
 encodeNames = encodeInternableStrings . fmap mangleName
     where
@@ -156,6 +168,13 @@ encodeDottedName' unmangled = do
         Right ids -> do
             id <- allocDottedName ids
             pure $ Right id
+
+encodeDottedNameId :: (a -> [T.Text]) -> a -> Encode Int32
+encodeDottedNameId unwrapDottedName (unwrapDottedName -> unmangled) = do
+    encoded <- encodeDottedName' unmangled
+    case encoded of
+        Left _ -> error ("could not intern dotted name " <> show unmangled)
+        Right id -> pure id
 
 -- | Encode the name of a top-level value. The name is mangled and will be
 -- interned in DAML-LF 1.7 and onwards.
@@ -288,9 +307,14 @@ encodeBuiltinType = P.Enumerated . Right . \case
     BTNumeric -> P.PrimTypeNUMERIC
     BTAny -> P.PrimTypeANY
     BTTypeRep -> P.PrimTypeTYPE_REP
+    BTAnyException -> P.PrimTypeANY_EXCEPTION
+    BTGeneralError -> P.PrimTypeGENERAL_ERROR
+    BTArithmeticError -> P.PrimTypeARITHMETIC_ERROR
+    BTContractError -> P.PrimTypeCONTRACT_ERROR
 
 encodeType' :: Type -> Encode P.Type
-encodeType' typ = fmap (P.Type . Just) $ case typ ^. _TApps of
+encodeType' typ = do
+  ptyp <- case typ ^. _TApps of
     (TVar var, args) -> do
         type_VarVar <- encodeName unTypeVarName var
         type_VarArgs <- encodeList encodeType' args
@@ -326,9 +350,27 @@ encodeType' typ = fmap (P.Type . Just) $ case typ ^. _TApps of
     -- which we don't support.
     (TForall{}, _:_) -> error "Application of TForall"
     (TSynApp{}, _:_) -> error "Application of TSynApp"
+  allocType ptyp
 
 encodeType :: Type -> Encode (Just P.Type)
 encodeType t = Just <$> encodeType' t
+
+allocType :: P.TypeSum -> Encode P.Type
+allocType ptyp = fmap (P.Type . Just) $ do
+    env@EncodeEnv{version, withInterning, internedTypes, nextInternedTypeId = n} <- get
+    if getWithInterning withInterning && version `supports` featureTypeInterning then
+        case ptyp `Map.lookup` internedTypes of
+            Just n -> pure (P.TypeSumInterned n)
+            Nothing -> do
+                when (n == maxBound) $
+                    error "Type interning table grew too large"
+                put $! env
+                    { internedTypes = Map.insert ptyp n internedTypes
+                    , nextInternedTypeId = n + 1
+                    }
+                pure (P.TypeSumInterned n)
+    else
+        pure ptyp
 
 ------------------------------------------------------------------------
 -- Encoding of expressions
@@ -472,7 +514,16 @@ encodeBuiltinExpr = \case
     BEAppendText -> builtin P.BuiltinFunctionAPPEND_TEXT
     BEImplodeText -> builtin P.BuiltinFunctionIMPLODE_TEXT
     BESha256Text -> builtin P.BuiltinFunctionSHA256_TEXT
+
     BEError -> builtin P.BuiltinFunctionERROR
+    BEThrow -> builtin P.BuiltinFunctionTHROW
+    BEAnyExceptionMessage -> builtin P.BuiltinFunctionANY_EXCEPTION_MESSAGE
+    BEGeneralErrorMessage -> builtin P.BuiltinFunctionGENERAL_ERROR_MESSAGE
+    BEArithmeticErrorMessage -> builtin P.BuiltinFunctionARITHMETIC_ERROR_MESSAGE
+    BEContractErrorMessage -> builtin P.BuiltinFunctionCONTRACT_ERROR_MESSAGE
+    BEMakeGeneralError -> builtin P.BuiltinFunctionMAKE_GENERAL_ERROR
+    BEMakeArithmeticError -> builtin P.BuiltinFunctionMAKE_ARITHMETIC_ERROR
+    BEMakeContractError -> builtin P.BuiltinFunctionMAKE_CONTRACT_ERROR
 
     BETextMapEmpty -> builtin P.BuiltinFunctionTEXTMAP_EMPTY
     BETextMapInsert -> builtin P.BuiltinFunctionTEXTMAP_INSERT
@@ -621,6 +672,15 @@ encodeExpr' = \case
         pureExpr $ P.ExprSumFromAny P.Expr_FromAny{..}
     ETypeRep ty -> do
         expr . P.ExprSumTypeRep <$> encodeType' ty
+    EMakeAnyException ty msg val -> do
+        expr_MakeAnyExceptionType <- encodeType ty
+        expr_MakeAnyExceptionMessage <- encodeExpr msg
+        expr_MakeAnyExceptionExpr <- encodeExpr val
+        pureExpr $ P.ExprSumMakeAnyException P.Expr_MakeAnyException{..}
+    EFromAnyException ty val -> do
+        expr_FromAnyExceptionType <- encodeType ty
+        expr_FromAnyExceptionExpr <- encodeExpr val
+        pureExpr $ P.ExprSumFromAnyException P.Expr_FromAnyException{..}
   where
     expr = P.Expr Nothing . Just
     pureExpr = pure . expr
@@ -645,7 +705,6 @@ encodeUpdate = fmap (P.Update . Just) . \case
         update_ExerciseTemplate <- encodeQualTypeConName exeTemplate
         update_ExerciseChoice <- encodeName unChoiceName exeChoice
         update_ExerciseCid <- encodeExpr exeContractId
-        update_ExerciseActor <- traverse encodeExpr' exeActors
         update_ExerciseArg <- encodeExpr exeArg
         pure $ P.UpdateSumExercise P.Update_Exercise{..}
     UExerciseByKey{..} -> do
@@ -669,6 +728,12 @@ encodeUpdate = fmap (P.Update . Just) . \case
         P.UpdateSumFetchByKey <$> encodeRetrieveByKey rbk
     ULookupByKey rbk ->
         P.UpdateSumLookupByKey <$> encodeRetrieveByKey rbk
+    UTryCatch{..} -> do
+        update_TryCatchReturnType <- encodeType tryCatchType
+        update_TryCatchTryExpr <- encodeExpr tryCatchExpr
+        update_TryCatchVarInternedStr <- encodeNameId unExprVarName tryCatchVar
+        update_TryCatchCatchExpr <- encodeExpr tryCatchHandler
+        pure $ P.UpdateSumTryCatch P.Update_TryCatch{..}
 
 encodeRetrieveByKey :: RetrieveByKey -> Encode P.Update_RetrieveByKey
 encodeRetrieveByKey RetrieveByKey{..} = do
@@ -786,6 +851,12 @@ encodeDefValue DefValue{..} = do
     defValueLocation <- traverse encodeSourceLoc dvalLocation
     pure P.DefValue{..}
 
+encodeDefException :: DefException -> Encode P.DefException
+encodeDefException DefException{..} = do
+    defExceptionNameInternedDname <- encodeDottedNameId unTypeConName exnName
+    defExceptionLocation <- traverse encodeSourceLoc exnLocation
+    pure P.DefException{..}
+
 encodeTemplate :: Template -> Encode P.DefTemplate
 encodeTemplate Template{..} = do
     defTemplateTycon <- encodeDottedName unTypeConName tplTypeCon
@@ -843,6 +914,7 @@ encodeModule Module{..} = do
     moduleDataTypes <- encodeNameMap encodeDefDataType moduleDataTypes
     moduleValues <- encodeNameMap encodeDefValue moduleValues
     moduleTemplates <- encodeNameMap encodeTemplate moduleTemplates
+    moduleExceptions <- encodeNameMap encodeDefException moduleExceptions
     pure P.Module{..}
 
 encodePackageMetadata :: PackageMetadata -> Encode P.PackageMetadata
@@ -855,12 +927,14 @@ encodePackageMetadata PackageMetadata{..} = do
 encodePackage :: Package -> P.Package
 encodePackage (Package version mods metadata) =
     let env = initEncodeEnv version (WithInterning True)
-        ((packageModules, packageMetadata), EncodeEnv{internedStrings, internedDottedNames}) =
+        ((packageModules, packageMetadata), EncodeEnv{internedStrings, internedDottedNames, internedTypes}) =
             runState ((,) <$> encodeNameMap encodeModule mods <*> traverse encodePackageMetadata metadata) env
         packageInternedStrings =
             V.fromList $ map (encodeString . fst) $ L.sortOn snd $ HMS.toList internedStrings
         packageInternedDottedNames =
             V.fromList $ map (P.InternedDottedName . V.fromList . fst) $ L.sortOn snd $ HMS.toList internedDottedNames
+        packageInternedTypes =
+            V.fromList $ map (P.Type . Just . fst) $ L.sortOn snd $ Map.toList internedTypes
     in
     P.Package{..}
 

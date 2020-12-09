@@ -142,7 +142,7 @@ If the token cannot be read from the provided path or the Ledger API reports an 
 Party-specific Access Tokens
 ----------------------------
 
-Party-specific requests, i.e., command submissions and queries, require a JWT with some additional restrictions compared to the the format :doc:`described in the Token Payload section here </tools/sandbox>`. For command submissions, ``actAs`` must contain exactly one party and ``readAs`` can contain 0 or more parties. Queries require at least one party in either ``actAs`` or ``readAs`` (note that before SDK 1.7.0, every request required exactly one party). In addition to that, the application id and ledger id are mandatory. HTTP requests pass the token in a header, while WebSocket requests pass the token in a subprotocol.
+Party-specific requests, i.e., command submissions and queries, require a JWT with some additional restrictions compared to the format :doc:`described in the Token Payload section here </tools/sandbox>`. For command submissions, ``actAs`` must contain exactly one party and ``readAs`` can contain 0 or more parties. Queries require at least one party in either ``actAs`` or ``readAs`` (note that before SDK 1.7.0, every request required exactly one party). In addition to that, the application id and ledger id are mandatory. HTTP requests pass the token in a header, while WebSocket requests pass the token in a subprotocol.
 
 .. note:: While the JSON API receives the token it doesn't validate it itself. Upon receiving a token it will pass it, and all data contained within the request, on to the Ledger API's AuthService which will then determine if the token is valid and authorized. However, the JSON API does decode the token to extract the ledger id, application id and party so it requires that you use the JWT format documented below.
 
@@ -219,7 +219,7 @@ Example:
 
 .. code-block:: none
 
-    jwt.token.eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJodHRwczovL2RhbWwuY29tL2xlZGdlci1hcGkiOnsibGVkZ2VySWQiOiJNeUxlZGdlciIsImFwcGxpY2F0aW9uSWQiOiJIVFRQLUpTT04tQVBJLUdhdGV3YXkiLCJhY3RBcyI6WyJBbGljZSJdfX0.34zzF_fbWv7p60r5s1kKzwndvGdsJDX-W4Xhm4oVdpk``
+    jwt.token.eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJodHRwczovL2RhbWwuY29tL2xlZGdlci1hcGkiOnsibGVkZ2VySWQiOiJNeUxlZGdlciIsImFwcGxpY2F0aW9uSWQiOiJIVFRQLUpTT04tQVBJLUdhdGV3YXkiLCJhY3RBcyI6WyJBbGljZSJdfX0.34zzF_fbWv7p60r5s1kKzwndvGdsJDX-W4Xhm4oVdpk
 
 HTTP Status Codes
 *****************
@@ -425,7 +425,7 @@ Where:
 Creating a Contract with a Command ID
 *************************************
 
-When creating a new contract you may specify an optional ``meta`` field. This allows you to control the `commandId` used when submitting a commend to the ledger.
+When creating a new contract you may specify an optional ``meta`` field. This allows you to control the `commandId` used when submitting a command to the ledger.
 
 .. note:: You cannot currently use ``commandIds`` anywhere else in the JSON API, but you can use it for observing the results of its commands outside the JSON API in logs or via the Ledger API's :doc:`Command Services </app-dev/services>`
 
@@ -1201,7 +1201,7 @@ Streaming API
 *************
 
 Two subprotocols must be passed with every request, as described in
-`Passing token with WebSockets <#passing-token-with-websockets>`__.
+`Auth via WebSockets <#auth-via-websockets>`__.
 
 JavaScript/Node.js example demonstrating how to establish Streaming API connection:
 
@@ -1489,3 +1489,33 @@ created before the offset *unless* those contracts are identified in a
 ``contractIdAtOffset``.  By contrast, if any ``contractIdAtOffset`` is
 missing, ``archived`` event filtering will be disabled, and you will
 receive "phantom archives" as with query streams.
+
+Healthcheck Endpoints
+*********************
+
+The HTTP JSON API provides two healthcheck endpoints for integration
+with schedulers like
+`Kubernetes <https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/>`_.
+
+Liveness check
+==============
+
+- URL: ``/livez``
+- Method: ``GET``
+
+A status code of ``200`` indicates a successful liveness check.
+
+This is an unauthenticated endpoint intended to be used as a liveness
+probe.
+
+Readyness check
+===============
+
+- URL: ``/readyz``
+- Method: ``GET``
+
+A status code of ``200`` indicates a successful readyness check.
+
+This is an unauthenticated endpoint intended to be used as a liveness
+probe. It validates both the ledger connection as well as the database
+connection.

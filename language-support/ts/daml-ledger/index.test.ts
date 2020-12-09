@@ -72,9 +72,12 @@ jest.mock('isomorphic-ws', () => class {
 
 
 const Foo: Template<Foo, string, "foo-id"> = {
+  sdkVersion: '0.0.0-SDKVERSION',
   templateId: "foo-id",
   keyDecoder: jtv.string(),
+  keyEncode: (s: string): unknown => s,
   decoder: jtv.object({key: jtv.string()}),
+  encode: (o) => o,
   Archive: {} as unknown as Choice<Foo, {}, {}, string>,
 };
 

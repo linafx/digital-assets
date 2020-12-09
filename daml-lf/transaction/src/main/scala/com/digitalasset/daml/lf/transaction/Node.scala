@@ -4,14 +4,14 @@
 package com.daml.lf
 package transaction
 
-import com.daml.lf.data.{ImmArray, ScalazEqual}
 import com.daml.lf.data.Ref._
-import com.daml.lf.value.{CidContainer, CidContainer1, CidContainer3, CidMapper, Value}
-
-import scala.language.higherKinds
+import com.daml.lf.data.{ImmArray, ScalazEqual}
+import com.daml.lf.value._
 import scalaz.Equal
 import scalaz.std.option._
 import scalaz.syntax.equal._
+
+import scala.language.higherKinds
 
 /**
   * Generic transaction node type for both update transactions and the
@@ -27,6 +27,7 @@ object Node {
       with CidContainer[GenNode[Nid, Cid, Val]] {
 
     def templateId: TypeConName
+    def version: TransactionVersion
 
     final override protected def self: this.type = this
 
@@ -54,6 +55,8 @@ object Node {
 
     def foreach3(fNid: Nid => Unit, fCid: Cid => Unit, fVal: Val => Unit) =
       GenNode.foreach3(fNid, fCid, fVal)(this)
+
+    private[lf] def updateVersion(version: TransactionVersion): GenNode[Nid, Cid, Val]
   }
 
   object GenNode extends WithTxValue3[GenNode] with CidContainer3[GenNode] {
@@ -70,6 +73,7 @@ object Node {
             _,
             _,
             key,
+            _,
           ) =>
         self copy (
           coid = f2(coid),
@@ -84,6 +88,7 @@ object Node {
             _,
             _,
             key,
+            _,
             _,
           ) =>
         self copy (
@@ -101,10 +106,10 @@ object Node {
             _,
             _,
             _,
-            _,
             children,
             exerciseResult,
             key,
+            _,
             _,
           ) =>
         self copy (
@@ -119,6 +124,7 @@ object Node {
             _,
             key,
             result,
+            _,
           ) =>
         self copy (
           key = KeyWithMaintainers.map1(f3)(key),
@@ -138,6 +144,7 @@ object Node {
           signatories @ _,
           stakeholders @ _,
           key,
+          _,
           ) =>
         f2(coid)
         Value.ContractInst.foreach1(f3)(coinst)
@@ -150,6 +157,7 @@ object Node {
           signatoriesd @ _,
           stakeholdersd @ _,
           key,
+          _,
           _,
           ) =>
         f2(coid)
@@ -165,10 +173,10 @@ object Node {
           stakeholders @ _,
           signatories @ _,
           choiceObservers @ _,
-          controllersDifferFromActors @ _,
           children @ _,
           exerciseResult,
           key,
+          _,
           _,
           ) =>
         f2(targetCoid)
@@ -181,6 +189,7 @@ object Node {
           optLocation @ _,
           key,
           result,
+          _,
           ) =>
         KeyWithMaintainers.foreach1(f3)(key)
         result.foreach(f2)
@@ -200,11 +209,16 @@ object Node {
       signatories: Set[Party],
       stakeholders: Set[Party],
       key: Option[KeyWithMaintainers[Val]],
+      // For the sake of consistency between types with a version field, keep this field the last.
+      override val version: TransactionVersion,
   ) extends LeafOnlyNode[Cid, Val]
       with NodeInfo.Create {
 
     override def templateId: TypeConName = coinst.template
     override def byKey: Boolean = false
+
+    override private[lf] def updateVersion(version: TransactionVersion): NodeCreate[Cid, Val] =
+      copy(version = version)
   }
 
   object NodeCreate extends WithTxValue2[NodeCreate]
@@ -214,13 +228,19 @@ object Node {
       coid: Cid,
       override val templateId: TypeConName,
       optLocation: Option[Location], // Optional location of the fetch expression
-      actingParties: Option[Set[Party]],
+      actingParties: Set[Party],
       signatories: Set[Party],
       stakeholders: Set[Party],
       key: Option[KeyWithMaintainers[Val]],
-      override val byKey: Boolean // invariant (!byKey || exerciseResult.isDefined)
+      override val byKey: Boolean, // invariant (!byKey || exerciseResult.isDefined)
+      // For the sake of consistency between types with a version field, keep this field the last.
+      override val version: TransactionVersion,
   ) extends LeafOnlyNode[Cid, Val]
-      with NodeInfo.Fetch
+      with NodeInfo.Fetch {
+
+    override private[lf] def updateVersion(version: TransactionVersion): NodeFetch[Cid, Val] =
+      copy(version = version)
+  }
 
   object NodeFetch extends WithTxValue2[NodeFetch]
 
@@ -228,12 +248,6 @@ object Node {
     * We remember the `children` of this `NodeExercises`
     * to allow segregating the graph afterwards into party-specific
     * ledgers.
-    *
-    * @param controllersDifferFromActors
-    *     When we decode transactions version<6, the controllers might be different
-    *     from the actors.  However, such a transaction is always invalid, so we
-    *     prevalidate that when decoding and report the error when we get to the
-    *     actual validation stage.
     */
   final case class NodeExercises[+Nid, +Cid, +Val](
       targetCoid: Cid,
@@ -246,69 +260,41 @@ object Node {
       stakeholders: Set[Party],
       signatories: Set[Party],
       choiceObservers: Set[Party],
-      controllersDifferFromActors: Boolean,
       children: ImmArray[Nid],
       exerciseResult: Option[Val],
       key: Option[KeyWithMaintainers[Val]],
-      override val byKey: Boolean // invariant (!byKey || exerciseResult.isDefined)
+      override val byKey: Boolean, // invariant (!byKey || exerciseResult.isDefined)
+      // For the sake of consistency between types with a version field, keep this field the last.
+      override val version: TransactionVersion,
   ) extends GenNode[Nid, Cid, Val]
       with NodeInfo.Exercise {
     @deprecated("use actingParties instead", since = "1.1.2")
     private[daml] def controllers: actingParties.type = actingParties
-  }
 
-  object NodeExercises extends WithTxValue3[NodeExercises] {
-
-    /** After interpretation authorization, it must be the case that
-      * the controllers are the same as the acting parties. This
-      * apply method enforces it.
-      */
-    def apply[Nid, Cid, Val](
-        targetCoid: Cid,
-        templateId: TypeConName,
-        choiceId: ChoiceName,
-        optLocation: Option[Location],
-        consuming: Boolean,
-        actingParties: Set[Party],
-        chosenValue: Val,
-        stakeholders: Set[Party],
-        signatories: Set[Party],
-        choiceObservers: Set[Party],
-        children: ImmArray[Nid],
-        exerciseResult: Option[Val],
-        key: Option[KeyWithMaintainers[Val]],
-        byKey: Boolean,
+    override private[lf] def updateVersion(
+        version: TransactionVersion,
     ): NodeExercises[Nid, Cid, Val] =
-      NodeExercises(
-        targetCoid,
-        templateId,
-        choiceId,
-        optLocation,
-        consuming,
-        actingParties,
-        chosenValue,
-        stakeholders,
-        signatories,
-        choiceObservers,
-        controllersDifferFromActors = false,
-        children,
-        exerciseResult,
-        key,
-        byKey
-      )
+      copy(version = version)
   }
+
+  object NodeExercises extends WithTxValue3[NodeExercises]
 
   final case class NodeLookupByKey[+Cid, +Val](
       override val templateId: TypeConName,
       optLocation: Option[Location],
       key: KeyWithMaintainers[Val],
       result: Option[Cid],
+      // For the sake of consistency between types with a version field, keep this field the last.
+      override val version: TransactionVersion,
   ) extends LeafOnlyNode[Cid, Val]
       with NodeInfo.LookupByKey {
 
     override def keyMaintainers: Set[Party] = key.maintainers
     override def hasResult: Boolean = result.isDefined
     override def byKey: Boolean = true
+
+    override private[lf] def updateVersion(version: TransactionVersion): NodeLookupByKey[Cid, Val] =
+      copy(version = version)
   }
 
   object NodeLookupByKey extends WithTxValue2[NodeLookupByKey]
@@ -344,16 +330,25 @@ object Node {
 
   }
 
+  @deprecated("this method is not maintain anymore", since = "1.7.0")
   final def isReplayedBy[Cid: Equal, Val: Equal](
       recorded: GenNode[Nothing, Cid, Val],
       isReplayedBy: GenNode[Nothing, Cid, Val],
   ): Boolean =
     ScalazEqual.match2[recorded.type, isReplayedBy.type, Boolean](fallback = false) {
       case nc: NodeCreate[Cid, Val] => {
-        case NodeCreate(coid2, coinst2, optLocation2 @ _, signatories2, stakeholders2, key2) =>
+        case NodeCreate(
+            coid2,
+            coinst2,
+            optLocation2 @ _,
+            signatories2,
+            stakeholders2,
+            key2,
+            version2) =>
           import nc._
           // NOTE(JM): Do not compare location annotations as they may differ due to
           // differing update expression constructed from the root node.
+          version == version2 &&
           coid === coid2 && coinst === coinst2 &&
           signatories == signatories2 && stakeholders == stakeholders2 && key === key2
         case _ => false
@@ -368,8 +363,10 @@ object Node {
             stakeholders2,
             key2,
             _,
+            version2,
             ) =>
           import nf._
+          version == version2 &&
           coid === coid2 && templateId == templateId2 &&
           actingParties.forall(_ => actingParties == actingParties2) &&
           signatories == signatories2 && stakeholders == stakeholders2 &&
@@ -387,33 +384,28 @@ object Node {
             stakeholders2,
             signatories2,
             choiceObservers2,
-            controllersDifferFromActors2,
             _,
             exerciseResult2,
             key2,
             _,
+            version2,
             ) =>
           import ne._
+          version == version2 &&
           targetCoid === targetCoid2 && templateId == templateId2 && choiceId == choiceId2 &&
           consuming == consuming2 && actingParties == actingParties2 && chosenValue === chosenValue2 &&
           stakeholders == stakeholders2 && signatories == signatories2 && choiceObservers == choiceObservers2 &&
-          controllersDifferFromActors == controllersDifferFromActors2 &&
           exerciseResult.fold(true)(_ => exerciseResult === exerciseResult2) &&
           key.fold(true)(_ => key === key2)
       }
       case nl: NodeLookupByKey[Cid, Val] => {
-        case NodeLookupByKey(templateId2, optLocation2 @ _, key2, result2) =>
+        case NodeLookupByKey(templateId2, optLocation2 @ _, key2, result2, version2) =>
           import nl._
+          version == version2 &&
           templateId == templateId2 &&
           key === key2 && result === result2
       }
     }(recorded, isReplayedBy)
-
-  @deprecated("use com.daml.lf.transaction.GlobalKey", "1.4.0")
-  type GlobalKey = transaction.GlobalKey
-
-  @deprecated("use com.daml.lf.transaction.GlobalKey", "1.4.0")
-  val GlobalKey = transaction.GlobalKey
 
   sealed trait WithTxValue2[F[+ _, + _]] {
     type WithTxValue[+Cid] = F[Cid, Transaction.Value[Cid]]

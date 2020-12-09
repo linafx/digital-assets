@@ -10,12 +10,13 @@ import com.daml.lf.transaction.GlobalKey
 import com.daml.lf.value.Value.ContractId
 import com.daml.lf.value.{Value, ValueVersions}
 import org.scalatest.prop.TableDrivenPropertyChecks
-import org.scalatest.{Matchers, WordSpec}
+import org.scalatest.matchers.should.Matchers
+import org.scalatest.wordspec.AnyWordSpec
 
 import scala.language.implicitConversions
 
 class ContractDiscriminatorFreshnessCheckSpec
-    extends WordSpec
+    extends AnyWordSpec
     with Matchers
     with TableDrivenPropertyChecks {
 
@@ -123,7 +124,7 @@ class ContractDiscriminatorFreshnessCheckSpec
     engine
       .submit(
         cmds = command.Commands(
-          submitter = alice,
+          submitters = Set(alice),
           commands = cmds,
           ledgerEffectiveTime = let,
           commandsReference = "test",
@@ -208,7 +209,7 @@ class ContractDiscriminatorFreshnessCheckSpec
 
     }
 
-    "fails when  a local conflicts with a local contract previously fetched" in {
+    "fails when a local conflicts with a local contract previously fetched" in {
 
       val conflictingCid = {
         val createNodeSeed = crypto.Hash.deriveNodeSeed(transactionSeed, 1)

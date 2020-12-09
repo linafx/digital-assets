@@ -74,17 +74,31 @@ jobs:
       - git_sha
     variables:
       fork_sha: $[ dependencies.git_sha.outputs['out.fork_point'] ]
-      pr_commit: $[ dependencies.git_sha.outputs['out.branch'] ]
+      branch_sha: $[ dependencies.git_sha.outputs['out.branch'] ]
+      pr.num: $[ variables['System.PullRequest.PullRequestNumber'] ]
     condition: eq(variables['Build.Reason'], 'PullRequest')
     pool:
       name: 'linux-pool'
       demands: assignment -equals default
     steps:
       - checkout: self
+      - template: ci/bash-lib.yml
+        parameters:
+          var_name: bash-lib
       - bash: |
           set -euo pipefail
-          git checkout $(pr_commit)
-          ci/check-changelog.sh $(fork_sha)
+          source $(bash-lib)
+          git checkout $(branch_sha)
+          if ci/check-changelog.sh $(fork_sha); then
+              exit 0
+          else
+              user=$(user_slack_handle $(branch_sha))
+              if [ "$user" != "" ]; then
+                  tell_slack "<@${user}> <https://dev.azure.com/digitalasset/daml/_build/results?buildId=$(Build.BuildId)|Build $(Build.BuildId)> for <https://github.com/digital-asset/daml/pull/$(pr.num)|PR $(pr.num)> is missing a changelog entry." \
+                         "$(Slack.team-daml-ci)"
+              fi
+              exit 1
+          fi
 
   - template: ci/da-ghc-lib/compile.yml
     parameters:
@@ -134,6 +148,7 @@ jobs:
     timeoutInMinutes: 360
     pool:
       name: macOS-pool
+      demands: assignment -equals default
     variables:
       release_sha: $[ dependencies.check_for_release.outputs['out.release_sha'] ]
       release_tag: $[ coalesce(dependencies.check_for_release.outputs['out.release_tag'], '0.0.0') ]
@@ -239,6 +254,7 @@ jobs:
     timeoutInMinutes: 360
     pool:
       name: macOS-pool
+      demands: assignment -equals default
     steps:
       - template: ci/report-start.yml
       - template: ci/clear-shared-segments-macos.yml
@@ -516,7 +532,7 @@ jobs:
           curl -XPOST \
                -i \
                -H 'Content-Type: application/json' \
-               --data "{\"text\":\"<@${pr_handler}> Release \`$(release_tag)\` is ready for testing. (<https://dev.azure.com/digitalasset/daml/_build/results?buildId=$(Build.BuildId)|build>, <https://github.com/digital-asset/daml/commit/$(trigger_sha)|trigger commit>, <https://github.com/digital-asset/daml/commit/$(release_sha)|target commit>)\"}" \
+               --data "{\"text\":\"<@${pr_handler}> Release \`$(release_tag)\` is ready for testing. See <https://github.com/digital-asset/daml/blob/master/release/RELEASE.md|release instructions>. (<https://dev.azure.com/digitalasset/daml/_build/results?buildId=$(Build.BuildId)|build>, <https://github.com/digital-asset/daml/commit/$(trigger_sha)|trigger commit>, <https://github.com/digital-asset/daml/commit/$(release_sha)|target commit>)\"}" \
                $(Slack.team-daml)
       - template: ci/tell-slack-failed.yml
         parameters:
@@ -797,7 +813,19 @@ jobs:
           # the PR. Hence the `|| echo ""`.
           PR_HANDLER=$(head -1 release/rotation | awk '{print $1}')
 
-          tell_slack "<@${PR_HANDLER}> <https://dev.azure.com/digitalasset/daml/_build/results?buildId=$(Build.BuildId)|Build $(Build.BuildId)> for release PR <https://github.com/digital-asset/daml/pull/${PR}|#${PR}> has completed with status $(status). See <https://github.com/digital-asset/daml/blob/master/release/RELEASE.md|RELEASE.md> for what to do next."
+          case "$(status)" in
+            Succeeded*)
+              msg="has succeeded! Next step is to approve & merge."
+              ;;
+            Failed*)
+              msg="has failed. Please investigate."
+              ;;
+            *)
+              # Should not be reached, but who knows?
+              msg="has completed with status $(status). See <https://github.com/digital-asset/daml/blob/master/release/RELEASE.md|RELEASE.md> for what to do next."
+              ;;
+            esac
+          tell_slack "<@${PR_HANDLER}> <https://dev.azure.com/digitalasset/daml/_build/results?buildId=$(Build.BuildId)|Build $(Build.BuildId)> for release PR <https://github.com/digital-asset/daml/pull/${PR}|#${PR}> $msg"
 
   - job: notify_user
     condition: and(eq(variables['Build.Reason'], 'PullRequest'), not(canceled()))
@@ -805,104 +833,25 @@ jobs:
       - git_sha
       - collect_build_data
       - check_for_release
+      - check_changelog_entry
     pool:
       name: 'linux-pool'
       demands: assignment -equals default
     variables:
       pr.num: $[ variables['System.PullRequest.PullRequestNumber'] ]
       branch_sha: $[ dependencies.git_sha.outputs['out.branch'] ]
-      status: $[ dependencies.collect_build_data.result ]
+      build_status: $[ dependencies.collect_build_data.result ]
+      changelog_status: $[ dependencies.check_changelog_entry.result ]
     steps:
+      - template: ci/bash-lib.yml
+        parameters:
+          var_name: bash-lib
       - bash: |
           set -euo pipefail
+          source $(bash-lib)
 
-          tell_slack() {
-              local MESSAGE=$1
-              local USER_ID=$2
-              curl -XPOST \
-                   -i \
-                   -H 'Content-Type: application/json' \
-                   --data "{\"text\":\"<@${USER_ID}> <https://dev.azure.com/digitalasset/daml/_build/results?buildId=$(Build.BuildId)|Build $(Build.BuildId)> for <https://github.com/digital-asset/daml/pull/$(pr.num)|PR $(pr.num)> has completed with status ${MESSAGE}.\"}" \
-                   $(Slack.team-daml-ci)
-          }
-
-          EMAIL=$(git log -n 1 --format=%ae $(branch_sha))
-          user_registered() {
-              cat ci/slack_user_ids | grep $EMAIL
-          }
-
-          user_id() {
-              echo $(cat ci/slack_user_ids | grep $EMAIL | awk '{print $2}')
-          }
-
-          if user_registered; then
-              tell_slack "$(status)" "$(user_id)"
-          else
-              echo "User $(user_id) did not opt in for notifications."
+          user=$(user_slack_handle $(branch_sha))
+          if [ "$user" != "" ]; then
+              tell_slack "<@${user}> <https://dev.azure.com/digitalasset/daml/_build/results?buildId=$(Build.BuildId)|Build $(Build.BuildId)> for <https://github.com/digital-asset/daml/pull/$(pr.num)|PR $(pr.num)> has completed with status $(build_status) (changelog: $(changelog_status))." \
+                         "$(Slack.team-daml-ci)"
           fi
-
-  # temporary (?) workaround for Azure not reporting global build status to GitHub anymore.
-  - job: finished
-    pool:
-      name: 'linux-pool'
-      demands: assignment -equals default
-    dependsOn:
-    - git_sha
-    - check_standard_change_label
-    - check_changelog_entry
-    - Linux
-    - macOS
-    - Windows
-    - compatibility_ts_libs
-    - compatibility_linux
-    - compatibility_macos
-    - compatibility_windows
-    - check_for_release
-    - check_perf_test
-    - release
-    - compat_versions_pr
-    - compat_versions_pr_trigger_daily
-    - collect_build_data
-    - notify_release_pr
-    - notify_user
-    condition: always()
-    variables:
-      git_sha: $[ dependencies.git_sha.result ]
-      check_standard_change_label: $[ dependencies.check_standard_change_label.result ]
-      check_changelog_entry: $[ dependencies.check_changelog_entry.result ]
-      Linux: $[ dependencies.Linux.result ]
-      macOS: $[ dependencies.macOS.result ]
-      Windows: $[ dependencies.Windows.result ]
-      compatibility_ts_libs: $[ dependencies.compatibility_ts_libs.result ]
-      compatibility_linux: $[ dependencies.compatibility_linux.result ]
-      compatibility_macos: $[ dependencies.compatibility_macos.result ]
-      compatibility_windows: $[ dependencies.compatibility_windows.result ]
-      check_for_release: $[ dependencies.check_for_release.result ]
-      check_perf_test: $[ dependencies.check_perf_test.result ]
-      release: $[ dependencies.release.result ]
-      compat_versions_pr: $[ dependencies.compat_versions_pr.result ]
-      compat_versions_pr_trigger_daily: $[ dependencies.compat_versions_pr_trigger_daily.result ]
-      collect_build_data: $[ dependencies.collect_build_data.result ]
-      notify_release_pr: $[ dependencies.notify_release_pr.result ]
-      notify_user: $[ dependencies.notify_user.result ]
-    steps:
-    - bash: |
-        set -euo pipefail
-        if [ "$(git_sha)" != "Succeeded" ] && [ "$(git_sha)" != "Skipped" ]; then exit 1; fi
-        if [ "$(check_standard_change_label)" != "Succeeded" ] && [ "$(check_standard_change_label)" != "Skipped" ]; then exit 1; fi
-        if [ "$(check_changelog_entry)" != "Succeeded" ] && [ "$(check_changelog_entry)" != "Skipped" ]; then exit 1; fi
-        if [ "$(Linux)" != "Succeeded" ] && [ "$(Linux)" != "Skipped" ]; then exit 1; fi
-        if [ "$(macOS)" != "Succeeded" ] && [ "$(macOS)" != "Skipped" ]; then exit 1; fi
-        if [ "$(Windows)" != "Succeeded" ] && [ "$(Windows)" != "Skipped" ]; then exit 1; fi
-        if [ "$(compatibility_ts_libs)" != "Succeeded" ] && [ "$(compatibility_ts_libs)" != "Skipped" ]; then exit 1; fi
-        if [ "$(compatibility_linux)" != "Succeeded" ] && [ "$(compatibility_linux)" != "Skipped" ]; then exit 1; fi
-        if [ "$(compatibility_macos)" != "Succeeded" ] && [ "$(compatibility_macos)" != "Skipped" ]; then exit 1; fi
-        if [ "$(compatibility_windows)" != "Succeeded" ] && [ "$(compatibility_windows)" != "Skipped" ]; then exit 1; fi
-        if [ "$(check_for_release)" != "Succeeded" ] && [ "$(check_for_release)" != "Skipped" ]; then exit 1; fi
-        if [ "$(check_perf_test)" != "Succeeded" ] && [ "$(check_perf_test)" != "Skipped" ]; then exit 1; fi
-        if [ "$(release)" != "Succeeded" ] && [ "$(release)" != "Skipped" ]; then exit 1; fi
-        if [ "$(compat_versions_pr)" != "Succeeded" ] && [ "$(compat_versions_pr)" != "Skipped" ]; then exit 1; fi
-        if [ "$(compat_versions_pr_trigger_daily)" != "Succeeded" ] && [ "$(compat_versions_pr_trigger_daily)" != "Skipped" ]; then exit 1; fi
-        if [ "$(collect_build_data)" != "Succeeded" ] && [ "$(collect_build_data)" != "Skipped" ]; then exit 1; fi
-        if [ "$(notify_release_pr)" != "Succeeded" ] && [ "$(notify_release_pr)" != "Skipped" ]; then exit 1; fi
-        if [ "$(notify_user)" != "Succeeded" ] && [ "$(notify_user)" != "Skipped" ]; then exit 1; fi

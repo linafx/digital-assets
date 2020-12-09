@@ -17,11 +17,11 @@ e.g., your UI or :doc:`DAML triggers </triggers/index>`.
 
 DAML Script addresses this problem by providing you with an API with
 the simplicity of DAML scenarios and all the benefits such as being
-able to reuse your DAML types and logic while running against an actual
-ledger in addition to allowing you to experiment in :ref:`DAML Studio <scenario-script-results>`.
-This means that you can use it to test automation logic, your
-UI but also for :ref:`ledger initialization <script-ledger-initialization>`
-where scenarios cannot be used (with the exception of :doc:`/tools/sandbox`).
+able to reuse your DAML types and logic while running against an
+actual ledger in addition to allowing you to experiment in
+:ref:`DAML Studio <scenario-script-results>`.  This means that you can use it for
+application scripting, to test automation logic and also for
+:ref:`ledger initialization <script-ledger-initialization>`.
 
 You can also use DAML Script interactively using :doc:`/daml-repl/index`.
 
@@ -127,6 +127,9 @@ the type ``Script ()``.
    :start-after: -- INITIALIZE_PURE_BEGIN
    :end-before: -- INITIALIZE_PURE_END
 
+Party management
+----------------
+
 We have now defined a way to initialize the ledger so we can write a
 test that checks that the contracts that we expect exist afterwards.
 
@@ -160,6 +163,19 @@ parties that we have just allocated.
    :start-after: -- TEST_INITIALIZE_BEGIN
    :end-before: -- TEST_INITIALIZE_END
 
+Another option for getting access to the relevant party ids is to use
+``listKnownParties`` to pick out the party with a given display
+name. This is mainly useful in demo scenarios because display names
+are not guaranteed to be unique.
+
+.. literalinclude:: ./template-root/src/ScriptExample.daml
+   :language: daml
+   :start-after: -- INITIALIZE_QUERY_BEGIN
+   :end-before: -- INITIALIZE_QUERY_END
+
+Queries
+-------
+
 To verify the contracts on the ledger, we use the ``query``
 function. We pass it the type of the template and a party. It will
 then give us all active contracts of the given type visible to the
@@ -173,6 +189,9 @@ them away using ``map snd``.
    :language: daml
    :start-after: -- TEST_QUERIES_BEGIN
    :end-before: -- TEST_QUERIES_END
+
+Running a Script
+----------------
 
 To run our script, we first build it with ``daml build`` and then run
 it by pointing to the DAR, the name of our script, the host and
@@ -332,10 +351,10 @@ In some cases, you only have access to the
 :doc:`HTTP JSON API </json-api/index>` but not to the gRPC of a ledger, e.g., on
 `project:DABL <https://projectdabl.com>`_. For this usecase, DAML
 script can be run against the JSON API. Note that if you do have
-access to the gRPC API, running DAML script against the JSON API does
+access to the gRPC Ledger API, running DAML script against the JSON API does
 not have any advantages.
 
-To run DAML script against the JSON API you have to pass the ``--json-api`` parameter to ``daml script``. There are a few differences and limitations compared to running DAML Script against the gRPC API:
+To run DAML script against the JSON API you have to pass the ``--json-api`` parameter to ``daml script``. There are a few differences and limitations compared to running DAML Script against the gRPC Ledger API:
 
 #. When running against the JSON API, the ``--host`` argument has to
    contain an ``http://`` or ``https://`` prefix, e.g., ``daml

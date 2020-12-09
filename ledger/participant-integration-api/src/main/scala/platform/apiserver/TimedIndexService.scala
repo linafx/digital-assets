@@ -28,7 +28,7 @@ import com.daml.ledger.api.v1.transaction_service.{
 }
 import com.daml.ledger.participant.state.index.v2
 import com.daml.ledger.participant.state.index.v2.IndexService
-import com.daml.ledger.participant.state.v1.{Configuration, PackageId, ParticipantId, Party}
+import com.daml.ledger.participant.state.v1.{Configuration, Offset, PackageId, ParticipantId, Party}
 import com.daml.lf.data.Ref
 import com.daml.lf.language.Ast
 import com.daml.lf.transaction.GlobalKey
@@ -187,21 +187,28 @@ private[daml] final class TimedIndexService(delegate: IndexService, metrics: Met
 
   override def deduplicateCommand(
       commandId: CommandId,
-      submitter: Ref.Party,
+      submitters: List[Ref.Party],
       submittedAt: Instant,
       deduplicateUntil: Instant,
   )(implicit loggingContext: LoggingContext): Future[v2.CommandDeduplicationResult] =
     Timed.future(
       metrics.daml.services.index.deduplicateCommand,
-      delegate.deduplicateCommand(commandId, submitter, submittedAt, deduplicateUntil))
+      delegate.deduplicateCommand(commandId, submitters, submittedAt, deduplicateUntil))
 
   override def stopDeduplicatingCommand(
       commandId: CommandId,
-      submitter: Ref.Party,
+      submitters: List[Ref.Party],
   )(implicit loggingContext: LoggingContext): Future[Unit] =
     Timed.future(
       metrics.daml.services.index.stopDeduplicateCommand,
-      delegate.stopDeduplicatingCommand(commandId, submitter))
+      delegate.stopDeduplicatingCommand(commandId, submitters))
+
+  override def prune(pruneUpToInclusive: Offset)(
+      implicit loggingContext: LoggingContext): Future[Unit] =
+    Timed.future(
+      metrics.daml.services.index.prune,
+      delegate.prune(pruneUpToInclusive)
+    )
 
   override def currentHealth(): HealthStatus =
     delegate.currentHealth()

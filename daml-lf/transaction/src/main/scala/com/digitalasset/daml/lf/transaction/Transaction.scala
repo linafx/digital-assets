@@ -6,9 +6,8 @@ package transaction
 
 import com.daml.lf.data.Ref._
 import com.daml.lf.data._
-import com.daml.lf.language.LanguageVersion
 import com.daml.lf.ledger.FailedAuthorization
-import com.daml.lf.transaction.GenTransaction.WithTxValue
+import com.daml.lf.transaction.Node.GenNode
 import com.daml.lf.value.Value
 import scalaz.Equal
 
@@ -17,7 +16,8 @@ import scala.collection.immutable.HashMap
 
 final case class VersionedTransaction[Nid, +Cid] private[lf] (
     version: TransactionVersion,
-    private[lf] val transaction: GenTransaction.WithTxValue[Nid, Cid],
+    nodes: Map[Nid, GenNode.WithTxValue[Nid, Cid]],
+    override val roots: ImmArray[Nid],
 ) extends HasTxNodes[Nid, Cid, Transaction.Value[Cid]]
     with value.CidContainer[VersionedTransaction[Nid, Cid]]
     with NoCopy {
@@ -25,68 +25,50 @@ final case class VersionedTransaction[Nid, +Cid] private[lf] (
   override protected def self: this.type = this
 
   @deprecated("use resolveRelCid/ensureNoCid/ensureNoRelCid", since = "0.13.52")
-  def mapContractId[Cid2](f: Cid => Cid2): VersionedTransaction[Nid, Cid2] =
+  def mapContractId[Cid2](f: Cid => Cid2): VersionedTransaction[Nid, Cid2] = {
+    val versionNode = GenNode.map3(identity[Nid], f, Value.VersionedValue.map1(f))
     VersionedTransaction(
       version,
-      transaction = GenTransaction.map3(identity[Nid], f, Value.VersionedValue.map1(f))(transaction)
-    )
-
-  /** Increase the `version` if appropriate for `languageVersions`.
-    *
-    * This does not recur into the values herein; it is safe to apply
-    * [[VersionedValue#typedBy]] to any subset of this `languageVersions` for all
-    * values herein, unlike most [[value.Value]] operations.
-    *
-    * {{{
-    *   val vt2 = vt.typedBy(someVers:_*)
-    *   // safe if and only if vx() yields a subset of someVers
-    *   vt2.copy(transaction = vt2.transaction
-    *              .mapContractIdAndValue(identity, _.typedBy(vx():_*)))
-    * }}}
-    *
-    * However, applying the ''same'' version set is probably not what you mean,
-    * because the set of language versions that types a whole transaction is
-    * probably not the same set as those language version[s] that type each
-    * value, since each value can be typed by different modules.
-    */
-  def typedBy(languageVersions: LanguageVersion*): VersionedTransaction[Nid, Cid] = {
-    import VersionTimeline._
-    import Implicits._
-    VersionedTransaction(
-      latestWhenAllPresent(version, languageVersions map (a => a: SpecifiedVersion): _*),
-      transaction,
+      nodes = nodes.transform((_, node) => versionNode(node)),
+      roots,
     )
   }
 
-  override def nodes: HashMap[Nid, Node.GenNode.WithTxValue[Nid, Cid]] =
-    transaction.nodes
+  // O(1)
+  def transaction: GenTransaction[Nid, Cid, Transaction.Value[Cid]] =
+    GenTransaction(nodes, roots)
 
-  override def roots: ImmArray[Nid] =
-    transaction.roots
 }
 
 object VersionedTransaction extends value.CidContainer2[VersionedTransaction] {
 
-  override private[lf] def map2[A1, B1, C1, A2, B2, C2](
+  override private[lf] def map2[A1, B1, A2, B2](
       f1: A1 => A2,
       f2: B1 => B2,
   ): VersionedTransaction[A1, B1] => VersionedTransaction[A2, B2] = {
-    case VersionedTransaction(version, transaction) =>
-      VersionedTransaction(version, transaction.map3(f1, f2, Value.VersionedValue.map1(f2)))
+    case VersionedTransaction(version, versionedNodes, roots) =>
+      val mapNode = GenNode.map3(f1, f2, Value.VersionedValue.map1(f2))
+      VersionedTransaction(
+        version,
+        versionedNodes.map {
+          case (nid, node) => f1(nid) -> mapNode(node)
+        },
+        roots.map(f1),
+      )
   }
 
   override private[lf] def foreach2[A, B](
       f1: A => Unit,
       f2: B => Unit,
   ): VersionedTransaction[A, B] => Unit = {
-    case VersionedTransaction(_, transaction) =>
-      transaction.foreach3(f1, f2, Value.VersionedValue.foreach1(f2))
+    case VersionedTransaction(_, versionedNodes, _) =>
+      val foreachNode = GenNode.foreach3(f1, f2, Value.VersionedValue.foreach1(f2))
+      versionedNodes.foreach {
+        case (nid, node) =>
+          f1(nid)
+          foreachNode(node)
+      }
   }
-
-  private[lf] def unapply[Nid, Cid](
-      arg: VersionedTransaction[Nid, Cid],
-  ): Some[(TransactionVersion, WithTxValue[Nid, Cid])] =
-    Some((arg.version, arg.transaction))
 
 }
 
@@ -102,7 +84,7 @@ object VersionedTransaction extends value.CidContainer2[VersionedTransaction] {
   * Therefore, it is '''forbidden''' to create ill-formed instances, i.e., instances with `!isWellFormed.isEmpty`.
   */
 final case class GenTransaction[Nid, +Cid, +Val](
-    nodes: HashMap[Nid, Node.GenNode[Nid, Cid, Val]],
+    nodes: Map[Nid, Node.GenNode[Nid, Cid, Val]],
     roots: ImmArray[Nid],
 ) extends HasTxNodes[Nid, Cid, Val]
     with value.CidContainer[GenTransaction[Nid, Cid, Val]] {
@@ -229,15 +211,6 @@ final case class GenTransaction[Nid, +Cid, +Val](
 
   }
 
-  /** Whether `other` is the result of reinterpreting this transaction.
-    *
-    * @note This function is asymmetric.
-    */
-  def isReplayedBy[Nid2, Cid2 >: Cid, Val2 >: Val](
-      other: GenTransaction[Nid2, Cid2, Val2],
-  )(implicit ECid: Equal[Cid2], EVal: Equal[Val2]): Boolean =
-    compareForest(other)(Node.isReplayedBy(_, _))
-
   /** checks that all the values contained are serializable */
   def serializable(f: Val => ImmArray[String]): ImmArray[String] = {
     fold(BackStack.empty[String]) {
@@ -279,7 +252,7 @@ final case class GenTransaction[Nid, +Cid, +Val](
 
 sealed abstract class HasTxNodes[Nid, +Cid, +Val] {
 
-  def nodes: HashMap[Nid, Node.GenNode[Nid, Cid, Val]]
+  def nodes: Map[Nid, Node.GenNode[Nid, Cid, Val]]
 
   def roots: ImmArray[Nid]
 
@@ -352,7 +325,7 @@ sealed abstract class HasTxNodes[Nid, +Cid, +Val] {
 
   final def localContracts[Cid2 >: Cid]: Map[Cid2, Nid] =
     fold(Map.empty[Cid2, Nid]) {
-      case (acc, (nid, create @ Node.NodeCreate(_, _, _, _, _, _))) =>
+      case (acc, (nid, create @ Node.NodeCreate(_, _, _, _, _, _, _))) =>
         acc.updated(create.coid, nid)
       case (acc, _) => acc
     }
@@ -364,9 +337,9 @@ sealed abstract class HasTxNodes[Nid, +Cid, +Val] {
     fold(Set.empty[Cid2]) {
       case (acc, (_, Node.NodeExercises(coid, _, _, _, _, _, _, _, _, _, _, _, _, _, _))) =>
         acc + coid
-      case (acc, (_, Node.NodeFetch(coid, _, _, _, _, _, _, _))) =>
+      case (acc, (_, Node.NodeFetch(coid, _, _, _, _, _, _, _, _))) =>
         acc + coid
-      case (acc, (_, Node.NodeLookupByKey(_, _, _, Some(coid)))) =>
+      case (acc, (_, Node.NodeLookupByKey(_, _, _, Some(coid), _))) =>
         acc + coid
       case (acc, _) => acc
     } -- localContracts.keySet
@@ -388,7 +361,7 @@ sealed abstract class HasTxNodes[Nid, +Cid, +Val] {
           nodes(nid) match {
             case exe: Node.NodeExercises[Nid, Cid, Val] =>
               exerciseBegin(nid, exe)
-              loop(FrontStack(exe.children), (((nid, exe), rest)) +: stack)
+              loop(FrontStack(exe.children), ((nid, exe), rest) +: stack)
             case node: Node.LeafOnlyNode[Cid, Val] =>
               leaf(nid, node)
               loop(rest, stack)
@@ -499,15 +472,15 @@ object GenTransaction extends value.CidContainer3[GenTransaction] {
     tx.fold(State(Set.empty, Set.empty)) {
         case (state, (_, node)) =>
           node match {
-            case Node.NodeCreate(_, c, _, _, _, Some(key)) =>
+            case Node.NodeCreate(_, c, _, _, _, Some(key), _) =>
               state.created(globalKey(c.template, key.key.value))
-            case Node.NodeExercises(_, tmplId, _, _, true, _, _, _, _, _, _, _, _, Some(key), _) =>
+            case Node.NodeExercises(_, tmplId, _, _, true, _, _, _, _, _, _, _, Some(key), _, _) =>
               state.consumed(globalKey(tmplId, key.key.value))
-            case Node.NodeExercises(_, tmplId, _, _, false, _, _, _, _, _, _, _, _, Some(key), _) =>
+            case Node.NodeExercises(_, tmplId, _, _, false, _, _, _, _, _, _, _, Some(key), _, _) =>
               state.referenced(globalKey(tmplId, key.key.value))
-            case Node.NodeFetch(_, tmplId, _, _, _, _, Some(key), _) =>
+            case Node.NodeFetch(_, tmplId, _, _, _, _, Some(key), _, _) =>
               state.referenced(globalKey(tmplId, key.key.value))
-            case Node.NodeLookupByKey(tmplId, _, key, Some(_)) =>
+            case Node.NodeLookupByKey(tmplId, _, key, Some(_), _) =>
               state.referenced(globalKey(tmplId, key.key.value))
             case _ =>
               state
@@ -520,76 +493,56 @@ object GenTransaction extends value.CidContainer3[GenTransaction] {
 
 object Transaction {
 
-  @deprecated("use com.daml.lf.transaction.NodeId", since = "1.4.0")
-  type NodeId = transaction.NodeId
-  @deprecated("use com.daml.lf.transaction.NodeId", since = "1.4.0")
-  val NodeId = transaction.NodeId
-
-  @deprecated("Use daml.lf.value.Value.ContractId directly", since = "1.2.0")
-  type TContractId = Value.ContractId
-
   type Value[+Cid] = Value.VersionedValue[Cid]
 
   type ContractInst[+Cid] = Value.ContractInst[Value[Cid]]
 
   /** Transaction nodes */
-  type Node = Node.GenNode.WithTxValue[transaction.NodeId, Value.ContractId]
+  type Node = Node.GenNode.WithTxValue[NodeId, Value.ContractId]
   type LeafNode = Node.LeafOnlyNode.WithTxValue[Value.ContractId]
 
   /** (Complete) transactions, which are the result of interpreting a
-    *  ledger-update. These transactions are consumed by either the
-    *  scenario-interpreter or the DAML-engine code. Both of these
-    *  code-paths share the computations for segregating the
-    *  transaction into party-specific ledgers and for computing
-    *  divulgence of contracts.
+    * ledger-update. These transactions are consumed by either the
+    * scenario-interpreter or the DAML-engine code. Both of these
+    * code-paths share the computations for segregating the
+    * transaction into party-specific ledgers and for computing
+    * divulgence of contracts.
     *
     */
-  type Transaction = VersionedTransaction[transaction.NodeId, Value.ContractId]
-  val Transaction = VersionedTransaction
+  type Transaction = VersionedTransaction[NodeId, Value.ContractId]
+  val Transaction: VersionedTransaction.type = VersionedTransaction
 
   /** Transaction meta data
-    * @param submissionSeed: the submission seed used to derive the contract IDs.
-    *        If undefined no seed has been used (the legacy contract ID scheme
-    *        have been used) or it is unknown (output of partial reinterpretation).
-    * @param submissionTime: the submission time
-    * @param usedPackages The set of packages used during command processing.
-    *        This is a hint for what packages are required to validate
-    *        the transaction using the current interpreter.
-    *        If set to `empty` the package dependency have not be computed.
-    * @param dependsOnTime: indicate the transaction computation depends on ledger
-    *        time.
-    * @param nodeSeeds: An association list that maps to each ID of create and exercise
-    *        nodes its seeds.
+    *
+    * @param submissionSeed : the submission seed used to derive the contract IDs.
+    *                       If undefined no seed has been used (the legacy contract ID scheme
+    *                       have been used) or it is unknown (output of partial reinterpretation).
+    * @param submissionTime : the submission time
+    * @param usedPackages   The set of packages used during command processing.
+    *                       This is a hint for what packages are required to validate
+    *                       the transaction using the current interpreter.
+    *                       If set to `empty` the package dependency have not be computed.
+    * @param dependsOnTime  : indicate the transaction computation depends on ledger
+    *                       time.
+    * @param nodeSeeds      : An association list that maps to each ID of create and exercise
+    *                       nodes its seeds.
     */
   final case class Metadata(
       submissionSeed: Option[crypto.Hash],
       submissionTime: Time.Timestamp,
       usedPackages: Set[PackageId],
       dependsOnTime: Boolean,
-      nodeSeeds: ImmArray[(transaction.NodeId, crypto.Hash)],
+      nodeSeeds: ImmArray[(NodeId, crypto.Hash)],
   )
 
-  @deprecated("Use com.daml.lf.transaction.SubmittedTransaction", since = "1.4.0")
-  type SubmittedTransaction = transaction.SubmittedTransaction
-
-  @deprecated("Use com.daml.lf.transaction.SubmittedTransaction", since = "1.4.0")
-  val SubmittedTransaction = transaction.SubmittedTransaction
-
-  @deprecated("Use com.daml.lf.transaction.CommittedTransaction", since = "1.4.0")
-  type CommittedTransaction = transaction.CommittedTransaction
-
-  @deprecated("Use com.daml.lf.transaction.CommittedTransaction", since = "1.4.0")
-  val CommittedTransaction = transaction.CommittedTransaction
+  def commitTransaction(submittedTransaction: SubmittedTransaction): CommittedTransaction =
+    CommittedTransaction(submittedTransaction)
 
   def commitTransaction(
-      submittedTransaction: transaction.SubmittedTransaction): transaction.CommittedTransaction =
-    transaction.CommittedTransaction(submittedTransaction)
-
-  def commitTransaction(
-      submittedTransaction: transaction.SubmittedTransaction,
+      submittedTransaction: SubmittedTransaction,
       f: crypto.Hash => Bytes,
-  ): Either[String, transaction.CommittedTransaction] =
-    submittedTransaction.suffixCid(f).map(transaction.CommittedTransaction(_))
+  ): Either[String, CommittedTransaction] =
+    submittedTransaction.suffixCid(f).map(CommittedTransaction(_))
 
   /** Errors that can happen during building transactions. */
   sealed abstract class TransactionError extends Product with Serializable
@@ -600,17 +553,216 @@ object Transaction {
   case object EndExerciseInRootContext extends TransactionError
 
   /** Signals that the contract-id `coid` was expected to be active, but
-    *  is not.
+    * is not.
     */
   final case class ContractNotActive(
       coid: Value.ContractId,
       templateId: TypeConName,
-      consumedBy: transaction.NodeId)
-      extends TransactionError
+      consumedBy: NodeId,
+  ) extends TransactionError
 
   final case class AuthFailureDuringExecution(
-      nid: transaction.NodeId,
+      nid: NodeId,
       fa: FailedAuthorization,
   ) extends TransactionError
 
+  /** Whether `other` is the result of reinterpreting this transaction.
+    *
+    * @param recorded : the transaction to be validated.
+    * @param replayed : the transaction resulting from the reinterpretation of
+    *   the root nodes of [[recorded]].
+    * @note This function is asymmetric in order to provide backward compatibility.
+    *      For instance, some field may be undefined in the [[recorded]] transaction
+    *      while present in the [[replayed]] one.
+    */
+  def isReplayedBy[Nid, Cid](
+      recorded: VersionedTransaction[Nid, Cid],
+      replayed: VersionedTransaction[Nid, Cid],
+  )(implicit ECid: Equal[Cid], EVal: Equal[Value[Cid]]): Either[ReplayMismatch[Nid, Cid], Unit] = {
+    import scalaz.std.option._
+    import scalaz.syntax.equal._
+
+    type Exe = Node.NodeExercises.WithTxValue[Nid, Cid]
+
+    @tailrec
+    def loop(
+        nids1: Stream[Nid],
+        nids2: Stream[Nid],
+        stack: List[(Nid, Exe, Stream[Nid], Nid, Exe, Stream[Nid])] = List.empty,
+    ): Either[ReplayMismatch[Nid, Cid], Unit] =
+      (nids1, nids2) match {
+        case (nid1 #:: rest1, nid2 #:: rest2) =>
+          (recorded.nodes(nid1), replayed.nodes(nid2)) match {
+            case (
+                Node.NodeCreate(
+                  coid1,
+                  coinst1,
+                  optLocation1 @ _,
+                  signatories1,
+                  stakeholders1,
+                  key1,
+                  version1,
+                ),
+                Node.NodeCreate(
+                  coid2,
+                  coinst2,
+                  optLocation2 @ _,
+                  signatories2,
+                  stakeholders2,
+                  key2,
+                  version2,
+                ))
+                if version1 == version2 &&
+                  coid1 === coid2 &&
+                  coinst1 === coinst2 &&
+                  signatories1 == signatories2 &&
+                  stakeholders1 == stakeholders2 &&
+                  key1 === key2 =>
+              loop(rest1, rest2, stack)
+            case (
+                Node.NodeFetch(
+                  coid1,
+                  templateId1,
+                  optLocation1 @ _,
+                  actingParties1,
+                  signatories1,
+                  stakeholders1,
+                  key1,
+                  byKey1 @ _,
+                  version1,
+                ),
+                Node.NodeFetch(
+                  coid2,
+                  templateId2,
+                  optLocation2 @ _,
+                  actingParties2,
+                  signatories2,
+                  stakeholders2,
+                  key2,
+                  byKey2 @ _,
+                  version2,
+                ))
+                if version1 == version2 &&
+                  coid1 === coid2 &&
+                  templateId1 == templateId2 &&
+                  (actingParties1.isEmpty || actingParties1 == actingParties2) &&
+                  signatories1 == signatories2 &&
+                  stakeholders1 == stakeholders2 &&
+                  (key1.isEmpty || key1 === key2) =>
+              loop(rest1, rest2, stack)
+            case (
+                exe1 @ Node.NodeExercises(
+                  targetCoid1,
+                  templateId1,
+                  choiceId1,
+                  optLocation1 @ _,
+                  consuming1,
+                  actingParties1,
+                  chosenValue1,
+                  stakeholders1,
+                  signatories1,
+                  choiceObservers1,
+                  children1 @ _,
+                  exerciseResult1 @ _,
+                  key1,
+                  byKey1 @ _,
+                  version1,
+                ),
+                exe2 @ Node.NodeExercises(
+                  targetCoid2,
+                  templateId2,
+                  choiceId2,
+                  optLocation2 @ _,
+                  consuming2,
+                  actingParties2,
+                  chosenValue2,
+                  stakeholders2,
+                  signatories2,
+                  choiceObservers2,
+                  children2 @ _,
+                  exerciseResult2 @ _,
+                  key2,
+                  byKey2 @ _,
+                  version2,
+                ))
+                // results are checked after the children
+                if version1 == version2 &&
+                  targetCoid1 === targetCoid2 &&
+                  templateId1 == templateId2 &&
+                  choiceId1 == choiceId2 &&
+                  consuming1 == consuming2 &&
+                  actingParties1 == actingParties2 &&
+                  chosenValue1 === chosenValue2 &&
+                  stakeholders1 == stakeholders2 &&
+                  signatories1 == signatories2 &&
+                  choiceObservers1 == choiceObservers2 &&
+                  (key1.isEmpty || key1 === key2) =>
+              loop(
+                children1.iterator.toStream,
+                children2.iterator.toStream,
+                (nid1, exe1, rest1, nid2, exe2, rest2) :: stack
+              )
+            case (
+                Node.NodeLookupByKey(templateId1, optLocation1 @ _, key1, result1, version1),
+                Node.NodeLookupByKey(templateId2, optLocation2 @ _, key2, result2, version2)
+                )
+                if version1 == version2 &&
+                  templateId1 == templateId2 &&
+                  key1 === key2 &&
+                  result1 === result2 =>
+              loop(rest1, rest2, stack)
+            case _ =>
+              Left(ReplayNodeMismatch(recorded, nid1, replayed, nid2))
+          }
+
+        case (Stream.Empty, Stream.Empty) =>
+          stack match {
+            case (nid1, exe1, nids1, nid2, exe2, nids2) :: rest =>
+              if (exe1.exerciseResult.isEmpty || exe1.exerciseResult === exe2.exerciseResult)
+                loop(nids1, nids2, rest)
+              else
+                Left(ReplayNodeMismatch(recorded, nid1, replayed, nid2))
+            case Nil =>
+              Right(())
+          }
+
+        case (nid1 #:: _, Stream.Empty) =>
+          Left(ReplayedNodeMissing(recorded, nid1, replayed))
+
+        case (Stream.Empty, nid2 #:: _) =>
+          Left(RecordedNodeMissing(recorded, replayed, nid2))
+
+      }
+
+    loop(recorded.roots.iterator.toStream, replayed.roots.iterator.toStream)
+
+  }
+
 }
+
+sealed abstract class ReplayMismatch[Nid, Cid] extends Product with Serializable {
+  def recordedTransaction: VersionedTransaction[Nid, Cid]
+  def replayedTransaction: VersionedTransaction[Nid, Cid]
+
+  def msg: String =
+    s"recreated and original transaction mismatch $recordedTransaction expected, but $replayedTransaction is recreated"
+}
+
+final case class ReplayNodeMismatch[Nid, Cid](
+    override val recordedTransaction: VersionedTransaction[Nid, Cid],
+    recordedNode: Nid,
+    override val replayedTransaction: VersionedTransaction[Nid, Cid],
+    replayedNode: Nid,
+) extends ReplayMismatch[Nid, Cid]
+
+final case class RecordedNodeMissing[Nid, Cid](
+    override val recordedTransaction: VersionedTransaction[Nid, Cid],
+    override val replayedTransaction: VersionedTransaction[Nid, Cid],
+    replayedNode: Nid,
+) extends ReplayMismatch[Nid, Cid]
+
+final case class ReplayedNodeMissing[Nid, Cid](
+    override val recordedTransaction: VersionedTransaction[Nid, Cid],
+    recordedNode: Nid,
+    override val replayedTransaction: VersionedTransaction[Nid, Cid],
+) extends ReplayMismatch[Nid, Cid]

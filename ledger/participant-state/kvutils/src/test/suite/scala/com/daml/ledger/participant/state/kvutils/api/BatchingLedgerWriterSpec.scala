@@ -4,20 +4,21 @@
 package com.daml.ledger.participant.state.kvutils.api
 
 import akka.stream.Materializer
+import com.daml.ledger.api.health.HealthStatus
+import com.daml.ledger.api.testing.utils.AkkaBeforeAndAfterAll
 import com.daml.ledger.participant.state.kvutils.DamlKvutils.DamlSubmissionBatch
 import com.daml.ledger.participant.state.kvutils.{Envelope, MockitoHelpers}
 import com.daml.ledger.participant.state.v1.SubmissionResult
 import com.daml.ledger.participant.state.{kvutils, v1}
-import com.daml.ledger.api.health.HealthStatus
-import com.daml.ledger.api.testing.utils.AkkaBeforeAndAfterAll
 import com.daml.logging.LoggingContext
 import com.google.protobuf.ByteString
 import org.mockito.ArgumentMatchers._
 import org.mockito.Mockito.{times, verify, when}
+import org.mockito.MockitoSugar._
 import org.mockito.{ArgumentCaptor, ArgumentMatchers}
 import org.scalatest.concurrent.Eventually
-import org.scalatest.mockito.MockitoSugar._
-import org.scalatest.{AsyncWordSpec, Matchers}
+import org.scalatest.matchers.should.Matchers
+import org.scalatest.wordspec.AsyncWordSpec
 
 import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future}
@@ -37,7 +38,7 @@ class BatchingLedgerWriterSpec
 
     "report unhealthy when queue is dead" in {
       val handle = mock[RunningBatchingQueueHandle]
-      when(handle.alive).thenReturn(false)
+      when(handle.state).thenReturn(RunningBatchingQueueState.Closing)
       val queue = mock[BatchingQueue]
       when(queue.run(any[BatchingQueue.CommitBatchFunction]())(any[Materializer]))
         .thenReturn(handle)
@@ -103,7 +104,8 @@ object BatchingLedgerWriterSpec {
       override def run(commitBatch: Seq[DamlSubmissionBatch.CorrelatedSubmission] => Future[Unit])(
           implicit materializer: Materializer): RunningBatchingQueueHandle =
         new RunningBatchingQueueHandle {
-          override def alive: Boolean = true
+          override def state: RunningBatchingQueueState = RunningBatchingQueueState.Alive
+
           override def offer(
               submission: DamlSubmissionBatch.CorrelatedSubmission): Future[SubmissionResult] =
             commitBatch(Seq(submission))
@@ -111,7 +113,7 @@ object BatchingLedgerWriterSpec {
                 SubmissionResult.Acknowledged
               }
 
-          override def close(): Unit = ()
+          override def stop(): Future[Unit] = Future.unit
         }
     }
 

@@ -8,6 +8,29 @@ import WebSocket from 'isomorphic-ws';
 import _ from 'lodash';
 
 /**
+ * Full information about a Party.
+ *
+ */
+export type PartyInfo = {
+  identifier: Party;
+  displayName?: string;
+  isLocal: boolean;
+}
+
+const partyInfoDecoder: jtv.Decoder<PartyInfo> =
+  jtv.object({
+    identifier: jtv.string(),
+    displayName: jtv.optional(jtv.string()),
+    isLocal: jtv.boolean(),
+  });
+
+export type PackageId = string;
+
+const decode = <R>(decoder: jtv.Decoder<R>, data: unknown): R => {
+  return jtv.Result.withException(decoder.run(data));
+}
+
+/**
  * A newly created contract.
  *
  * @typeparam T The contract template type.
@@ -150,6 +173,18 @@ export function assert(b: boolean, m: string): void {
 export type Query<T> = T extends object ? {[K in keyof T]?: Query<T[K]>} : T;
 // TODO(MH): Support comparison queries.
 
+/** @internal
+ *
+ * Official documentation (docs/source/json-api/search-query-language.rst)
+ * currently explicitly forbids the use of lists, textmaps and genmaps in
+ * queries. As long as that restriction stays, there is no need for any kind of
+ * encoding here.
+ */
+function encodeQuery<T extends object, K, I extends string>(template: Template<T, K, I>, query?: Query<T>): unknown {
+  // I could not get the "unused" warning silenced, but this seems to count as "used"
+  [template];
+  return query;
+}
 
 /**
  * Status code and result returned by a call to the ledger.
@@ -157,6 +192,7 @@ export type Query<T> = T extends object ? {[K in keyof T]?: Query<T[K]>} : T;
 type LedgerResponse = {
   status: number;
   result: unknown;
+  warnings: unknown | undefined;
 }
 
 /**
@@ -165,6 +201,7 @@ type LedgerResponse = {
 type LedgerError = {
   status: number;
   errors: string[];
+  warnings: unknown | undefined;
 }
 
 /**
@@ -173,6 +210,7 @@ type LedgerError = {
 const decodeLedgerResponse: jtv.Decoder<LedgerResponse> = jtv.object({
   status: jtv.number(),
   result: jtv.unknownJson(),
+  warnings: jtv.optional(jtv.unknownJson()),
 });
 
 /**
@@ -181,6 +219,7 @@ const decodeLedgerResponse: jtv.Decoder<LedgerResponse> = jtv.object({
 const decodeLedgerError: jtv.Decoder<LedgerError> = jtv.object({
   status: jtv.number(),
   errors: jtv.array(jtv.string()),
+  warnings: jtv.optional(jtv.unknownJson()),
 });
 
 /**
@@ -278,24 +317,42 @@ class Ledger {
 
   /**
    * @internal
+   */
+  private auth(): {[headers: string]: string} {
+    return {'Authorization': 'Bearer ' + this.token};
+  }
+
+  /**
+   * @internal
+   */
+  private async throwOnError(r: Response): Promise<void> {
+    if (!r.ok) {
+      const json = await r.json();
+      console.log(json);
+      throw decode(decodeLedgerError, json);
+    }
+  }
+
+  /**
+   * @internal
    *
    * Internal function to submit a command to the JSON API.
    */
-  private async submit(endpoint: string, payload: unknown): Promise<unknown> {
+  private async submit(endpoint: string, payload: unknown, method = 'post'): Promise<unknown> {
     const httpResponse = await fetch(this.httpBaseUrl + endpoint, {
       body: JSON.stringify(payload),
       headers: {
-        'Authorization': 'Bearer ' + this.token,
+        ...this.auth(),
         'Content-type': 'application/json'
       },
-      method: 'post',
+      method,
     });
+    await this.throwOnError(httpResponse);
     const json = await httpResponse.json();
-    if (!httpResponse.ok) {
-      console.log(json);
-      throw jtv.Result.withException(decodeLedgerError.run(json));
-    }
     const ledgerResponse = jtv.Result.withException(decodeLedgerResponse.run(json));
+    if (ledgerResponse.warnings) {
+      console.warn(ledgerResponse.warnings);
+    }
     return ledgerResponse.result;
   }
 
@@ -316,7 +373,7 @@ class Ledger {
    *
    */
   async query<T extends object, K, I extends string>(template: Template<T, K, I>, query?: Query<T>): Promise<CreateEvent<T, K, I>[]> {
-    const payload = {templateIds: [template.templateId], query};
+    const payload = {templateIds: [template.templateId], query: encodeQuery(template, query)};
     const json = await this.submit('v1/query', payload);
     return jtv.Result.withException(jtv.array(decodeCreateEvent(template)).run(json));
   }
@@ -335,7 +392,7 @@ class Ledger {
   async fetch<T extends object, K, I extends string>(template: Template<T, K, I>, contractId: ContractId<T>): Promise<CreateEvent<T, K, I> | null> {
     const payload = {
       templateId: template.templateId,
-      contractId,
+      contractId: ContractId(template).encode(contractId),
     };
     const json = await this.submit('v1/fetch', payload);
     return jtv.Result.withException(jtv.oneOf(jtv.constant(null), decodeCreateEvent(template)).run(json));
@@ -360,7 +417,7 @@ class Ledger {
     }
     const payload = {
       templateId: template.templateId,
-      key,
+      key: template.keyEncode(key),
     };
     const json = await this.submit('v1/fetch', payload);
     return jtv.Result.withException(jtv.oneOf(jtv.constant(null), decodeCreateEvent(template)).run(json));
@@ -380,7 +437,7 @@ class Ledger {
   async create<T extends object, K, I extends string>(template: Template<T, K, I>, payload: T): Promise<CreateEvent<T, K, I>> {
     const command = {
       templateId: template.templateId,
-      payload,
+      payload: template.encode(payload),
     };
     const json = await this.submit('v1/create', command);
     return jtv.Result.withException(decodeCreateEvent(template).run(json));
@@ -397,18 +454,53 @@ class Ledger {
    * @typeparam C The type of the contract choice.
    * @typeparam R The return type of the choice.
    *
-   * @returns The return value of the choice together with a list of [[event]]'s that where created
-   * as a result of exercising the choice.
+   * @returns The return value of the choice together with a list of
+   * [[event]]'s that were created as a result of exercising the choice.
    */
   async exercise<T extends object, C, R>(choice: Choice<T, C, R>, contractId: ContractId<T>, argument: C): Promise<[R , Event<object>[]]> {
     const payload = {
       templateId: choice.template().templateId,
-      contractId,
+      contractId: ContractId(choice.template()).encode(contractId),
       choice: choice.choiceName,
-      argument,
+      argument: choice.argumentEncode(argument),
     };
     const json = await this.submit('v1/exercise', payload);
     // Decode the server response into a tuple.
+    const responseDecoder: jtv.Decoder<{exerciseResult: R; events: Event<object>[]}> = jtv.object({
+      exerciseResult: choice.resultDecoder,
+      events: jtv.array(decodeEventUnknown),
+    });
+    const {exerciseResult, events} = jtv.Result.withException(responseDecoder.run(json));
+    return [exerciseResult, events];
+  }
+
+  /**
+   * Exercse a choice on a newly-created contract, in a single transaction.
+   *
+   * @param choice The choice to exercise.
+   * @param init The template arguments for the newly-created contract.
+   * @param argument The choice arguments.
+   *
+   * @typeparam T The contract template type.
+   * @typeparam C The type of the contract choice.
+   * @typeparam R The return type of the choice.
+   *
+   * @returns The return value of the choice together with a list of
+   * [[event]]'s that includes the creation event for the created contract as
+   * well as all the events that were created as a result of exercising the
+   * choice, including the archive event for the created contract if the choice
+   * is consuming (or otherwise archives it as part of its execution).
+   *
+   */
+  async createAndExercise<T extends object, C, R>(choice: Choice<T, C, R>, payload: T, argument: C): Promise<[R, Event<object>[]]> {
+    const command = {
+      templateId: choice.template().templateId,
+      payload: choice.template().encode(payload),
+      choice: choice.choiceName,
+      argument: choice.argumentEncode(argument),
+    };
+    const json = await this.submit('v1/create-and-exercise', command);
+
     const responseDecoder: jtv.Decoder<{exerciseResult: R; events: Event<object>[]}> = jtv.object({
       exerciseResult: choice.resultDecoder,
       events: jtv.array(decodeEventUnknown),
@@ -441,9 +533,9 @@ class Ledger {
     }
     const payload = {
       templateId: choice.template().templateId,
-      key,
+      key: choice.template().keyEncode(key),
       choice: choice.choiceName,
-      argument,
+      argument: choice.argumentEncode(argument),
     };
     const json = await this.submit('v1/exercise', payload);
     // Decode the server response into a tuple.
@@ -598,6 +690,11 @@ class Ledger {
       }
     };
     const close = (): void => {
+      // Note: ws.close will trigger the onClose handlers of the WebSocket
+      // (here onWsClose), but they execute as a separate event after the
+      // current event in the JS event loop, i.e. in particular after the call
+      // to closeStream and thus, in this case, the onWsClose handler will see
+      // streamClosed as true.
       ws.close();
       closeStream({code: 4000, reason: "called .close()"});
     };
@@ -645,7 +742,7 @@ class Ledger {
   ): Stream<T, K, I, readonly CreateEvent<T, K, I>[]> {
     const request = queries.length == 0 ?
         [{templateIds: [template.templateId]}]
-        : queries.map(q => ({templateIds: [template.templateId], query: q}));
+        : queries.map(q => ({templateIds: [template.templateId], query: encodeQuery(template, q)}));
     const reconnectRequest = (): object[] => request;
     const change = (contracts: readonly CreateEvent<T, K, I>[], events: readonly Event<T, K, I>[]): CreateEvent<T, K, I>[] => {
       const archiveEvents: Set<ContractId<T>> = new Set();
@@ -710,8 +807,8 @@ class Ledger {
     // given key be in output format, whereas existing implementation supports
     // input format.
     let lastContractId: ContractId<T> | null = null;
-    const request = [{templateId: template.templateId, key}];
-    const reconnectRequest = (): object[] => [{...request[0], 'contractIdAtOffset': lastContractId}]
+    const request = [{templateId: template.templateId, key: template.keyEncode(key)}];
+    const reconnectRequest = (): object[] => [{...request[0], 'contractIdAtOffset': lastContractId && ContractId(template).encode(lastContractId)}]
     const change = (contract: CreateEvent<T, K, I> | null, events: readonly Event<T, K, I>[]): CreateEvent<T, K, I> | null => {
       for (const event of events) {
         if ('created' in event) {
@@ -790,8 +887,11 @@ class Ledger {
     const lastContractIds: (ContractId<T> | null)[] = Array(keys.length).fill(null);
     const keysCopy = _.cloneDeep(keys);
     const initState: (CreateEvent<T, K, I> | null)[] = Array(keys.length).fill(null);
-    const request = keys.map(k => ({templateId: template.templateId, key: k}));
-    const reconnectRequest = (): object[] => request.map((r, idx) => ({...r, 'contractIdAtOffset': lastContractIds[idx]}));
+    const request = keys.map(k => ({templateId: template.templateId, key: template.keyEncode(k)}));
+    const reconnectRequest = (): object[] => request.map((r, idx) => {
+      const lastId = lastContractIds[idx];
+      return {...r, 'contractIdAtOffset': lastId && ContractId(template).encode(lastId)}
+    });
     const change = (state: (CreateEvent<T, K, I> | null)[], events: readonly Event<T, K, I>[]): (CreateEvent<T, K, I> | null)[] => {
       const newState: (CreateEvent<T, K, I> | null)[] = Array.from(state);
       for (const event of events) {
@@ -818,6 +918,103 @@ class Ledger {
     }
     return this.streamSubmit("streamFetchByKeys", template, 'v1/stream/fetch', request, reconnectRequest, initState, change);
   }
+
+  /**
+   * Fetch parties by identifier.
+   *
+   * @param parties An array of Party identifiers.
+   *
+   * @returns An array of the same length, where each element corresponds to
+   * the same-index element of the given parties, ans is either a PartyInfo
+   * object if the party exists or null if it does not.
+   *
+   */
+  async getParties(parties: Party[]): Promise<(PartyInfo | null)[]> {
+    if (parties.length === 0) {
+      return [];
+    }
+    const json = await this.submit('v1/parties', parties);
+    const resp: PartyInfo[] = decode(jtv.array(partyInfoDecoder), json);
+    const mapping: {[ps: string]: PartyInfo} = {};
+    for (const p of resp) {
+      mapping[p.identifier] = p;
+    }
+    const ret: (PartyInfo | null)[] = Array(parties.length).fill(null);
+    for (let idx = 0; idx < parties.length; idx++) {
+      ret[idx] = mapping[parties[idx]] || null;
+    }
+    return ret;
+  }
+
+  /**
+   * Fetch all parties on the ledger.
+   *
+   * @returns All parties on the ledger, in no particular order.
+   *
+   */
+  async listKnownParties(): Promise<PartyInfo[]> {
+    const json = await this.submit('v1/parties', undefined, 'get');
+    return decode(jtv.array(partyInfoDecoder), json);
+  }
+
+  /**
+   * Allocate a new party.
+   *
+   * @param partyOpt Parameters for party allocation.
+   *
+   * @returns PartyInfo for the newly created party.
+   *
+   */
+  async allocateParty(partyOpt: {identifierHint?: string; displayName?: string}): Promise<PartyInfo> {
+    const json = await this.submit('v1/parties/allocate', partyOpt);
+    return decode(partyInfoDecoder, json);
+  }
+
+  /**
+   * Fetch a list of all package IDs from the ledger.
+   *
+   * @returns List of package IDs.
+   *
+   */
+  async listPackages(): Promise<PackageId[]> {
+    const json = await this.submit('v1/packages', undefined, 'get');
+    return decode(jtv.array(jtv.string()), json);
+  }
+
+  /**
+   * Fetch a binary package.
+   *
+   * @returns The content of the package as a raw ArrayBuffer.
+   *
+   */
+  async getPackage(id: PackageId): Promise<ArrayBuffer> {
+    const httpResponse = await fetch(this.httpBaseUrl + 'v1/packages/' + id, {
+      headers: this.auth(),
+      method: 'get',
+    });
+    await this.throwOnError(httpResponse);
+    return await httpResponse.arrayBuffer();
+  }
+
+  /**
+   * Upload a binary archive. Note that this requires admin privileges.
+   *
+   * @returns No return value on success; throws on error.
+   *
+   */
+  async uploadDarFile(abuf: ArrayBuffer): Promise<void> {
+    const httpResponse = await fetch(this.httpBaseUrl + 'v1/packages', {
+      body: abuf,
+      headers: {
+        ...this.auth(),
+        'Content-type': 'application/octet-stream'
+      },
+      method: 'post',
+    });
+    await this.throwOnError(httpResponse);
+    return;
+  }
+
 }
 
 export default Ledger;

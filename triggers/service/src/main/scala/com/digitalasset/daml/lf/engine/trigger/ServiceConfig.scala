@@ -15,9 +15,9 @@ import scala.concurrent.duration
 import scala.concurrent.duration.FiniteDuration
 
 private[trigger] final case class ServiceConfig(
-    // For convenience, we allow passing in a DAR on startup
-    // as opposed to uploading it dynamically.
-    darPath: Option[Path],
+    // For convenience, we allow passing DARs on startup
+    // as opposed to uploading them dynamically.
+    darPaths: List[Path],
     address: String,
     httpPort: Int,
     ledgerHost: String,
@@ -26,10 +26,13 @@ private[trigger] final case class ServiceConfig(
     maxInboundMessageSize: Int,
     minRestartInterval: FiniteDuration,
     maxRestartInterval: FiniteDuration,
+    maxHttpEntityUploadSize: Long,
+    httpEntityUploadTimeout: FiniteDuration,
     timeProviderType: TimeProviderType,
     commandTtl: Duration,
     init: Boolean,
     jdbcConfig: Option[JdbcConfig],
+    portFile: Option[Path],
 )
 
 final case class JdbcConfig(
@@ -80,6 +83,8 @@ private[trigger] object ServiceConfig {
   val DefaultMaxInboundMessageSize: Int = RunnerConfig.DefaultMaxInboundMessageSize
   private val DefaultMinRestartInterval: FiniteDuration = FiniteDuration(5, duration.SECONDS)
   val DefaultMaxRestartInterval: FiniteDuration = FiniteDuration(60, duration.SECONDS)
+  val DefaultMaxHttpEntityUploadSize: Long = RunnerConfig.DefaultMaxInboundMessageSize.toLong
+  val DefaultHttpEntityUploadTimeout: FiniteDuration = FiniteDuration(1, duration.MINUTES)
 
   @SuppressWarnings(Array("org.wartremover.warts.NonUnitStatements")) // scopt builders
   private val parser = new scopt.OptionParser[ServiceConfig]("trigger-service") {
@@ -87,14 +92,15 @@ private[trigger] object ServiceConfig {
 
     opt[String]("dar")
       .optional()
-      .action((f, c) => c.copy(darPath = Some(Paths.get(f))))
+      .unbounded()
+      .action((f, c) => c.copy(darPaths = Paths.get(f) :: c.darPaths))
       .text("Path to the dar file containing the trigger.")
 
     cliopts.Http.serverParse(this, serviceName = "Trigger")(
       address = (f, c) => c.copy(address = f(c.address)),
       httpPort = (f, c) => c.copy(httpPort = f(c.httpPort)),
       defaultHttpPort = Some(DefaultHttpPort),
-      portFile = None,
+      portFile = Some((f, c) => c.copy(portFile = f(c.portFile))),
     )
 
     opt[String]("ledger-host")
@@ -111,7 +117,7 @@ private[trigger] object ServiceConfig {
       .optional()
       .action((t, c) => c.copy(authUri = Some(Uri(t))))
       .text("Auth middleware URI.")
-      // TODO[AH] Expose once the feature is fully implemented.
+      // TODO[AH] Expose once the auth feature is fully implemented.
       .hidden()
 
     opt[Int]("max-inbound-message-size")
@@ -131,6 +137,21 @@ private[trigger] object ServiceConfig {
       .optional()
       .text(
         s"Maximum time interval between restarting a failed trigger. Defaults to ${DefaultMaxRestartInterval.toSeconds} seconds.")
+
+    opt[Long]("max-http-entity-upload-size")
+      .action((x, c) => c.copy(maxHttpEntityUploadSize = x))
+      .optional()
+      .text(s"Optional max HTTP entity upload size. Defaults to ${DefaultMaxHttpEntityUploadSize}.")
+      // TODO[AH] Expose once the auth feature is fully implemented.
+      .hidden()
+
+    opt[Long]("http-entity-upload-timeout")
+      .action((x, c) => c.copy(httpEntityUploadTimeout = FiniteDuration(x, duration.MINUTES)))
+      .optional()
+      .text(
+        s"Optional HTTP entity upload timeout. Defaults to ${DefaultHttpEntityUploadTimeout.toSeconds} seconds.")
+      // TODO[AH] Expose once the auth feature is fully implemented.
+      .hidden()
 
     opt[Unit]('w', "wall-clock-time")
       .action { (_, c) =>
@@ -161,7 +182,7 @@ private[trigger] object ServiceConfig {
     parser.parse(
       args,
       ServiceConfig(
-        darPath = None,
+        darPaths = Nil,
         address = cliopts.Http.defaultAddress,
         httpPort = DefaultHttpPort,
         ledgerHost = null,
@@ -170,10 +191,13 @@ private[trigger] object ServiceConfig {
         maxInboundMessageSize = DefaultMaxInboundMessageSize,
         minRestartInterval = DefaultMinRestartInterval,
         maxRestartInterval = DefaultMaxRestartInterval,
+        maxHttpEntityUploadSize = DefaultMaxHttpEntityUploadSize,
+        httpEntityUploadTimeout = DefaultHttpEntityUploadTimeout,
         timeProviderType = TimeProviderType.Static,
         commandTtl = Duration.ofSeconds(30L),
         init = false,
         jdbcConfig = None,
+        portFile = None,
       ),
     )
 }

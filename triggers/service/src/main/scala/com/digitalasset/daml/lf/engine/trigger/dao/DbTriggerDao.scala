@@ -10,8 +10,8 @@ import cats.effect.{Blocker, ContextShift, IO}
 import cats.syntax.apply._
 import cats.syntax.functor._
 import com.daml.daml_lf_dev.DamlLf
-import com.daml.ledger.api.refinements.ApiTypes.Party
-import com.daml.lf.archive.Dar
+import com.daml.ledger.api.refinements.ApiTypes.{ApplicationId, Party}
+import com.daml.lf.archive.{Dar, Reader}
 import com.daml.lf.data.Ref.{Identifier, PackageId}
 import com.daml.lf.engine.trigger.{JdbcConfig, RunningTrigger}
 import com.zaxxer.hikari.{HikariConfig, HikariDataSource}
@@ -23,11 +23,13 @@ import doobie.{Fragment, Put, Transactor}
 import scalaz.Tag
 import java.io.{Closeable, IOException}
 
+import com.daml.lf.engine.trigger.Tagged.{AccessToken, RefreshToken}
 import javax.sql.DataSource
 
-import scala.concurrent.ExecutionContext
+import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
 import scala.language.existentials
+import scala.util.control.NonFatal
 
 object Connection {
 
@@ -73,6 +75,18 @@ final class DbTriggerDao private (dataSource: DataSource with Closeable, xa: Con
 
   implicit val partyGet: Get[Party] = Tag.subst(implicitly[Get[String]])
 
+  implicit val appIdPut: Put[ApplicationId] = Tag.subst(implicitly[Put[String]])
+
+  implicit val appIdGet: Get[ApplicationId] = Tag.subst(implicitly[Get[String]])
+
+  implicit val accessTokenPut: Put[AccessToken] = Tag.subst(implicitly[Put[String]])
+
+  implicit val accessTokenGet: Get[AccessToken] = Tag.subst(implicitly[Get[String]])
+
+  implicit val refreshTokenPut: Put[RefreshToken] = Tag.subst(implicitly[Put[String]])
+
+  implicit val refreshTokenGet: Get[RefreshToken] = Tag.subst(implicitly[Get[String]])
+
   implicit val identifierPut: Put[Identifier] = implicitly[Put[String]].contramap(_.toString)
 
   implicit val identifierGet: Get[Identifier] =
@@ -94,24 +108,36 @@ final class DbTriggerDao private (dataSource: DataSource with Closeable, xa: Con
 
   private def insertRunningTrigger(t: RunningTrigger): ConnectionIO[Unit] = {
     val insert: Fragment = sql"""
-        insert into running_triggers values (${t.triggerInstance}, ${t.triggerParty}, ${t.triggerName})
+        insert into running_triggers
+          (trigger_instance, trigger_party, full_trigger_name, access_token, refresh_token, application_id)
+        values
+          (${t.triggerInstance}, ${t.triggerParty}, ${t.triggerName}, ${t.triggerAccessToken}, ${t.triggerRefreshToken}, ${t.triggerApplicationId})
       """
     insert.update.run.void
   }
 
   private def queryRunningTrigger(triggerInstance: UUID): ConnectionIO[Option[RunningTrigger]] = {
     val select: Fragment = sql"""
-        select (trigger_instance, trigger_name, trigger_party) from running_triggers
+        select trigger_instance, full_trigger_name, trigger_party, application_id, access_token, refresh_token from running_triggers
         where trigger_instance = $triggerInstance
       """
     select
-      .query[(UUID, Identifier, Party)]
-      .map {
-        case (instance, name, party) =>
-          // TODO[AH] use query.to[RunningTrigger] once the token is persisted.
-          RunningTrigger(instance, name, party, None)
-      }
+      .query[(UUID, Identifier, Party, ApplicationId, Option[AccessToken], Option[RefreshToken])]
+      .map(RunningTrigger.tupled)
       .option
+  }
+
+  private def setRunningTriggerToken(
+      triggerInstance: UUID,
+      accessToken: AccessToken,
+      refreshToken: Option[RefreshToken]) = {
+    val update: Fragment =
+      sql"""
+        update running_triggers
+        set access_token = $accessToken, refresh_token = $refreshToken
+        where trigger_instance = $triggerInstance
+      """
+    update.update.run.void
   }
 
   // trigger_instance is the primary key on running_triggers so this deletes
@@ -152,25 +178,21 @@ final class DbTriggerDao private (dataSource: DataSource with Closeable, xa: Con
       pkgPayload: Array[Byte]): Either[String, (PackageId, DamlLf.ArchivePayload)] =
     for {
       pkgId <- PackageId.fromString(pkgIdString)
-      payload <- Try(DamlLf.ArchivePayload.parseFrom(pkgPayload)) match {
+      cos = Reader.damlLfCodedInputStreamFromBytes(pkgPayload)
+      payload <- Try(DamlLf.ArchivePayload.parseFrom(cos)) match {
         case Failure(err) => Left(s"Failed to parse package with id $pkgId.\n" ++ err.toString)
         case Success(pkg) => Right(pkg)
       }
     } yield (pkgId, payload)
 
-  private def selectAllTriggers: ConnectionIO[Vector[(UUID, String, String)]] = {
+  private def selectAllTriggers: ConnectionIO[Vector[RunningTrigger]] = {
     val select: Fragment = sql"""
-      select trigger_instance, trigger_party, full_trigger_name from running_triggers order by trigger_instance
+      select trigger_instance, full_trigger_name, trigger_party, application_id, access_token, refresh_token from running_triggers order by trigger_instance
     """
-    select.query[(UUID, String, String)].to[Vector]
-  }
-
-  private def parseRunningTrigger(
-      triggerInstance: UUID,
-      party: String,
-      fullTriggerName: String): Either[String, RunningTrigger] = {
-    // TODO[AH] Persist the access and refresh token.
-    Identifier.fromString(fullTriggerName).map(RunningTrigger(triggerInstance, _, Tag(party), None))
+    select
+      .query[(UUID, Identifier, Party, ApplicationId, Option[AccessToken], Option[RefreshToken])]
+      .map(RunningTrigger.tupled)
+      .to[Vector]
   }
 
   // Drop all tables and other objects associated with the database.
@@ -184,54 +206,69 @@ final class DbTriggerDao private (dataSource: DataSource with Closeable, xa: Con
       *> dropDalfTable.update.run).void
   }
 
-  private def run[T](query: ConnectionIO[T], errorContext: String = ""): Either[String, T] = {
-    Try(query.transact(xa).unsafeRunSync) match {
-      case Failure(err) => Left(errorContext ++ "\n" ++ err.toString)
-      case Success(res) => Right(res)
+  final class DatabaseError(errorContext: String, e: Throwable)
+      extends RuntimeException(errorContext + "\n" + e.toString)
+
+  private def run[T](query: ConnectionIO[T], errorContext: String = "")(
+      implicit ec: ExecutionContext): Future[T] = {
+    query.transact(xa).unsafeToFuture.recoverWith {
+      case NonFatal(e) => Future.failed(new DatabaseError(errorContext, e))
     }
   }
 
-  override def addRunningTrigger(t: RunningTrigger): Either[String, Unit] =
+  override def addRunningTrigger(t: RunningTrigger)(implicit ec: ExecutionContext): Future[Unit] =
     run(insertRunningTrigger(t))
 
-  override def getRunningTrigger(triggerInstance: UUID): Either[String, Option[RunningTrigger]] =
+  override def getRunningTrigger(triggerInstance: UUID)(
+      implicit ec: ExecutionContext): Future[Option[RunningTrigger]] =
     run(queryRunningTrigger(triggerInstance))
 
-  override def removeRunningTrigger(triggerInstance: UUID): Either[String, Boolean] =
+  override def updateRunningTriggerToken(
+      triggerInstance: UUID,
+      accessToken: AccessToken,
+      refreshToken: Option[RefreshToken])(implicit ec: ExecutionContext): Future[Unit] =
+    run(setRunningTriggerToken(triggerInstance, accessToken, refreshToken))
+
+  override def removeRunningTrigger(triggerInstance: UUID)(
+      implicit ec: ExecutionContext): Future[Boolean] =
     run(deleteRunningTrigger(triggerInstance))
 
-  override def listRunningTriggers(party: Party): Either[String, Vector[UUID]] = {
+  override def listRunningTriggers(party: Party)(
+      implicit ec: ExecutionContext): Future[Vector[UUID]] = {
     // Note(RJR): Postgres' ordering of UUIDs is different to Scala/Java's.
     // We sort them after the query to be consistent with the ordering when not using a database.
     run(selectRunningTriggers(party)).map(_.sorted)
   }
 
   // Write packages to the `dalfs` table so we can recover state after a shutdown.
-  override def persistPackages(
-      dar: Dar[(PackageId, DamlLf.ArchivePayload)]): Either[String, Unit] = {
+  override def persistPackages(dar: Dar[(PackageId, DamlLf.ArchivePayload)])(
+      implicit ec: ExecutionContext): Future[Unit] = {
     import cats.implicits._ // needed for traverse
     val insertAll = dar.all.traverse_((insertPackage _).tupled)
     run(insertAll)
   }
 
-  def readPackages: Either[String, List[(PackageId, DamlLf.ArchivePayload)]] = {
+  class InvalidPackage(s: String) extends RuntimeException(s"Invalid package: $s")
+
+  def readPackages(
+      implicit ec: ExecutionContext): Future[List[(PackageId, DamlLf.ArchivePayload)]] = {
     import cats.implicits._ // needed for traverse
     run(selectPackages, "Failed to read packages from database").flatMap(
-      _.traverse((parsePackage _).tupled)
+      _.traverse {
+        case (pkgId, pkg) =>
+          parsePackage(pkgId, pkg)
+            .fold(err => Future.failed(new InvalidPackage(err)), Future.successful(_))
+      }
     )
   }
 
-  def readRunningTriggers: Either[String, Vector[RunningTrigger]] = {
-    import cats.implicits._ // needed for traverse
-    run(selectAllTriggers, "Failed to read running triggers from database").flatMap(
-      _.traverse((parseRunningTrigger _).tupled)
-    )
-  }
+  def readRunningTriggers(implicit ec: ExecutionContext): Future[Vector[RunningTrigger]] =
+    run(selectAllTriggers, "Failed to read running triggers from database")
 
-  def initialize: Either[String, Unit] =
+  def initialize(implicit ec: ExecutionContext): Future[Unit] =
     run(createTables, "Failed to initialize database.")
 
-  private[trigger] def destroy(): Either[String, Unit] =
+  private[trigger] def destroy(implicit ec: ExecutionContext): Future[Unit] =
     run(dropTables, "Failed to remove database objects.")
 
   private[trigger] def destroyPermanently(): Try[Unit] =

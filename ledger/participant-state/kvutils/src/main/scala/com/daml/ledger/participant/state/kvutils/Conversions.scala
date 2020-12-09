@@ -5,16 +5,22 @@ package com.daml.ledger.participant.state.kvutils
 
 import java.time.{Duration, Instant}
 
+import com.daml.ledger.participant.state.kvutils.DamlKvutils.DamlTransactionBlindingInfo.{
+  DisclosureEntry,
+  DivulgenceEntry
+}
 import com.daml.ledger.participant.state.kvutils.DamlKvutils._
 import com.daml.ledger.participant.state.v1.{PackageId, SubmitterInfo}
 import com.daml.lf.data.Ref.{Identifier, LedgerString, Party}
+import com.daml.lf.data.Relation.Relation
 import com.daml.lf.data.Time
-import com.daml.lf.transaction.VersionTimeline.Implicits._
 import com.daml.lf.transaction.{GlobalKey, _}
 import com.daml.lf.value.Value.{ContractId, VersionedValue}
 import com.daml.lf.value.{Value, ValueCoder, ValueOuterClass}
 import com.daml.lf.{crypto, data}
 import com.google.protobuf.Empty
+
+import scala.collection.JavaConverters._
 
 /** Utilities for converting between protobuf messages and our scala
   * data structures.
@@ -30,9 +36,11 @@ private[state] object Conversions {
   def packageStateKey(packageId: PackageId): DamlStateKey =
     DamlStateKey.newBuilder.setPackageId(packageId).build
 
+  def contractIdToString(contractId: ContractId): String = contractId.coid
+
   def contractIdToStateKey(acoid: ContractId): DamlStateKey =
     DamlStateKey.newBuilder
-      .setContractId(acoid.coid)
+      .setContractId(contractIdToString(acoid))
       .build
 
   def decodeContractId(coid: String): ContractId =
@@ -62,11 +70,16 @@ private[state] object Conversions {
   }
 
   def commandDedupKey(subInfo: DamlSubmitterInfo): DamlStateKey = {
+    val sortedUniqueSubmitters =
+      if (subInfo.getSubmittersCount == 1)
+        subInfo.getSubmittersList
+      else
+        subInfo.getSubmittersList.asScala.distinct.sorted.asJava
     DamlStateKey.newBuilder
       .setCommandDedup(
         DamlCommandDedupKey.newBuilder
           .setCommandId(subInfo.getCommandId)
-          .setSubmitter(subInfo.getSubmitter)
+          .addAllSubmitters(sortedUniqueSubmitters)
           .build
       )
       .build
@@ -110,7 +123,7 @@ private[state] object Conversions {
 
   def buildSubmitterInfo(subInfo: SubmitterInfo): DamlSubmitterInfo =
     DamlSubmitterInfo.newBuilder
-      .setSubmitter(subInfo.submitter)
+      .addAllSubmitters((subInfo.actAs: List[String]).asJava)
       .setApplicationId(subInfo.applicationId)
       .setCommandId(subInfo.commandId)
       .setDeduplicateUntil(
@@ -119,7 +132,7 @@ private[state] object Conversions {
 
   def parseSubmitterInfo(subInfo: DamlSubmitterInfo): SubmitterInfo =
     SubmitterInfo(
-      submitter = Party.assertFromString(subInfo.getSubmitter),
+      actAs = subInfo.getSubmittersList.asScala.toList.map(Party.assertFromString),
       applicationId = LedgerString.assertFromString(subInfo.getApplicationId),
       commandId = LedgerString.assertFromString(subInfo.getCommandId),
       deduplicateUntil = parseTimestamp(subInfo.getDeduplicateUntil).toInstant,
@@ -205,19 +218,71 @@ private[state] object Conversions {
     )
 
   def contractIdStructOrStringToStateKey[A](
-      transactionVersion: TransactionVersion,
-      coidString: String,
       coidStruct: ValueOuterClass.ContractId,
   ): DamlStateKey =
     contractIdToStateKey(
       assertDecode(
         "ContractId",
         ValueCoder.CidDecoder.decode(
-          sv = transactionVersion,
-          stringForm = coidString,
           structForm = coidStruct,
         ),
       )
     )
 
+  def encodeTransactionNodeId(nodeId: NodeId): String =
+    nodeId.index.toString
+
+  def decodeTransactionNodeId(transactionNodeId: String): NodeId =
+    NodeId(transactionNodeId.toInt)
+
+  /**
+    * Encodes a [[BlindingInfo]] into protobuf (i.e., [[DamlTransactionBlindingInfo]]).
+    * It is consensus-safe because it does so deterministically.
+    */
+  def encodeBlindingInfo(blindingInfo: BlindingInfo): DamlTransactionBlindingInfo =
+    DamlTransactionBlindingInfo.newBuilder
+      .addAllDisclosures(encodeDisclosure(blindingInfo.disclosure).asJava)
+      .addAllDivulgences(encodeDivulgence(blindingInfo.divulgence).asJava)
+      .build
+
+  def decodeBlindingInfo(blindingInfo: DamlTransactionBlindingInfo): BlindingInfo =
+    BlindingInfo(
+      disclosure = blindingInfo.getDisclosuresList.asScala.map { disclosureEntry =>
+        decodeTransactionNodeId(disclosureEntry.getNodeId) -> disclosureEntry.getDisclosedToLocalPartiesList.asScala.toSet
+          .map(Party.assertFromString)
+      }.toMap,
+      divulgence = blindingInfo.getDivulgencesList.asScala.map { divulgenceEntry =>
+        decodeContractId(divulgenceEntry.getContractId) -> divulgenceEntry.getDivulgedToLocalPartiesList.asScala.toSet
+          .map(Party.assertFromString)
+      }.toMap
+    )
+
+  private def encodeParties(parties: Set[Party]): List[String] =
+    (parties.toList: List[String]).sorted
+
+  private def encodeDisclosureEntry(disclosureEntry: (NodeId, Set[Party])): DisclosureEntry =
+    DisclosureEntry.newBuilder
+      .setNodeId(encodeTransactionNodeId(disclosureEntry._1))
+      .addAllDisclosedToLocalParties(encodeParties(disclosureEntry._2).asJava)
+      .build
+
+  private def encodeDisclosure(
+      disclosure: Relation[NodeId, Party],
+  ): List[DisclosureEntry] =
+    disclosure.toList
+      .sortBy(_._1.index)
+      .map(encodeDisclosureEntry)
+
+  private def encodeDivulgenceEntry(divulgenceEntry: (ContractId, Set[Party])): DivulgenceEntry =
+    DivulgenceEntry.newBuilder
+      .setContractId(contractIdToString(divulgenceEntry._1))
+      .addAllDivulgedToLocalParties(encodeParties(divulgenceEntry._2).asJava)
+      .build
+
+  private def encodeDivulgence(
+      divulgence: Relation[ContractId, Party],
+  ): List[DivulgenceEntry] =
+    divulgence.toList
+      .sortBy(_._1.coid)
+      .map(encodeDivulgenceEntry)
 }
