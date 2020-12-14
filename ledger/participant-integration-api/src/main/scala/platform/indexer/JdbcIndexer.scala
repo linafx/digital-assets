@@ -63,10 +63,7 @@ object JdbcIndexer {
           config.eventsPageSize,
           metrics,
           lfValueTranslationCache,
-          /* There is currently a corner-case which affects durability
-           * guarantees when performing async commits. This feature
-           * will be disabled until the mitigation is merged. */
-          jdbcAsyncCommits = false,
+          jdbcAsyncCommits = true,
         )
         _ <- ResourceOwner.forFuture(() => ledgerDao.reset())
         initialLedgerEnd <- initializeLedger(ledgerDao)
@@ -80,7 +77,7 @@ object JdbcIndexer {
           config.eventsPageSize,
           metrics,
           lfValueTranslationCache,
-          jdbcAsyncCommits = false,
+          jdbcAsyncCommits = true,
         )
         initialLedgerEnd <- initializeLedger(ledgerDao)
       } yield new JdbcIndexer(initialLedgerEnd, config.participantId, ledgerDao, metrics)
