@@ -22,8 +22,8 @@ private[lf] object ValueVersions
 
   private[lf] val minVersion = ValueVersion("1")
   private[lf] val minGenMap = ValueVersion("dev")
-  private[lf] val minNoTypeConstructor = ValueVersion("dev")
-  private[lf] val minNoRecordLabel = ValueVersion("dev")
+  private[lf] val minNoTypeConstructor = ValueVersion("6")
+  private[lf] val minNoRecordLabel = ValueVersion("6")
   private[lf] val minContractIdV1 = ValueVersion("dev")
 
   // Older versions are deprecated https://github.com/digital-asset/daml/issues/5220
