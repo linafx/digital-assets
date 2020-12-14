@@ -455,8 +455,8 @@ private class JdbcLedgerDao(
       transaction: CommittedTransaction,
       divulged: Iterable[DivulgedContract],
       blindingInfo: Option[BlindingInfo],
-  )(implicit loggingContext: LoggingContext): Future[PersistenceResponse] =
-    dbDispatcher
+  )(implicit loggingContext: LoggingContext): Future[PersistenceResponse] = {
+    val stateUpdateFuture = dbDispatcher
       .executeSql(metrics.daml.index.db.storeTransactionDbMetrics) { implicit conn =>
         if (enableAsyncCommits) {
           queries.enableAsyncCommit
@@ -470,23 +470,48 @@ private class JdbcLedgerDao(
               divulged = divulged.iterator.map(_.contractId).toSet,
             )
           )
+        setAsyncCommit
         if (error.isEmpty) {
-          preparedInsert.write(metrics)
-          Timed.value(
-            metrics.daml.index.db.storeTransactionDbMetrics.insertCompletion,
-            submitterInfo
-              .map(prepareCompletionInsert(_, offsetStep.offset, transactionId, recordTime))
-              .foreach(_.execute())
-          )
+          preparedInsert.writeState(metrics)
         } else {
           submitterInfo.foreach(handleError(offsetStep.offset, _, recordTime, error.get))
         }
+        Ok
+      }
+    val eventsUpdateFuture = dbDispatcher
+      .executeSql(metrics.daml.index.db.storeTransactionDbMetrics) { implicit conn =>
+        if (enableAsyncCommits) {
+          queries.enableAsyncCommit
+        }
+        preparedInsert.writeEvents(metrics)
+        Timed.value(
+          metrics.daml.index.db.storeTransactionDbMetrics.insertCompletion,
+          submitterInfo
+            .map(prepareCompletionInsert(_, offset, transactionId, recordTime))
+            .foreach(_.execute())
+        )
         Timed.value(
           metrics.daml.index.db.storeTransactionDbMetrics.updateLedgerEnd,
           ParametersTable.updateLedgerEnd(offsetStep)
         )
         Ok
-      }daml-lf/transaction/src/main/scala/com/digitalasset/daml/lf/value/ValueVersion.scala
+      }
+    implicit val ec: ExecutionContext = executionContext
+    for {
+    stateUpdateResponse <- stateUpdateFuture
+    _ <- eventsUpdateFuture
+    } yield stateUpdateResponse
+  }
+
+  private def setAsyncCommit(implicit conn: Connection) = {
+    val statement = conn.prepareStatement("SET LOCAL synchronous_commit = 'off'")
+    try {
+      statement.execute()
+      ()
+    } finally {
+      statement.close()
+    }
+  }
 
   override def storeRejection(
       submitterInfo: Option[SubmitterInfo],
@@ -508,9 +533,10 @@ private class JdbcLedgerDao(
   override def storeInitialState(
       ledgerEntries: Vector[(Offset, LedgerEntry)],
       newLedgerEnd: Offset,
-  )(implicit loggingContext: LoggingContext): Future[Unit] =
-    dbDispatcher.executeSql(metrics.daml.index.db.storeInitialStateFromScenario) {
+  )(implicit loggingContext: LoggingContext): Future[Unit] = {
+    val stateUpdateFuture = dbDispatcher.executeSql(metrics.daml.index.db.storeInitialStateFromScenario) {
       implicit connection =>
+        setAsyncCommit
         ledgerEntries.foreach {
           case (offset, entry) =>
             entry match {
@@ -528,10 +554,7 @@ private class JdbcLedgerDao(
                   transaction = tx.transaction,
                   divulgedContracts = Nil,
                   blindingInfo = None,
-                ).write(metrics)
-                submitterInfo
-                  .map(prepareCompletionInsert(_, offset, tx.transactionId, tx.recordedAt))
-                  .foreach(_.execute())
+                ).writeState(metrics)
               case LedgerEntry.Rejection(recordTime, commandId, applicationId, actAs, reason) =>
                 val _ = prepareRejectionInsert(
                   submitterInfo = SubmitterInfo(actAs, applicationId, commandId, Instant.EPOCH),
@@ -541,8 +564,41 @@ private class JdbcLedgerDao(
                 ).execute()
             }
         }
+    }
+    val eventsUpdateFuture = dbDispatcher.executeSql(metrics.daml.index.db.storeInitialStateFromScenario) {
+      implicit connection =>
+        ledgerEntries.foreach {
+          case (offset, entry) =>
+            entry match {
+              case tx: LedgerEntry.Transaction =>
+                val submitterInfo =
+                  for (appId <- tx.applicationId;
+                       actAs <- if (tx.actAs.isEmpty) None else Some(tx.actAs); cmdId <- tx.commandId)
+                    yield SubmitterInfo(actAs, appId, cmdId, Instant.EPOCH)
+                prepareTransactionInsert(
+                  submitterInfo = submitterInfo,
+                  workflowId = tx.workflowId,
+                  transactionId = tx.transactionId,
+                  ledgerEffectiveTime = tx.ledgerEffectiveTime,
+                  offset = offset,
+                  transaction = tx.transaction,
+                  divulgedContracts = Nil,
+                  blindingInfo = None,
+                ).writeEvents(metrics)
+                submitterInfo
+                  .map(prepareCompletionInsert(_, offset, tx.transactionId, tx.recordedAt))
+                  .foreach(_.execute())
+              case LedgerEntry.Rejection(_, _, _, _, _) => Future.unit
+            }
+        }
         ParametersTable.updateLedgerEnd(CurrentOffset(newLedgerEnd))
     }
+    implicit val ec: ExecutionContext = executionContext
+    for {
+      stateUpdateResponse <- stateUpdateFuture
+      _ <- eventsUpdateFuture
+    } yield stateUpdateResponse
+  }
 
   private def toParticipantRejection(reason: domain.RejectionReason): RejectionReason =
     reason match {
