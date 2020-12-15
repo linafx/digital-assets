@@ -64,12 +64,6 @@ object EngineConfig {
     allowedLanguageVersions = LanguageVersion.StableVersions
   )
 
-  private[this] def toDev(config: EngineConfig): EngineConfig =
-    config.copy(allowedLanguageVersions = LanguageVersion.DevVersions)
-
-  /**
-    * Recommended production configuration.
-    */
   def Stable: EngineConfig = Lenient
 
   /**
@@ -77,6 +71,17 @@ object EngineConfig {
     * the same input and output versions as [[Lenient]] plus the
     * development versions.
     */
-  val Dev: EngineConfig = toDev(Lenient)
+  val Dev: EngineConfig = new EngineConfig(
+    allowedLanguageVersions = LanguageVersion.DevVersions
+  )
+
+  /**
+    * Legacy configuration. This allows the engine to load
+    * LF versions compatible with contract ID legacy mode,
+    * concretely, versions 1.6, 1.7, and 1.8.
+    */
+  val Legacy: EngineConfig = new EngineConfig(
+    allowedLanguageVersions = VersionRange(LanguageVersion.v1_6, LanguageVersion.v1_8)
+  )
 
 }

@@ -142,8 +142,14 @@ final class SandboxServer(
 
   private[this] val engine = {
     val engineConfig =
-      (if (config.devMode) EngineConfig.Dev else EngineConfig.Stable)
-        .copy(
+      (
+        if (config.seeding.isEmpty)
+          EngineConfig.Legacy
+        else if (config.devMode)
+          EngineConfig.Dev
+        else
+          EngineConfig.Stable
+      ).copy(
           profileDir = config.profileDir,
           stackTraceMode = config.stackTraces,
         )
