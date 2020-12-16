@@ -109,13 +109,16 @@ class PreExecutingSubmissionValidator[WriteSet](
       metrics.daml.kvutils.submission.validator.fetchInputsRunning,
       for {
         inputValues <- ledgerStateReader.read(inputKeys)
-
-        nestedInputKeys = inputValues.collect {
-          case (Some(value), _) if value.hasContractKeyState =>
-            val contractId = value.getContractKeyState.getContractId
-            DamlStateKey.newBuilder.setContractId(contractId).build
-        }
-        nestedInputValues <- ledgerStateReader.read(nestedInputKeys)
+        inputKeySet = inputKeys.toSet
+        nestedInputKeys = inputValues
+          .collect {
+            case (Some(value), _) if value.hasContractKeyState =>
+              val contractId = value.getContractKeyState.getContractId
+              DamlStateKey.newBuilder.setContractId(contractId).build
+          }
+          .filter(stateKey => !inputKeySet.contains(stateKey))
+        nestedInputValues <- if (nestedInputKeys.nonEmpty) ledgerStateReader.read(nestedInputKeys)
+        else Future.successful(Seq.empty)
       } yield {
         assert(inputKeys.size == inputValues.size)
         assert(nestedInputKeys.size == nestedInputValues.size)
