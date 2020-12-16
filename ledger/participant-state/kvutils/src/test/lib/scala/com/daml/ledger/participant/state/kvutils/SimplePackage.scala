@@ -19,25 +19,60 @@ import com.daml.lf.testing.parser.Implicits._
 import com.daml.lf.value.Value
 import com.daml.lf.value.Value.{ValueParty, ValueUnit}
 
+import scala.Ordering.Implicits.infixOrderingOps
+
 class SimplePackage(additionalContractDataType: String) {
   val damlPackageWithContractData: Ast.Package =
     p"""
       module DA.Types {
         record @serializable Tuple2 (a: *) (b: *) = { x1: a, x2: b } ;
+
+        record @serializable FetchedContract (a: *) = { contract: a, contractId: ContractId a } ;
       }
 
       module Simple {
-       record @serializable SimpleTemplate = { owner: Party, observer: Party, contractData: $additionalContractDataType } ;
-       variant @serializable SimpleVariant = SV: Party ;
-       template (this : SimpleTemplate) =  {
+        record @serializable SimpleTemplate = { owner: Party, observer: Party, contractData: $additionalContractDataType } ;
+        variant @serializable SimpleVariant = SV: Party ;
+        template (this : SimpleTemplate) = {
           precondition True,
           signatories Cons @Party [Simple:SimpleTemplate {owner} this] (Nil @Party),
           observers Cons @Party [Simple:SimpleTemplate {observer} this] (Nil @Party),
           agreement "",
           choices {
-            choice Consume (self) (x: Unit) : Unit, controllers Cons @Party [Simple:SimpleTemplate {owner} this] (Nil @Party) to upure @Unit ()
+            choice Consume (self) (x: Unit) : Unit,
+              controllers Cons @Party [Simple:SimpleTemplate {owner} this] (Nil @Party) to
+                upure @Unit (),
+            choice Replace (self) (x: Unit) : ContractId Simple:SimpleTemplate,
+              controllers Cons @Party [Simple:SimpleTemplate {owner} this] (Nil @Party) to
+                create @Simple:SimpleTemplate (Simple:SimpleTemplate {
+                  owner = Simple:SimpleTemplate {owner} this,
+                  observer = Simple:SimpleTemplate {observer} this,
+                  contractData = Simple:SimpleTemplate {contractData} this
+                })
           },
           key @Party (Simple:SimpleTemplate {owner} this) (\ (p: Party) -> Cons @Party [p] (Nil @Party))
+        } ;
+
+        record @serializable SimpleTemplateHolder = { owner: Party } ;
+        template (this : SimpleTemplateHolder) = {
+          precondition True,
+          signatories Cons @Party [Simple:SimpleTemplateHolder {owner} this] (Nil @Party),
+          observers Nil @Party,
+          agreement "",
+          choices {
+            choice @nonConsuming ReplaceHeldByKey (self) (x: Unit) : Unit,
+              controllers Cons @Party [Simple:SimpleTemplateHolder {owner} this] (Nil @Party) to
+                ubind
+                  fetched: <contractId: ContractId Simple:SimpleTemplate, contract: Simple:SimpleTemplate> <- fetch_by_key @Simple:SimpleTemplate (Simple:SimpleTemplateHolder {owner} this) ;
+                  consumed: Unit <- exercise @Simple:SimpleTemplate Consume (fetched).contractId () ;
+                  created: ContractId Simple:SimpleTemplate <- create @Simple:SimpleTemplate (Simple:SimpleTemplate {
+                    owner = Simple:SimpleTemplate {owner} (fetched).contract,
+                    observer = Simple:SimpleTemplate {observer} (fetched).contract,
+                    contractData = Simple:SimpleTemplate {contractData} (fetched).contract
+                  })
+                in
+                  upure @Unit ()
+          }
         } ;
       }
     """
@@ -46,13 +81,13 @@ class SimplePackage(additionalContractDataType: String) {
     defaultParserParameters.defaultPackageId
 
   val decodedPackage: Ast.Package = {
-    val metadata = if (LanguageVersion.ordering
-        .gteq(defaultParserParameters.languageVersion, LanguageVersion.Features.packageMetadata)) {
-      Some(
-        Ast.PackageMetadata(
-          Ref.PackageName.assertFromString("kvutils-tests"),
-          Ref.PackageVersion.assertFromString("1.0.0")))
-    } else None
+    val metadata =
+      if (defaultParserParameters.languageVersion >= LanguageVersion.Features.packageMetadata) {
+        Some(
+          Ast.PackageMetadata(
+            Ref.PackageName.assertFromString("kvutils-tests"),
+            Ref.PackageVersion.assertFromString("1.0.0")))
+      } else None
     damlPackageWithContractData.copy(metadata = metadata)
   }
 
@@ -102,8 +137,20 @@ class SimplePackage(additionalContractDataType: String) {
       )
     )
 
+  private val simpleHolderTemplateId: Ref.Identifier =
+    Ref.Identifier(
+      packageId,
+      Ref.QualifiedName(
+        Ref.ModuleName.assertFromString("Simple"),
+        Ref.DottedName.assertFromString("SimpleTemplateHolder")
+      )
+    )
+
   private val simpleConsumeChoiceName: Ref.ChoiceName =
     Ref.ChoiceName.assertFromString("Consume")
+
+  private val simpleReplaceChoiceName: Ref.ChoiceName =
+    Ref.ChoiceName.assertFromString("Replace")
 
   def simpleCreateCmd(templateArg: Value[Value.ContractId]): Command =
     createCmd(simpleTemplateId, templateArg)
@@ -113,6 +160,9 @@ class SimplePackage(additionalContractDataType: String) {
 
   def simpleCreateAndExerciseConsumeCmd(templateArg: Value[Value.ContractId]): Command =
     createAndExerciseCmd(simpleTemplateId, templateArg, simpleConsumeChoiceName)
+
+  def simpleExerciseReplaceByKeyCmd(partyKey: Ref.Party): Command =
+    exerciseByKeyCmd(partyKey, simpleTemplateId, simpleReplaceChoiceName)
 
   def mkSimpleTemplateArg(
       owner: String,
@@ -128,5 +178,20 @@ class SimplePackage(additionalContractDataType: String) {
           Ref.Party.assertFromString(observer)),
         Some(Ref.Name.assertFromString("contractData")) -> additionalContractValue
       )
+    )
+
+  private val simpleHolderReplaceHeldByKeyChoiceName: Ref.ChoiceName =
+    Ref.ChoiceName.assertFromString("ReplaceHeldByKey")
+
+  def simpleHolderCreateCmd(arg: Value[Value.ContractId]): Command =
+    createCmd(simpleHolderTemplateId, arg)
+
+  def simpleHolderExerciseReplaceHeldByKeyCmd(contractId: Value.ContractId): Command =
+    exerciseCmd(contractId, simpleHolderTemplateId, simpleHolderReplaceHeldByKeyChoiceName)
+
+  def mkSimpleHolderTemplateArg(owner: Ref.Party): Value[Value.ContractId] =
+    Value.ValueRecord(
+      Some(simpleHolderTemplateId),
+      ImmArray(Some(Ref.Name.assertFromString("owner")) -> Value.ValueParty(owner))
     )
 }

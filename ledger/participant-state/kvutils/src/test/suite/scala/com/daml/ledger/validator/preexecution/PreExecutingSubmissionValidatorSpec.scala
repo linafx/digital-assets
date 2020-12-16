@@ -12,6 +12,7 @@ import com.daml.ledger.participant.state.kvutils.KeyValueCommitting.PreExecution
 import com.daml.ledger.participant.state.kvutils.{
   Bytes,
   DamlStateMap,
+  DamlStateMapWithFingerprints,
   Envelope,
   Fingerprint,
   FingerprintPlaceholder,
@@ -19,17 +20,17 @@ import com.daml.ledger.participant.state.kvutils.{
   TestHelpers
 }
 import com.daml.ledger.participant.state.v1.Configuration
-import com.daml.ledger.validator.StateKeySerializationStrategy
 import com.daml.ledger.validator.TestHelper._
 import com.daml.ledger.validator.ValidationFailed.ValidationError
+import com.daml.ledger.validator.preexecution.PreExecutingSubmissionValidator.DamlLedgerStateReaderWithFingerprints
 import com.daml.ledger.validator.preexecution.PreExecutingSubmissionValidatorSpec._
+import com.daml.ledger.validator.preexecution.PreExecutionCommitResult.ReadSet
 import com.daml.lf.data.Ref.ParticipantId
 import com.daml.lf.data.Time.Timestamp
 import com.daml.logging.LoggingContext
 import com.daml.metrics.Metrics
 import com.google.protobuf.ByteString
-import org.mockito.ArgumentMatchers._
-import org.mockito.MockitoSugar
+import org.mockito.{ArgumentMatchersSugar, MockitoSugar}
 import org.scalatest.Assertion
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
@@ -46,10 +47,8 @@ class PreExecutingSubmissionValidatorSpec extends AsyncWordSpec with Matchers wi
         allDamlStateKeyTypes.head -> FingerprintPlaceholder
       )
       val actualInputState = Map(
-        allDamlStateKeyTypes.head -> (
-          (
-            Some(DamlStateValue.getDefaultInstance),
-            FingerprintPlaceholder))
+        allDamlStateKeyTypes.head ->
+          (Some(DamlStateValue.getDefaultInstance) -> FingerprintPlaceholder)
       )
       val expectedMinRecordTime = Some(recordTime.toInstant.minusSeconds(123))
       val expectedMaxRecordTime = Some(recordTime.toInstant)
@@ -62,7 +61,7 @@ class PreExecutingSubmissionValidatorSpec extends AsyncWordSpec with Matchers wi
         expectedMaxRecordTime = expectedMaxRecordTime,
         expectedSuccessWriteSet = expectedSuccessWriteSet,
         expectedOutOfTimeBoundsWriteSet = expectedOutOfTimeBoundsWriteSet,
-        expectedInvolvedParticipants = expectedInvolvedParticipants
+        expectedInvolvedParticipants = expectedInvolvedParticipants,
       )
       val ledgerStateReader = createLedgerStateReader(actualInputState)
 
@@ -175,44 +174,16 @@ class PreExecutingSubmissionValidatorSpec extends AsyncWordSpec with Matchers wi
         }
     }
   }
-
-  "generateReadSet" should {
-    "generate a read set" in {
-      val contractIdStateKey = DamlStateKey.newBuilder.setContractId("a contract ID").build
-      val contractIdStateValue =
-        DamlStateValue.newBuilder.setContractState(DamlContractState.newBuilder).build
-      val fingerprint = ByteString.copyFromUtf8("fingerprint")
-      val instance = createInstance()
-
-      instance.generateReadSet(
-        fetchedInputs = Map(contractIdStateKey -> ((Some(contractIdStateValue), fingerprint))),
-        accessedKeys = Set(contractIdStateKey),
-      ) should be(Seq(contractIdStateKey.toByteString -> fingerprint))
-    }
-
-    "throw in case an input key is declared in the read set but not fetched as input" in {
-      val instance = createInstance()
-
-      assertThrows[IllegalStateException](
-        instance
-          .generateReadSet(
-            fetchedInputs = Map.empty,
-            accessedKeys = allDamlStateKeyTypes.toSet
-          )
-      )
-    }
-  }
 }
 
 object PreExecutingSubmissionValidatorSpec {
 
+  import ArgumentMatchersSugar._
   import MockitoSugar._
 
   private val recordTime = Timestamp.now()
 
   private val metrics = new Metrics(new MetricRegistry)
-
-  private val keySerializationStrategy = StateKeySerializationStrategy.createDefault()
 
   private def anEnvelope(expectedReadSet: Set[DamlStateKey] = Set.empty): Bytes = {
     val submission = DamlSubmission
@@ -230,8 +201,16 @@ object PreExecutingSubmissionValidatorSpec {
       expectedSuccessWriteSet: Bytes = ByteString.EMPTY,
       expectedOutOfTimeBoundsWriteSet: Bytes = ByteString.EMPTY,
       expectedInvolvedParticipants: Set[ParticipantId] = Set.empty,
-  ): PreExecutingSubmissionValidator[Bytes] = {
+  ): PreExecutingSubmissionValidator[ReadSet, Bytes] = {
     val mockCommitter = mock[KeyValueCommitting]
+    val result = PreExecutionResult(
+      expectedReadSet.keySet,
+      aLogEntry,
+      Map.empty,
+      aLogEntry,
+      expectedMinRecordTime.map(Timestamp.assertFromInstant),
+      expectedMaxRecordTime.map(Timestamp.assertFromInstant)
+    )
     when(
       mockCommitter.preExecuteSubmission(
         any[Configuration],
@@ -239,22 +218,29 @@ object PreExecutingSubmissionValidatorSpec {
         any[ParticipantId],
         any[DamlStateMap],
       ))
-      .thenReturn(
-        PreExecutionResult(
-          expectedReadSet.keySet,
-          aLogEntry,
-          Map.empty,
-          aLogEntry,
-          expectedMinRecordTime.map(Timestamp.assertFromInstant),
-          expectedMaxRecordTime.map(Timestamp.assertFromInstant)
-        ))
-    val mockCommitStrategy = mock[PreExecutingCommitStrategy[Bytes]]
+      .thenReturn(result)
+
+    val mockCommitStrategy = mock[PreExecutingCommitStrategy[
+      DamlStateKey,
+      (Option[DamlStateValue], Fingerprint),
+      ReadSet,
+      Bytes,
+    ]]
+    when(
+      mockCommitStrategy.generateReadSet(any[DamlStateMapWithFingerprints], any[Set[DamlStateKey]]))
+      .thenAnswer[DamlStateMapWithFingerprints, Set[DamlStateKey]] {
+        (fetchedInputs, accessedKeys) =>
+          accessedKeys.map { key =>
+            val (_, fingerprint) = fetchedInputs(key)
+            key.toByteString -> fingerprint
+          }.toSeq
+      }
     when(
       mockCommitStrategy.generateWriteSets(
-        any[ParticipantId],
+        eqTo(aParticipantId),
         any[DamlLogEntryId],
-        any[DamlStateMap],
-        any[PreExecutionResult],
+        any[Map[DamlStateKey, (Option[DamlStateValue], Fingerprint)]],
+        same(result),
       )(any[ExecutionContext]))
       .thenReturn(
         Future.successful(
@@ -262,30 +248,28 @@ object PreExecutingSubmissionValidatorSpec {
             expectedSuccessWriteSet,
             expectedOutOfTimeBoundsWriteSet,
             expectedInvolvedParticipants)))
-    new PreExecutingSubmissionValidator[Bytes](
-      mockCommitter,
-      metrics,
-      keySerializationStrategy,
-      mockCommitStrategy)
+
+    new PreExecutingSubmissionValidator[ReadSet, Bytes](mockCommitter, metrics, mockCommitStrategy)
   }
 
   private def createLedgerStateReader(
       inputState: Map[DamlStateKey, (Option[DamlStateValue], Fingerprint)]
   ): DamlLedgerStateReaderWithFingerprints =
-    (keys: Seq[DamlStateKey]) => Future.successful(keys.map(inputState))
+    new DamlLedgerStateReaderWithFingerprints {
+      override def read(keys: Seq[DamlStateKey])(implicit executionContext: ExecutionContext)
+        : Future[Seq[(Option[DamlStateValue], Fingerprint)]] =
+        Future.successful(keys.map(inputState))
+    }
 
   private def verifyReadSet(
-      output: PreExecutionOutput[Bytes],
+      output: PreExecutionOutput[ReadSet, Bytes],
       expectedReadSet: Map[DamlStateKey, Fingerprint],
   ): Assertion = {
     import org.scalatest.matchers.should.Matchers._
-    val expectedSortedReadSet = expectedReadSet
-      .map {
-        case (key, fingerprint) =>
-          keySerializationStrategy.serializeStateKey(key) -> fingerprint
-      }
-      .toSeq
-      .sortBy(_._1.asReadOnlyByteBuffer())
-    output.readSet shouldBe expectedSortedReadSet
+    val actualReadSet = output.readSet.map {
+      case (key, value) =>
+        DamlStateKey.parseFrom(key) -> value
+    }.toMap
+    actualReadSet should be(expectedReadSet)
   }
 }

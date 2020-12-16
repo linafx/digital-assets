@@ -204,6 +204,7 @@ jobs:
       demands: assignment -equals default
     steps:
       - checkout: self
+        persistCredentials: true
       - bash: ci/dev-env-install.sh
         displayName: 'Build/Install the Developer Environment'
       - bash: ci/configure-bazel.sh
@@ -211,35 +212,45 @@ jobs:
         env:
           IS_FORK: $(System.PullRequest.IsFork)
           # to upload to the bazel cache
-          GOOGLE_APPLICATION_CREDENTIALS_CONTENT: $(GOOGLE_APPLICATION_CREDENTIALS_CONTENT)        
+          GOOGLE_APPLICATION_CREDENTIALS_CONTENT: $(GOOGLE_APPLICATION_CREDENTIALS_CONTENT)
       - bash: |
           set -euo pipefail
           eval "$(dev-env/bin/dade assist)"
           export LC_ALL=en_US.UTF-8
-          
+
           bazel build //...
           # Make sure that Bazel query works
-          bazel query 'deps(//...)'
+          bazel query 'deps(//...)' >/dev/null
         displayName: 'Build'
       - bash: |
           set -euo pipefail
-          eval "$(./dev-env/bin/dade-assist)"
+          source dev-env/load.sh
+
+          #needs to be specified since blackduck can not scan all bazel dependency types in one go, haskell has to be scanned separatey and code location name uniquely identified to avoid stomping
+          BAZEL_DEPENDENCY_TYPE="haskell_cabal_library"
+
           bash <(curl -s https://raw.githubusercontent.com/DACH-NY/security-blackduck/master/synopsys-detect) \
-          ci-build digital-asset_daml master \
+          ci-build digital-asset_daml $(Build.SourceBranchName) \
           --logging.level.com.synopsys.integration=DEBUG \
           --detect.tools=BAZEL \
           --detect.bazel.target=//... \
-          --detect.bazel.dependency.type=haskell_cabal_library \
+          --detect.bazel.dependency.type=${BAZEL_DEPENDENCY_TYPE} \
+          --detect.policy.check.fail.on.severities=MAJOR,CRITICAL,BLOCKER \
           --detect.notices.report=true \
+          --detect.code.location.name=digital-asset_daml_${BAZEL_DEPENDENCY_TYPE} \
           --detect.report.timeout=1500
         displayName: 'Blackduck Haskell Scan'
         env:
           BLACKDUCK_HUBDETECT_TOKEN: $(BLACKDUCK_HUBDETECT_TOKEN)
       - bash: |
           set -euo pipefail
-          eval "$(./dev-env/bin/dade-assist)"
+          source dev-env/load.sh
+
+          #avoid stomping any previous bazel haskell scans for this repository by qualifying as a maven_install (aka jvm) bazel blackduck scan
+          BAZEL_DEPENDENCY_TYPE="maven_install"
+
           bash <(curl -s https://raw.githubusercontent.com/DACH-NY/security-blackduck/master/synopsys-detect) \
-          ci-build digital-asset_daml master \
+          ci-build digital-asset_daml $(Build.SourceBranchName) \
           --logging.level.com.synopsys.integration=DEBUG \
           --detect.npm.include.dev.dependencies=false \
           --detect.excluded.detector.types=NUGET \
@@ -248,14 +259,31 @@ jobs:
           --detect.python.python3=true \
           --detect.tools=DETECTOR,BAZEL,DOCKER \
           --detect.bazel.target=//... \
-          --detect.bazel.dependency.type=maven_install \
-          --detect.detector.search.exclusion.paths=language-support/ts/codegen/tests/ts,language-support/ts,language-support/scala/examples/iou-no-codegen,language-support/scala/examples/quickstart-scala,docs/source/app-dev/bindings-java/code-snippets,docs/source/app-dev/bindings-java/quickstart/template-root,language-support/scala/examples/quickstart-scala,language-support/scala/examples/iou-no-codegen \
+          --detect.bazel.dependency.type=${BAZEL_DEPENDENCY_TYPE} \
+          --detect.detector.search.exclusion.paths=.bazel-cache,language-support/ts/codegen/tests/ts,language-support/ts,language-support/scala/examples/iou-no-codegen,language-support/scala/examples/quickstart-scala,docs/source/app-dev/bindings-java/code-snippets,docs/source/app-dev/bindings-java/quickstart/template-root,language-support/scala/examples/quickstart-scala,language-support/scala/examples/iou-no-codegen \
           --detect.cleanup=false \
           --detect.policy.check.fail.on.severities=MAJOR,CRITICAL,BLOCKER \
           --detect.notices.report=true \
           --detect.cleanup.bdio.files=true \
+          --detect.code.location.name=digital-asset_daml_${BAZEL_DEPENDENCY_TYPE} \
           --detect.report.timeout=4500
         displayName: 'Blackduck Scan'
         env:
           BLACKDUCK_HUBDETECT_TOKEN: $(BLACKDUCK_HUBDETECT_TOKEN)
+      - template: ../bash-lib.yml
+        parameters:
+          var_name: bash_lib
+      - bash: |
+          set -euo pipefail
+          source dev-env/load.sh
+          source $(bash_lib)
+
+          tr -d '\015' <*_Black_Duck_Notices_Report.txt | grep -v digital-asset_daml >NOTICES
+          if git diff --exit-code -- NOTICES; then
+              echo "NOTICES file already up-to-date."
+          else
+              git add NOTICES
+              open_pr "notices-update-$(Build.BuildId)" "update NOTICES file"
+          fi
+        displayName: notices
       - template: ../daily_tell_slack.yml

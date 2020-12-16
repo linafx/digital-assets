@@ -213,6 +213,46 @@ jobs:
           trigger_sha: '$(trigger_sha)'
       - template: ci/report-end.yml
 
+  - job: Linux_scala_2_13
+    dependsOn:
+      - da_ghc_lib
+    timeoutInMinutes: 360
+    pool:
+      name: 'linux-pool'
+      demands: assignment -equals default
+    steps:
+      - template: ci/report-start.yml
+      - checkout: self
+      - bash: ci/dev-env-install.sh
+        displayName: 'Build/Install the Developer Environment'
+      - bash: |
+          source dev-env/load.sh
+          ci/dev-env-push.py
+        displayName: 'Push Developer Environment build results'
+        condition: eq(variables['System.PullRequest.IsFork'], 'False')
+        env:
+          # to upload to the Nix cache
+          GOOGLE_APPLICATION_CREDENTIALS_CONTENT: $(GOOGLE_APPLICATION_CREDENTIALS_CONTENT)
+          NIX_SECRET_KEY_CONTENT: $(NIX_SECRET_KEY_CONTENT)
+
+      - bash: ci/configure-bazel.sh
+        displayName: 'Configure Bazel'
+        env:
+          IS_FORK: $(System.PullRequest.IsFork)
+          # to upload to the bazel cache
+          GOOGLE_APPLICATION_CREDENTIALS_CONTENT: $(GOOGLE_APPLICATION_CREDENTIALS_CONTENT)
+      - bash: |
+          set -euo pipefail
+          source dev-env/load.sh
+          bazel build --config scala_2_13 //libs-scala/...
+          # gatling-utils tests fail with a ClassNotFoundException for scala.collection.SeqLike
+          bazel test --config scala_2_13 -- //libs-scala/... -//libs-scala/gatling-utils/...
+        displayName: 'Build'
+      - template: ci/tell-slack-failed.yml
+        parameters:
+          trigger_sha: '$(trigger_sha)'
+      - template: ci/report-end.yml
+
   - job: compatibility_ts_libs
     dependsOn:
       - da_ghc_lib
@@ -578,32 +618,16 @@ jobs:
             fi
         done
 
-        AUTH="$(get_gh_auth_header)"
-
         trap "git checkout $(branch_sha)" EXIT
         git checkout origin/master
-        BRANCH=update-compat-versions-for-$(release_tag)
-        # if this is a rerun, branch might already exist
-        git branch -D $BRANCH || true
-        git checkout -b $BRANCH
         cp .bazelrc compatibility/
         compatibility/update-versions.sh
-        # Note that maven_install.json might be unchanged but
-        # git add is happy about that.
         git add compatibility/versions.bzl compatibility/maven_install.json
-        git -c user.name="Azure Pipelines DAML Build" \
-            -c user.email="support@digitalasset.com" \
-            commit \
-            -m "$(printf "update compat versions for $(release_tag)\n\nCHANGELOG_BEGIN\nCHANGELOG_END\n")"
-        git push origin $BRANCH:$BRANCH
-        curl -H "Content-Type: application/json" \
-             -H "$AUTH" \
-             --silent \
-             --fail \
-             --include \
-             --location \
-             -d "{\"title\": \"update compat versions for $(release_tag)\", \"head\": \"$BRANCH\", \"base\": \"master\"}" \
-             https://api.github.com/repos/digital-asset/daml/pulls
+
+        BRANCH=update-compat-versions-for-$(release_tag)-$(Build.BuildId)
+        TITLE="update compat versions for $(release_tag)"
+        open_pr "$BRANCH" "$TITLE"
+
         setvar "branch" "$BRANCH"
       name: out
 
@@ -637,6 +661,7 @@ jobs:
       - compatibility_macos
       - compatibility_linux
       - compatibility_windows
+      - Linux_scala_2_13
     pool:
       name: "linux-pool"
       demands: assignment -equals default
@@ -653,6 +678,10 @@ jobs:
       Windows.machine: $[ dependencies.Windows.outputs['start.machine'] ]
       Windows.end: $[ dependencies.Windows.outputs['end.time'] ]
       Windows.status: $[ dependencies.Windows.result ]
+      Linux_scala_2_13.start: $[ dependencies.Linux_scala_2_13.outputs['start.time'] ]
+      Linux_scala_2_13.machine: $[ dependencies.Linux_scala_2_13.outputs['start.machine'] ]
+      Linux_scala_2_13.end: $[ dependencies.Linux_scala_2_13.outputs['end.time'] ]
+      Linux_scala_2_13.status: $[ dependencies.Linux_scala_2_13.result ]
       release.start: $[ dependencies.release.outputs['start.time'] ]
       release.machine: $[ dependencies.release.outputs['start.machine'] ]
       release.end: $[ dependencies.release.outputs['end.time'] ]
