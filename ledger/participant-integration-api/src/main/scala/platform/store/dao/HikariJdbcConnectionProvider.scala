@@ -96,9 +96,25 @@ private[platform] object HikariConnection {
 }
 
 private[platform] class HikariJdbcConnectionProvider(
-    dataSource: HikariDataSource,
-    healthPoller: Timer,
-) extends JdbcConnectionProvider {
+                                                      dataSource: HikariDataSource,
+                                                      healthPoller: Timer,
+                                                    ) extends JdbcConnectionProvider {
+  override def runSimpleSQL[T](databaseMetrics: DatabaseMetrics)(block: Connection => T): T = {
+    val conn = dataSource.getConnection()
+    try{
+      Timed.value(
+        databaseMetrics.queryTimer,
+        block(conn)
+      )
+    } catch {
+      case e: SQLTransientConnectionException =>
+        transientFailureCount.incrementAndGet()
+        throw e
+    } finally {
+      conn.close()
+    }
+  }
+
   private val transientFailureCount = new AtomicInteger(0)
 
   private val checkHealth = new TimerTask {

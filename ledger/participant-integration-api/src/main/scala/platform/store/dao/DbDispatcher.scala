@@ -18,13 +18,13 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.control.NonFatal
 
-private[platform] final class DbDispatcher private (
-    val maxConnections: Int,
-    connectionProvider: HikariJdbcConnectionProvider,
-    executor: Executor,
-    overallWaitTimer: Timer,
-    overallExecutionTimer: Timer,
-) extends ReportsHealth {
+private[platform] final class DbDispatcher private(
+                                                    val maxConnections: Int,
+                                                    connectionProvider: HikariJdbcConnectionProvider,
+                                                    executor: Executor,
+                                                    overallWaitTimer: Timer,
+                                                    overallExecutionTimer: Timer,
+                                                  ) extends ReportsHealth {
 
   private val logger = ContextualizedLogger.get(this.getClass)
 
@@ -32,13 +32,52 @@ private[platform] final class DbDispatcher private (
 
   override def currentHealth(): HealthStatus = connectionProvider.currentHealth()
 
+  def executeSimpleSql[T](databaseMetrics: DatabaseMetrics)(
+    sql: Connection => T,
+  )(implicit loggingContext: LoggingContext): Future[T] =
+    withEnrichedLoggingContext("metric" -> databaseMetrics.name) { implicit loggingContext =>
+      val startWait = System.nanoTime()
+      Future {
+        val waitNanos = System.nanoTime() - startWait
+        logger.trace(s"Waited ${(waitNanos / 1E6).toLong} ms to acquire connection")
+        databaseMetrics.waitTimer.update(waitNanos, TimeUnit.NANOSECONDS)
+        overallWaitTimer.update(waitNanos, TimeUnit.NANOSECONDS)
+        val startExec = System.nanoTime()
+        try {
+          // Actual execution
+
+          val result = connectionProvider.runSimpleSQL(databaseMetrics)(sql)
+          result
+        } catch {
+          case NonFatal(e) =>
+            logger.error("Exception while executing SQL query. Rolled back.", e)
+            throw e
+          // fatal errors don't make it for some reason to the setUncaughtExceptionHandler
+          case t: Throwable =>
+            logger.error("Fatal error!", t)
+            throw t
+        } finally {
+          // decouple metrics updating from sql execution above
+          try {
+            val execNanos = System.nanoTime() - startExec
+            logger.trace(s"Executed query in ${(execNanos / 1E6).toLong} ms")
+            databaseMetrics.executionTimer.update(execNanos, TimeUnit.NANOSECONDS)
+            overallExecutionTimer.update(execNanos, TimeUnit.NANOSECONDS)
+          } catch {
+            case NonFatal(e) =>
+              logger.error("Got an exception while updating timer metrics. Ignoring.", e)
+          }
+        }
+      }(executionContext)
+    }
+
   /** Runs an SQL statement in a dedicated Executor. The whole block will be run in a single database transaction.
-    *
-    * The isolation level by default is the one defined in the JDBC driver, it can be however overridden per query on
-    * the Connection. See further details at: https://docs.oracle.com/cd/E19830-01/819-4721/beamv/index.html
-    */
+   *
+   * The isolation level by default is the one defined in the JDBC driver, it can be however overridden per query on
+   * the Connection. See further details at: https://docs.oracle.com/cd/E19830-01/819-4721/beamv/index.html
+   */
   def executeSql[T](databaseMetrics: DatabaseMetrics)(
-      sql: Connection => T,
+    sql: Connection => T,
   )(implicit loggingContext: LoggingContext): Future[T] =
     withEnrichedLoggingContext("metric" -> databaseMetrics.name) { implicit loggingContext =>
       val startWait = System.nanoTime()
@@ -80,11 +119,11 @@ private[platform] object DbDispatcher {
   private val logger = ContextualizedLogger.get(this.getClass)
 
   def owner(
-      serverRole: ServerRole,
-      jdbcUrl: String,
-      maxConnections: Int,
-      metrics: Metrics,
-  )(implicit loggingContext: LoggingContext): ResourceOwner[DbDispatcher] =
+             serverRole: ServerRole,
+             jdbcUrl: String,
+             maxConnections: Int,
+             metrics: Metrics,
+           )(implicit loggingContext: LoggingContext): ResourceOwner[DbDispatcher] =
     for {
       connectionProvider <- HikariJdbcConnectionProvider.owner(
         serverRole,
@@ -100,7 +139,7 @@ private[platform] object DbDispatcher {
               .setUncaughtExceptionHandler((_, e) =>
                 logger.error("Uncaught exception in the SQL executor.", e))
               .build()
-        ))
+          ))
     } yield
       new DbDispatcher(
         maxConnections = maxConnections,
