@@ -15,21 +15,28 @@ import com.daml.ledger.participant.state.kvutils.api._
 import com.daml.ledger.participant.state.kvutils.export.LedgerDataExporter
 import com.daml.ledger.participant.state.kvutils.{
   Bytes,
+  Envelope,
   Fingerprint,
   FingerprintPlaceholder,
-  KeyValueCommitting
+  KeyValueCommitting,
+  `DamlStateValue with Fingerprint has DamlStateValue`
 }
 import com.daml.ledger.participant.state.v1.{LedgerId, Offset, ParticipantId, SubmissionResult}
 import com.daml.ledger.resources.{Resource, ResourceContext, ResourceOwner}
-import com.daml.ledger.validator.LedgerStateOperations.Value
+import com.daml.ledger.validator.LedgerStateOperations.{Key, Value}
 import com.daml.ledger.validator.batch.{
   BatchedSubmissionValidator,
   BatchedSubmissionValidatorFactory,
   BatchedValidatingCommitter,
   ConflictDetection
 }
-import com.daml.ledger.validator.caching.ImmutablesOnlyCacheUpdatePolicy
+import com.daml.ledger.validator.caching.{
+  CachingDamlLedgerStateReaderWithFingerprints,
+  ImmutablesOnlyCacheUpdatePolicy
+}
+import com.daml.ledger.validator.preexecution.LogAppenderPreExecutingCommitStrategy.FingerprintedReadSet
 import com.daml.ledger.validator.preexecution._
+import com.daml.ledger.validator.reading.StateReader
 import com.daml.ledger.validator.{StateKeySerializationStrategy, ValidateAndCommit}
 import com.daml.lf.engine.Engine
 import com.daml.logging.LoggingContext.newLoggingContext
@@ -70,13 +77,17 @@ final class InMemoryLedgerReaderWriter private[memory] (
 object InMemoryLedgerReaderWriter {
   val DefaultTimeProvider: TimeProvider = TimeProvider.UTC
 
+  type BatchingStateValueCache = Cache[DamlStateKey, DamlStateValue]
+
+  type PreExecutionStateValueCache = Cache[DamlStateKey, (DamlStateValue, Fingerprint)]
+
   final class BatchingOwner(
       ledgerId: LedgerId,
       batchingLedgerWriterConfig: BatchingLedgerWriterConfig,
       participantId: ParticipantId,
       metrics: Metrics,
       timeProvider: TimeProvider = DefaultTimeProvider,
-      stateValueCache: Cache[DamlStateKey, DamlStateValue] = Cache.none,
+      stateValueCache: BatchingStateValueCache = Cache.none,
       dispatcher: Dispatcher[Index],
       state: InMemoryState,
       engine: Engine,
@@ -119,7 +130,7 @@ object InMemoryLedgerReaderWriter {
       batchingLedgerWriterConfig: BatchingLedgerWriterConfig,
       participantId: ParticipantId,
       timeProvider: TimeProvider = DefaultTimeProvider,
-      stateValueCache: Cache[DamlStateKey, DamlStateValue] = Cache.none,
+      stateValueCache: BatchingStateValueCache = Cache.none,
       metrics: Metrics,
       engine: Engine,
   )(implicit materializer: Materializer)
@@ -150,8 +161,7 @@ object InMemoryLedgerReaderWriter {
       keySerializationStrategy: StateKeySerializationStrategy,
       metrics: Metrics,
       timeProvider: TimeProvider = DefaultTimeProvider,
-      stateValueCacheForPreExecution: Cache[DamlStateKey, (DamlStateValue, Fingerprint)] =
-        Cache.none,
+      stateValueCacheForPreExecution: PreExecutionStateValueCache = Cache.none,
       dispatcher: Dispatcher[Index],
       state: InMemoryState,
       engine: Engine,
@@ -189,7 +199,7 @@ object InMemoryLedgerReaderWriter {
       state: InMemoryState,
       metrics: Metrics,
       timeProvider: TimeProvider,
-      stateValueCache: Cache[DamlStateKey, DamlStateValue],
+      stateValueCache: BatchingStateValueCache,
       ledgerDataExporter: LedgerDataExporter,
   )(implicit materializer: Materializer): ValidateAndCommit = {
     val validator = BatchedSubmissionValidator[Index](
@@ -232,20 +242,21 @@ object InMemoryLedgerReaderWriter {
       state: InMemoryState,
       metrics: Metrics,
       timeProvider: TimeProvider,
-      stateValueCacheForPreExecution: Cache[DamlStateKey, (DamlStateValue, Fingerprint)],
+      stateValueCacheForPreExecution: PreExecutionStateValueCache,
   )(implicit materializer: Materializer): ValidateAndCommit = {
     val commitStrategy = new LogAppenderPreExecutingCommitStrategy(keySerializationStrategy)
-    val valueToFingerprint: Option[Value] => Fingerprint =
-      _.getOrElse(FingerprintPlaceholder)
-    val validator = new PreExecutingSubmissionValidator(keyValueCommitting, metrics, commitStrategy)
-    val committer = new PreExecutingValidatingCommitter(
-      keySerializationStrategy,
-      validator,
-      valueToFingerprint,
-      FingerprintAwarePostExecutionConflictDetector,
-      new RawPostExecutionFinalizer(now = timeProvider.getCurrentTime _),
-      stateValueCache = stateValueCacheForPreExecution,
-      ImmutablesOnlyCacheUpdatePolicy,
+    val validator = new PreExecutingSubmissionValidator(keyValueCommitting, commitStrategy, metrics)
+    val committer = new PreExecutingValidatingCommitter[
+      (Option[DamlStateValue], Fingerprint),
+      FingerprintedReadSet,
+      RawKeyValuePairsWithLogEntry,
+    ](
+      transformStateReader =
+        transformStateReader(keySerializationStrategy, stateValueCacheForPreExecution),
+      validator = validator,
+      postExecutionConflictDetector =
+        new EqualityBasedPostExecutionConflictDetector().contramapValues(_._2),
+      postExecutionFinalizer = new RawPostExecutionFinalizer(now = timeProvider.getCurrentTime _),
     )
     locally {
       implicit val executionContext: ExecutionContext = materializer.executionContext
@@ -264,6 +275,27 @@ object InMemoryLedgerReaderWriter {
 
       validateAndCommit
     }
+  }
+
+  private def transformStateReader(
+      keySerializationStrategy: StateKeySerializationStrategy,
+      cache: Cache[DamlStateKey, (DamlStateValue, Fingerprint)]
+  )(stateReader: StateReader[Key, Option[Value]])
+    : StateReader[DamlStateKey, (Option[DamlStateValue], Fingerprint)] = {
+    CachingDamlLedgerStateReaderWithFingerprints(
+      cache,
+      ImmutablesOnlyCacheUpdatePolicy,
+      stateReader
+        .contramapKeys(keySerializationStrategy.serializeStateKey)
+        .mapValues(value => {
+          val damlStateValue = value.map(
+            Envelope
+              .openStateValue(_)
+              .getOrElse(sys.error("Opening enveloped DamlStateValue failed")))
+          val fingerprint = value.getOrElse(FingerprintPlaceholder)
+          damlStateValue -> fingerprint
+        }),
+    )
   }
 
   private def createKeyValueCommitting(
