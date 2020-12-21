@@ -139,13 +139,13 @@ private final class ReadOnlySqlLedger(
   // a different clock than the current clock (e.g., horizontally scaled ledger API server).
   // This is not an issue, because applications are not expected to submit towards the end
   // of the deduplication time window.
-  private val (deduplicationCleanupKillSwitch, deduplicationCleanupDone) =
-    Source
-      .tick[Unit](0.millis, 10.minutes, ())
-      .mapAsync[Unit](1)(_ => ledgerDao.removeExpiredDeduplicationData(Instant.now()))
-      .viaMat(KillSwitches.single)(Keep.right[Cancellable, UniqueKillSwitch])
-      .toMat(Sink.ignore)(Keep.both[UniqueKillSwitch, Future[Done]])
-      .run()
+//  private val (deduplicationCleanupKillSwitch, deduplicationCleanupDone) =
+//    Source
+//      .tick[Unit](0.millis, 10.minutes, ())
+//      .mapAsync[Unit](1)(_ => ledgerDao.removeExpiredDeduplicationData(Instant.now()))
+//      .viaMat(KillSwitches.single)(Keep.right[Cancellable, UniqueKillSwitch])
+//      .toMat(Sink.ignore)(Keep.both[UniqueKillSwitch, Future[Done]])
+//      .run()
 
   override def currentHealth(): HealthStatus = ledgerDao.currentHealth()
 
@@ -153,9 +153,9 @@ private final class ReadOnlySqlLedger(
     // Terminate the dispatcher first so that it doesn't trigger new queries.
     dispatcher.close()
 
-    deduplicationCleanupKillSwitch.shutdown()
+//    deduplicationCleanupKillSwitch.shutdown()
     ledgerEndUpdateKillSwitch.shutdown()
-    Await.result(deduplicationCleanupDone, 10.seconds)
+//    Await.result(deduplicationCleanupDone, 10.seconds)
     Await.result(ledgerEndUpdateDone, 10.seconds)
     super.close()
   }

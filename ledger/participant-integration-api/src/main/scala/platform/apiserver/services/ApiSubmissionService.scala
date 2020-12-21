@@ -122,28 +122,8 @@ private[apiserver] final class ApiSubmissionService private (
       commands: ApiCommands,
       ledgerConfig: Configuration,
   )(implicit loggingContext: LoggingContext): Future[Unit] =
-    submissionService
-      .deduplicateCommand(
-        commands.commandId,
-        commands.actAs.toList,
-        commands.submittedAt,
-        commands.deduplicateUntil,
-      )
-      .flatMap {
-        case CommandDeduplicationNew =>
-          evaluateAndSubmit(seed, commands, ledgerConfig)
-            .transform(handleSubmissionResult)
-            .recoverWith {
-              case NonFatal(originalCause) =>
-                submissionService
-                  .stopDeduplicatingCommand(commands.commandId, commands.actAs.toList)
-                  .transform(_ => Failure(originalCause))
-            }
-        case _: CommandDeduplicationDuplicate =>
-          metrics.daml.commands.deduplicatedCommands.mark()
-          logger.debug(DuplicateCommand.getDescription)
-          Future.failed(DuplicateCommand.asRuntimeException)
-      }
+    evaluateAndSubmit(seed, commands, ledgerConfig)
+      .transform(handleSubmissionResult)
 
   private def handleSubmissionResult(result: Try[SubmissionResult])(
       implicit loggingContext: LoggingContext,
