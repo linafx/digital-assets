@@ -101,7 +101,7 @@ private[dao] sealed class ContractsReader(
       readers: Set[Party],
       key: Key,
   )(implicit loggingContext: LoggingContext): Future[Option[ContractId]] =
-    dispatcher.executeSql(metrics.daml.index.db.lookupContractByKey) { implicit connection =>
+    dispatcher.executeSimpleSql(metrics.daml.index.db.lookupContractByKey) { implicit connection =>
       lookupContractKeyQuery(readers, key).as(contractId("contract_id").singleOpt)
     }
 
