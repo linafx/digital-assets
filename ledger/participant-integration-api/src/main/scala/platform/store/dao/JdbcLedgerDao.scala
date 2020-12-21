@@ -972,6 +972,7 @@ private[platform] object JdbcLedgerDao {
       metrics,
       lfValueTranslationCache,
       jdbcAsyncCommits = false,
+      readOnly = true,
     ).map(new MeteredLedgerReadDao(_, metrics))
   }
 
@@ -1055,9 +1056,10 @@ private[platform] object JdbcLedgerDao {
       lfValueTranslationCache: LfValueTranslation.Cache,
       validatePartyAllocation: Boolean = false,
       jdbcAsyncCommits: Boolean,
+      readOnly: Boolean = false,
   )(implicit loggingContext: LoggingContext): ResourceOwner[LedgerDao] =
     for {
-      dbDispatcher <- DbDispatcher.owner(serverRole, jdbcUrl, maxConnections, metrics)
+      dbDispatcher <- DbDispatcher.owner(serverRole, jdbcUrl, maxConnections, metrics, readOnly)
       executor <- ResourceOwner.forExecutorService(() => Executors.newWorkStealingPool())
     } yield
       new JdbcLedgerDao(

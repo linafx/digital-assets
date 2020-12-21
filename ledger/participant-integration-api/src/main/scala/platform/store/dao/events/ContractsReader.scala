@@ -95,7 +95,6 @@ private[dao] sealed class ContractsReader(
         lookupActiveContractWithCachedArgument(readers, contractId, createArgument.argument)
       case None =>
         lookupActiveContractAndLoadArgument(readers, contractId)
-
     }
 
   override def lookupContractKey(

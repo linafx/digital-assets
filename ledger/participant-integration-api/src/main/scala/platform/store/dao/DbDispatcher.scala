@@ -123,13 +123,15 @@ private[platform] object DbDispatcher {
              jdbcUrl: String,
              maxConnections: Int,
              metrics: Metrics,
+             readOnly: Boolean = false,
            )(implicit loggingContext: LoggingContext): ResourceOwner[DbDispatcher] =
     for {
       connectionProvider <- HikariJdbcConnectionProvider.owner(
         serverRole,
         jdbcUrl,
         maxConnections,
-        metrics.registry)
+        metrics.registry,
+        readOnly)
       executor <- ResourceOwner.forExecutorService(
         () =>
           Executors.newFixedThreadPool(

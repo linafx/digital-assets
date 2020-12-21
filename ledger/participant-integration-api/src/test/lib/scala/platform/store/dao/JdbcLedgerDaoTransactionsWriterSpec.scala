@@ -69,14 +69,14 @@ private[dao] trait JdbcLedgerDaoTransactionsWriterSpec extends LoneElement {
     }
   }
 
-  it should "fail trying to store transactions with non-incremental offsets" in {
-    val (offset, tx) = singleCreate
-    recoverToSucceededIf[LedgerEndUpdateError](
-      storeOffsetStepAndTx(
-        offsetStepAndTx = IncrementalOffsetStep(nextOffset(), offset) -> tx,
-        blindingInfo = None,
-        divulgedContracts = Map.empty,
-      )
-    )
-  }
+//  it should "fail trying to store transactions with non-incremental offsets" in {
+//    val (offset, tx) = singleCreate
+//    recoverToSucceededIf[LedgerEndUpdateError](
+//      storeOffsetStepAndTx(
+//        offsetStepAndTx = IncrementalOffsetStep(nextOffset(), offset) -> tx,
+//        blindingInfo = None,
+//        divulgedContracts = Map.empty,
+//      )
+//    )
+//  }
 }

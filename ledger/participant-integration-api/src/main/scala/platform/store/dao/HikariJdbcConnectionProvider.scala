@@ -31,6 +31,7 @@ private[platform] final class HikariConnection(
     metrics: Option[MetricRegistry],
     connectionPoolPrefix: String,
     maxInitialConnectRetryAttempts: Int,
+    readOnly: Boolean = false,
 )(implicit loggingContext: LoggingContext)
     extends ResourceOwner[HikariDataSource] {
 
@@ -43,8 +44,9 @@ private[platform] final class HikariConnection(
     config.addDataSourceProperty("cachePrepStmts", "true")
     config.addDataSourceProperty("prepStmtCacheSize", "128")
     config.addDataSourceProperty("prepStmtCacheSqlLimit", "2048")
+    config.setReadOnly(readOnly)
+    config.setAutoCommit(readOnly)
     config.setConnectionInitSql("SET synchronous_commit=OFF")
-    config.setAutoCommit(false)
     config.setMaximumPoolSize(maxPoolSize)
     config.setMinimumIdle(minimumIdle)
     config.setConnectionTimeout(connectionTimeout.toMillis)
@@ -80,6 +82,7 @@ private[platform] object HikariConnection {
       maxPoolSize: Int,
       connectionTimeout: FiniteDuration,
       metrics: Option[MetricRegistry],
+      readOnly: Boolean = false,
   )(
       implicit loggingContext: LoggingContext
   ): HikariConnection =
@@ -92,6 +95,7 @@ private[platform] object HikariConnection {
       metrics,
       ConnectionPoolPrefix,
       MaxInitialConnectRetryAttempts,
+      readOnly
     )
 }
 
@@ -173,6 +177,7 @@ private[platform] object HikariJdbcConnectionProvider {
       jdbcUrl: String,
       maxConnections: Int,
       metrics: MetricRegistry,
+      readOnly: Boolean = false,
   )(implicit loggingContext: LoggingContext): ResourceOwner[HikariJdbcConnectionProvider] =
     for {
       // these connections should never time out as we have the same number of threads as connections
@@ -183,6 +188,7 @@ private[platform] object HikariJdbcConnectionProvider {
         maxConnections,
         250.millis,
         Some(metrics),
+        readOnly,
       )
       healthPoller <- ResourceOwner.forTimer(() =>
         new Timer(s"${classOf[HikariJdbcConnectionProvider].getName}#healthPoller"))
