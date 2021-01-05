@@ -248,7 +248,7 @@ private[daml] class JdbcIndexer private[indexer] (
           metrics.daml.indexer.lastReceivedRecordTime.updateValue(lastReceivedRecordTime)
           metrics.daml.indexer.lastReceivedOffset.updateValue(offsetStep.offset.toApiString)
       })
-      .mapAsync(1)(prepareTransactionInsert)
+      .mapAsync(4)(prepareTransactionInsert)
       .mapAsync(1) {
         case offsetUpdate @ OffsetUpdate(offsetStep, update) =>
           withEnrichedLoggingContext(JdbcIndexer.loggingContextFor(offsetStep.offset, update)) {
