@@ -157,7 +157,7 @@ private[platform] class MeteredLedgerDao(ledgerDao: LedgerDao, metrics: Metrics)
 
   override def currentHealth(): HealthStatus = ledgerDao.currentHealth()
 
-  override def storeTransaction(
+  override def storeTransactionState(
       preparedInsert: PreparedInsert,
       submitterInfo: Option[SubmitterInfo],
       transactionId: TransactionId,
@@ -169,8 +169,8 @@ private[platform] class MeteredLedgerDao(ledgerDao: LedgerDao, metrics: Metrics)
       blindingInfo: Option[BlindingInfo],
   )(implicit loggingContext: LoggingContext): Future[PersistenceResponse] =
     Timed.future(
-      metrics.daml.index.db.storeTransaction,
-      ledgerDao.storeTransaction(
+      metrics.daml.index.db.storeTransactionState,
+      ledgerDao.storeTransactionState(
         preparedInsert,
         submitterInfo,
         transactionId,
@@ -181,6 +181,18 @@ private[platform] class MeteredLedgerDao(ledgerDao: LedgerDao, metrics: Metrics)
         divulged,
         blindingInfo,
       )
+    )
+
+  override def storeTransactionEvents(preparedInsert: PreparedInsert)(implicit loggingContext: LoggingContext): Future[PersistenceResponse] =
+    Timed.future(
+      metrics.daml.index.db.storeTransactionEvents,
+      ledgerDao.storeTransactionEvents(preparedInsert)
+    )
+
+  override def storeTransactionCompletion(preparedInsert: PreparedInsert, submitterInfo: Option[SubmitterInfo], transactionId: TransactionId, recordTime: Instant, offsetStep: OffsetStep)(implicit loggingContext: LoggingContext): Future[PersistenceResponse] =
+    Timed.future(
+      metrics.daml.index.db.storeTransactionCompletion,
+      ledgerDao.storeTransactionCompletion(preparedInsert, submitterInfo, transactionId, recordTime, offsetStep)
     )
 
   def prepareTransactionInsert(

@@ -22,16 +22,16 @@ object TransactionsWriter {
                                                           contractWitnessesTableExecutables: ContractWitnessesTable.Executables,
                                                           insertsPhase2: InsertsPhase2
                                                         ) {
-    def writeEvents(metrics: Metrics, submitterInfo: Option[SubmitterInfo], offset: Offset, transaction: CommittedTransaction, recordTime: Instant, transactionId: v1TxId)(implicit conn: Connection) = {
+    def completeTransaction(metrics: Metrics, submitterInfo: Option[SubmitterInfo], offset: Offset, recordTime: Instant, transactionId: v1TxId)(implicit conn: Connection): Unit = {
       import metrics.daml.index.db.storeTransactionDbMetrics._
 
-      Timed.value(eventsBatch, eventsTableExecutables.execute(submitterInfo, offset, transaction, recordTime, transactionId))
+      Timed.value(eventsBatch, eventsTableExecutables.executeTransactionComplete(submitterInfo, offset, recordTime, transactionId))
     }
 
     def writeEvents(metrics: Metrics)(implicit connection: Connection): Unit = {
       import metrics.daml.index.db.storeTransactionDbMetrics._
 
-      Timed.value(eventsBatch, eventsTableExecutables.execute())
+      Timed.value(eventsBatch, eventsTableExecutables.executeEventsInsert())
     }
 
     def writeState(metrics: Metrics)(implicit connection: Connection): Unit = {

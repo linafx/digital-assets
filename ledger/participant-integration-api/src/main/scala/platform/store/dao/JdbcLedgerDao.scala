@@ -445,7 +445,28 @@ private class JdbcLedgerDao(
     ()
   }
 
-  override def storeTransaction(
+  override def storeTransactionEvents(
+                              preparedInsert: PreparedInsert
+                            )(implicit loggingContext: LoggingContext): Future[PersistenceResponse] = dbDispatcher
+    .executeSql(metrics.daml.index.db.storeTransactionDbMetrics) { implicit conn =>
+      preparedInsert.writeEvents(metrics)
+      Ok
+    }
+
+  override def storeTransactionCompletion(
+                                 preparedInsert: PreparedInsert,
+                                 submitterInfo: Option[SubmitterInfo],
+                                 transactionId: TransactionId,
+                                 recordTime: Instant,
+                                 offsetStep: OffsetStep,
+                               )(implicit loggingContext: LoggingContext): Future[PersistenceResponse] =
+    dbDispatcher
+      .executeSql(metrics.daml.index.db.storeTransactionDbMetrics) { implicit conn =>
+        preparedInsert.completeTransaction(metrics, submitterInfo, offsetStep.offset, recordTime, transactionId)
+        Ok
+      }
+
+  override def storeTransactionState(
       preparedInsert: PreparedInsert,
       submitterInfo: Option[SubmitterInfo],
       transactionId: TransactionId,
@@ -455,8 +476,8 @@ private class JdbcLedgerDao(
       transaction: CommittedTransaction,
       divulged: Iterable[DivulgedContract],
       blindingInfo: Option[BlindingInfo],
-  )(implicit loggingContext: LoggingContext): Future[PersistenceResponse] = {
-    val stateUpdateFuture = dbDispatcher
+  )(implicit loggingContext: LoggingContext): Future[PersistenceResponse] =
+    dbDispatcher
       .executeSql(metrics.daml.index.db.storeTransactionDbMetrics) { implicit conn =>
         val error =
           Timed.value(
@@ -474,20 +495,6 @@ private class JdbcLedgerDao(
         }
         Ok
       }
-    val eventsUpdateFuture = dbDispatcher
-      .executeSql(metrics.daml.index.db.storeTransactionDbMetrics) { implicit conn =>
-        if (enableAsyncCommits) {
-          queries.enableAsyncCommit
-        }
-        preparedInsert.writeEvents(metrics, submitterInfo, offsetStep.offset, transaction, recordTime, transactionId)
-        Ok
-      }
-    implicit val ec: ExecutionContext = executionContext
-    for {
-    stateUpdateResponse <- stateUpdateFuture
-    _ <- eventsUpdateFuture
-    } yield stateUpdateResponse
-  }
 
   private def setAsyncCommit(implicit conn: Connection) = {
     val statement = conn.prepareStatement("SET LOCAL synchronous_commit = 'off'")

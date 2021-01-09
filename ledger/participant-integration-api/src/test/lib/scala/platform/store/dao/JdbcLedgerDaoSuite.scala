@@ -543,19 +543,22 @@ private[dao] trait JdbcLedgerDaoSuite extends JdbcLedgerDaoBackend {
       divulged,
       blindingInfo,
     )
-    ledgerDao
-      .storeTransaction(
-        preparedInsert = preparedTransactionInsert,
-        submitterInfo = submitterInfo,
-        transactionId = entry.transactionId,
-        transaction = committedTransaction,
-        recordTime = entry.recordedAt,
-        ledgerEffectiveTime = ledgerEffectiveTime,
-        offsetStep = offsetStep,
-        divulged = divulged,
-        blindingInfo = blindingInfo,
-      )
-      .map(_ => offsetStep.offset -> entry)
+    for{
+      _ <- ledgerDao
+        .storeTransactionState(
+          preparedInsert = preparedTransactionInsert,
+          submitterInfo = submitterInfo,
+          transactionId = entry.transactionId,
+          transaction = committedTransaction,
+          recordTime = entry.recordedAt,
+          ledgerEffectiveTime = ledgerEffectiveTime,
+          offsetStep = offsetStep,
+          divulged = divulged,
+          blindingInfo = blindingInfo,
+        )
+      _ <- ledgerDao.storeTransactionEvents(preparedTransactionInsert)
+      _ <- ledgerDao.storeTransactionCompletion(preparedTransactionInsert, submitterInfo, entry.transactionId, entry.recordedAt, offsetStep)
+    } yield offsetStep.offset -> entry
   }
 
   protected final def store(

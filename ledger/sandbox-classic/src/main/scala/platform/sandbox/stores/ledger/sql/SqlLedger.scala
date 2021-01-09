@@ -383,7 +383,7 @@ private final class SqlLedger(
               divulgedContracts = divulgedContracts,
               blindingInfo = blindingInfo
             )
-            ledgerDao.storeTransaction(
+            ledgerDao.storeTransactionState(
               preparedInsert,
               Some(submitterInfo),
               transactionId,

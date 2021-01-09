@@ -12,15 +12,7 @@ import com.daml.ledger.WorkflowId
 import com.daml.ledger.api.domain.{CommandId, LedgerId, ParticipantId, PartyDetails}
 import com.daml.ledger.api.health.ReportsHealth
 import com.daml.ledger.participant.state.index.v2.{CommandDeduplicationResult, PackageDetails}
-import com.daml.ledger.participant.state.v1.{
-  CommittedTransaction,
-  Configuration,
-  DivulgedContract,
-  Offset,
-  RejectionReason,
-  SubmitterInfo,
-  TransactionId
-}
+import com.daml.ledger.participant.state.v1.{CommittedTransaction, Configuration, DivulgedContract, Offset, RejectionReason, SubmitterInfo, TransactionId}
 import com.daml.lf.data.Ref
 import com.daml.lf.data.Ref.{PackageId, Party}
 import com.daml.lf.transaction.{BlindingInfo, GlobalKey}
@@ -28,14 +20,10 @@ import com.daml.lf.value.Value
 import com.daml.lf.value.Value.{ContractId, ContractInst}
 import com.daml.logging.LoggingContext
 import com.daml.platform.indexer.OffsetStep
+import com.daml.platform.store.dao.PersistenceResponse.Ok
 import com.daml.platform.store.dao.events.{TransactionsReader, TransactionsWriter}
 import com.daml.platform.store.dao.events.TransactionsWriter.PreparedInsert
-import com.daml.platform.store.entries.{
-  ConfigurationEntry,
-  LedgerEntry,
-  PackageLedgerEntry,
-  PartyLedgerEntry
-}
+import com.daml.platform.store.entries.{ConfigurationEntry, LedgerEntry, PackageLedgerEntry, PartyLedgerEntry}
 
 import scala.concurrent.Future
 
@@ -202,7 +190,7 @@ private[platform] trait LedgerWriteDao extends ReportsHealth {
       blindingInfo: Option[BlindingInfo],
   )(implicit loggingContext: LoggingContext): TransactionsWriter.PreparedInsert
 
-  def storeTransaction(
+  def storeTransactionState(
       preparedInsert: PreparedInsert,
       submitterInfo: Option[SubmitterInfo],
       transactionId: TransactionId,
@@ -213,6 +201,18 @@ private[platform] trait LedgerWriteDao extends ReportsHealth {
       divulged: Iterable[DivulgedContract],
       blindingInfo: Option[BlindingInfo],
   )(implicit loggingContext: LoggingContext): Future[PersistenceResponse]
+
+  def storeTransactionEvents(
+                                       preparedInsert: PreparedInsert
+                                     )(implicit loggingContext: LoggingContext): Future[PersistenceResponse]
+
+  def storeTransactionCompletion(
+                                           preparedInsert: PreparedInsert,
+                                           submitterInfo: Option[SubmitterInfo],
+                                           transactionId: TransactionId,
+                                           recordTime: Instant,
+                                           offsetStep: OffsetStep,
+                                         )(implicit loggingContext: LoggingContext): Future[PersistenceResponse]
 
   def storeRejection(
       submitterInfo: Option[SubmitterInfo],

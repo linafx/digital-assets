@@ -78,9 +78,9 @@ private[events] object EventsTable {
   val archivedEventRow: RowParser[ArchiveEventRow] = sharedRow
 
   trait Batches {
-    def execute(submitterInfo: Option[SubmitterInfo], offset: Offset, transaction: CommittedTransaction, recordTime: Instant, transactionId: TransactionId)(implicit connection: Connection): Unit
+    def executeTransactionComplete(maybeSubmitterInfo: Option[SubmitterInfo], offset: Offset, recordTime: Instant, transactionId: TransactionId)(implicit connection: Connection): Unit
 
-    def execute()(implicit connection: Connection): Unit
+    def executeEventsInsert()(implicit connection: Connection): Unit
   }
 
   def apply(dbType: DbType): EventsTable =
