@@ -40,7 +40,11 @@ import scala.concurrent.duration.Duration
 import scala.concurrent.{ExecutionContext, ExecutionContextExecutorService, Future}
 import scala.util.{Failure, Success}
 
-class IntegrityChecker[LogResult](commitStrategySupport: CommitStrategySupport[LogResult]) {
+class IntegrityChecker[LogResult](commitStrategySupportBuilder: Metrics => CommitStrategySupport[LogResult]) {
+
+  private val metricRegistry = new MetricRegistry
+  private val metrics = new Metrics(metricRegistry)
+  private val commitStrategySupport = commitStrategySupportBuilder(metrics)
 
   import IntegrityChecker._
 
@@ -60,8 +64,8 @@ class IntegrityChecker[LogResult](commitStrategySupport: CommitStrategySupport[L
     }
 
     val engine = new Engine(EngineConfig.Stable)
-    val metricRegistry = new MetricRegistry
-    val metrics = new Metrics(metricRegistry)
+
+
     val submissionValidator = BatchedSubmissionValidator[LogResult](
       params = BatchedSubmissionValidatorParameters(cpuParallelism = 1, readParallelism = 1),
       committer = new KeyValueCommitting(engine, metrics),
@@ -359,7 +363,7 @@ object IntegrityChecker {
 
   def run[LogResult](
       args: Array[String],
-      commitStrategySupportFactory: ExecutionContext => CommitStrategySupport[LogResult],
+      commitStrategySupportFactory: (Metrics, ExecutionContext) => CommitStrategySupport[LogResult],
   ): Unit = {
     val config = Config.parse(args).getOrElse {
       sys.exit(1)
@@ -369,7 +373,7 @@ object IntegrityChecker {
 
   def run[LogResult](
       config: Config,
-      commitStrategySupportFactory: ExecutionContext => CommitStrategySupport[LogResult],
+      commitStrategySupportFactory: (Metrics, ExecutionContext) => CommitStrategySupport[LogResult],
   ): Unit = {
     runAsync(config, commitStrategySupportFactory).failed
       .foreach {
@@ -397,7 +401,7 @@ object IntegrityChecker {
 
   private def runAsync[LogResult](
       config: Config,
-      commitStrategySupportFactory: ExecutionContext => CommitStrategySupport[LogResult],
+      commitStrategySupportFactory: (Metrics, ExecutionContext) => CommitStrategySupport[LogResult],
   ): Future[Unit] = {
     println(s"Verifying integrity of ${config.exportFilePath}...")
 
@@ -407,7 +411,7 @@ object IntegrityChecker {
     implicit val materializer: Materializer = Materializer(actorSystem)
 
     val importer = ProtobufBasedLedgerDataImporter(config.exportFilePath)
-    new IntegrityChecker(commitStrategySupportFactory(executionContext))
+    new IntegrityChecker(commitStrategySupportFactory(_, executionContext))
       .run(importer, config)
       .andThen {
         case _ =>
