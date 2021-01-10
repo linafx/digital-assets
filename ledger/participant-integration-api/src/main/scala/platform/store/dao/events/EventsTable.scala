@@ -23,12 +23,7 @@ import com.google.protobuf.timestamp.Timestamp
 
 private[events] abstract class EventsTable {
 
-  def toExecutables(
-      tx: TransactionIndexing.TransactionInfo,
-      info: TransactionIndexing.EventsInfo,
-      compressed: TransactionIndexing.Serialized,
-  ): EventsTable.Batches
-
+  def toExecutables(preparedRawEntries: Seq[PreparedRawEntry]): EventsTable.Batches
 }
 
 private[events] object EventsTable {
@@ -78,8 +73,6 @@ private[events] object EventsTable {
   val archivedEventRow: RowParser[ArchiveEventRow] = sharedRow
 
   trait Batches {
-    def executeTransactionComplete(maybeSubmitterInfo: Option[SubmitterInfo], offset: Offset, recordTime: Instant, transactionId: TransactionId)(implicit connection: Connection): Unit
-
     def executeEventsInsert()(implicit connection: Connection): Unit
   }
 

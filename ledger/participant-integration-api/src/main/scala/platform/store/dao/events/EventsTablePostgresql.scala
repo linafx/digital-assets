@@ -3,6 +3,7 @@
 
 package com.daml.platform.store.dao.events
 
+import java.lang
 import java.sql.{Connection, PreparedStatement}
 import java.time.Instant
 
@@ -23,34 +24,8 @@ object EventsTablePostgresql extends EventsTable {
                        updateArchives: Option[BatchSql],
                      ) extends EventsTable.Batches {
     override def executeEventsInsert()(implicit connection: Connection): Unit = {
-      insertEvents(connection).execute()
+      insertEvents(connection).executeBatch()
       updateArchives.foreach(_.execute())
-    }
-
-    override def executeTransactionComplete(maybeSubmitterInfo: Option[SubmitterInfo], offset: Offset, recordTime: Instant, transactionId: TransactionId)(implicit connection: Connection): Unit = {
-      val preparedStatement = connection.prepareStatement(completeTransactionQuery)
-
-      maybeSubmitterInfo.map{ submitterInfo =>
-        preparedStatement.setObject(1, Array(offset.toByteArray))
-        preparedStatement.setArray(2, connection.createArrayOf("TIMESTAMP", Array(java.sql.Timestamp.from(recordTime))))
-        preparedStatement.setObject(3, Array[String](submitterInfo.applicationId))
-        preparedStatement.setObject(4,  Array[String](submitterInfo.actAs.toArray[String].mkString("|")))
-        preparedStatement.setObject(5, Array[String](submitterInfo.commandId))
-        preparedStatement.setObject(6, Array[String](transactionId))
-        preparedStatement.setBytes(7, offset.toByteArray)
-        preparedStatement.setBytes(8, offset.toByteArray)
-        preparedStatement
-      }.getOrElse{
-        preparedStatement.setObject(1, Array.empty[Array[Byte]])
-        preparedStatement.setArray(2, connection.createArrayOf("TIMESTAMP", Array.empty[AnyRef]))
-        preparedStatement.setObject(3, Array.empty[String])
-        preparedStatement.setArray(4, connection.createArrayOf("ARRAY", Array.empty[AnyRef]))
-        preparedStatement.setObject(5, Array.empty[String])
-        preparedStatement.setObject(6, Array.empty[String])
-        preparedStatement.setBytes(7, offset.toByteArray)
-        preparedStatement.setBytes(8, offset.toByteArray)
-        preparedStatement
-      }.execute()
     }
   }
 
@@ -63,11 +38,20 @@ object EventsTablePostgresql extends EventsTable {
       "contract_id" -> contractId.coid,
     )
 
-  override def toExecutables(
-                              tx: TransactionIndexing.TransactionInfo,
-                              info: TransactionIndexing.EventsInfo,
-                              serialized: TransactionIndexing.Serialized,
-                            ): EventsTable.Batches = {
+  override def toExecutables(preparedRawEntries: Seq[PreparedRawEntry]): EventsTable.Batches =
+    new Batches(
+      insertEvents = (conn: Connection) =>
+        preparedRawEntries.foldLeft(conn.prepareStatement(batchInsertSqlString)){
+          case (ps, PreparedRawEntry(tx, events, compressed, _, _)) =>
+            prepareBatch(tx, events, compressed)(ps)
+        },
+      updateArchives = batch(updateArchived, preparedRawEntries.flatMap{
+        case PreparedRawEntry(tx, events, _, _, _) =>
+          events.archives.iterator.map(archive(tx.offset))
+      })
+    )
+
+  private def prepareBatch(tx: TransactionIndexing.TransactionInfo, info: TransactionIndexing.EventsInfo, serialized: TransactionIndexing.Serialized)(preparedStatement: PreparedStatement): PreparedStatement = {
     val batchSize = info.events.size
     val eventIds = Array.ofDim[String](batchSize)
     val eventOffsets = Array.fill(batchSize)(tx.offset.toByteArray)
@@ -76,7 +60,7 @@ object EventsTablePostgresql extends EventsTable {
     val workflowIds = Array.fill(batchSize)(tx.workflowId.map(_.asInstanceOf[String]).orNull)
     val ledgerEffectiveTimes = Array.fill(batchSize)(tx.ledgerEffectiveTime)
     val templateIds = Array.ofDim[String](batchSize)
-    val nodeIndexes = Array.ofDim[java.lang.Integer](batchSize)
+    val nodeIndexes = Array.ofDim[Integer](batchSize)
     val commandIds =
       Array.fill(batchSize)(tx.submitterInfo.map(_.commandId.asInstanceOf[String]).orNull)
     val applicationIds =
@@ -90,7 +74,7 @@ object EventsTablePostgresql extends EventsTable {
     val createAgreementTexts = Array.ofDim[String](batchSize)
     val createConsumedAt = Array.ofDim[Array[Byte]](batchSize)
     val createKeyValues = Array.ofDim[Array[Byte]](batchSize)
-    val exerciseConsuming = Array.ofDim[java.lang.Boolean](batchSize)
+    val exerciseConsuming = Array.ofDim[lang.Boolean](batchSize)
     val exerciseChoices = Array.ofDim[String](batchSize)
     val exerciseArguments = Array.ofDim[Array[Byte]](batchSize)
     val exerciseResults = Array.ofDim[Array[Byte]](batchSize)
@@ -137,77 +121,12 @@ object EventsTablePostgresql extends EventsTable {
       }
     }
 
-    val inserts = (conn: Connection) => insertEventsBatched(
-      eventIds,
-      eventOffsets,
-      contractIds,
-      transactionIds,
-      workflowIds,
-      ledgerEffectiveTimes,
-      templateIds,
-      nodeIndexes,
-      commandIds,
-      applicationIds,
-      submitters,
-      flatEventWitnesses,
-      treeEventWitnesses,
-      createArguments,
-      createSignatories,
-      createObservers,
-      createAgreementTexts,
-      createConsumedAt,
-      createKeyValues,
-      exerciseConsuming,
-      exerciseChoices,
-      exerciseArguments,
-      exerciseResults,
-      exerciseActors,
-      exerciseChildEventIds
-    )(conn)
-
-    val archivals =
-      info.archives.iterator.map(archive(tx.offset)).toList
-
-    new Batches(
-      insertEvents = (conn: Connection) => inserts(conn),
-      updateArchives = batch(updateArchived, archivals),
-    )
-  }
-
-  private def insertEventsBatched(
-                                   eventIds: Array[String],
-                                   eventOffsets: Array[Array[Byte]],
-                                   contractIds: Array[String],
-                                   transactionIds: Array[String],
-                                   workflowIds: Array[String],
-                                   ledgerEffectiveTimes: Array[Instant],
-                                   templateIds: Array[String],
-                                   nodeIndexes: Array[java.lang.Integer],
-                                   commandIds: Array[String],
-                                   applicationIds: Array[String],
-                                   submitters: Array[String],
-                                   flatEventWitnesses: Array[String],
-                                   treeEventWitnesses: Array[String],
-                                   createArguments: Array[Array[Byte]],
-                                   createSignatories: Array[String],
-                                   createObservers: Array[String],
-                                   createAgreementTexts: Array[String],
-                                   createConsumedAt: Array[Array[Byte]],
-                                   createKeyValues: Array[Array[Byte]],
-                                   exerciseConsuming: Array[java.lang.Boolean],
-                                   exerciseChoices: Array[String],
-                                   exerciseArguments: Array[Array[Byte]],
-                                   exerciseResults: Array[Array[Byte]],
-                                   exerciseActors: Array[String],
-                                   exerciseChildEventIds: Array[String],
-                                 )(conn: Connection) = {
-    val preparedStatement = conn.prepareStatement(batchInsertSqlString)
     preparedStatement.setObject(1, eventIds)
     preparedStatement.setObject(2, eventOffsets)
     preparedStatement.setObject(3, contractIds)
     preparedStatement.setObject(4, transactionIds)
     preparedStatement.setObject(5, workflowIds)
-    preparedStatement.setArray(6, conn.createArrayOf("TIMESTAMP", ledgerEffectiveTimes.map(java.sql.Timestamp.from))) // Handle instant
+    preparedStatement.setArray(6, preparedStatement.getConnection.createArrayOf("TIMESTAMP", ledgerEffectiveTimes.map(java.sql.Timestamp.from))) // Handle instant
     preparedStatement.setObject(7, templateIds)
     preparedStatement.setObject(8, nodeIndexes)
     preparedStatement.setObject(9, commandIds)
@@ -227,6 +146,7 @@ object EventsTablePostgresql extends EventsTable {
     preparedStatement.setObject(23, exerciseResults)
     preparedStatement.setObject(24, exerciseActors)
     preparedStatement.setObject(25, exerciseChildEventIds)
+    preparedStatement.addBatch()
     preparedStatement
   }
 
@@ -250,10 +170,4 @@ object EventsTablePostgresql extends EventsTable {
                  exercise_consuming, exercise_choice, exercise_argument, exercise_result, exercise_actors, exercise_child_event_ids
                ) on conflict do nothing;
        """
-
-  private val completeTransactionQuery =
-    """insert into participant_command_completions(completion_offset, record_time, application_id, submitters, command_id, transaction_id)
-         select completion_offset, record_time, application_id, string_to_array(submitters,'|'), command_id, transaction_id
-         from unnest(?, ?, ?, ?, ?, ?) as t(completion_offset, record_time, application_id, submitters, command_id, transaction_id);
-       update parameters set ledger_end = ? where (ledger_end is null or ledger_end < ?);"""
 }

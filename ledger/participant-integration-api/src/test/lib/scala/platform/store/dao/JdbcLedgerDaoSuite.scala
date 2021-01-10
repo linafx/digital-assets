@@ -19,17 +19,13 @@ import com.daml.lf.data.Ref.{Identifier, Party}
 import com.daml.lf.data.{ImmArray, Ref}
 import com.daml.lf.transaction.Node._
 import com.daml.lf.transaction.test.TransactionBuilder
-import com.daml.lf.transaction.{
-  BlindingInfo,
-  CommittedTransaction,
-  Node,
-  NodeId,
-  TransactionVersion
-}
+import com.daml.lf.transaction.{BlindingInfo, CommittedTransaction, Node, NodeId, TransactionVersion}
 import com.daml.lf.value.Value
 import com.daml.lf.value.Value.{ContractId, ContractInst, ValueRecord, ValueText, ValueUnit}
 import com.daml.logging.LoggingContext
 import com.daml.platform.indexer.OffsetStep
+import com.daml.platform.indexer.OffsetUpdate.PreparedBatch
+import com.daml.platform.store.dao.events.PreparedRawEntry
 import com.daml.platform.store.entries.LedgerEntry
 import org.scalatest.AsyncTestSuite
 
@@ -521,6 +517,32 @@ private[dao] trait JdbcLedgerDaoSuite extends JdbcLedgerDaoBackend {
       offsetStepAndTx = nextOffsetStep(offsetAndTx._1) -> offsetAndTx._2
     )
 
+  protected final def prepareBatch(
+                                    divulgedContracts: Map[(ContractId, v1.ContractInst), Set[Party]],
+                                    blindingInfo: Option[BlindingInfo],
+                                    offsetAndTx: (Offset, LedgerEntry.Transaction),
+                                  ): PreparedBatch = {
+    val (offset, entry) = offsetAndTx
+    val submitterInfo =
+      for (actAs <- if (entry.actAs.isEmpty) None else Some(entry.actAs); app <- entry.applicationId;
+           cmd <- entry.commandId) yield v1.SubmitterInfo(actAs, app, cmd, Instant.EPOCH)
+    val committedTransaction = CommittedTransaction(entry.transaction)
+    val ledgerEffectiveTime = entry.ledgerEffectiveTime
+    val divulged = divulgedContracts.keysIterator.map(c => v1.DivulgedContract(c._1, c._2)).toList
+
+    val preparedRawEntry = ledgerDao.prepareEntry(
+      submitterInfo,
+      entry.workflowId,
+      entry.transactionId,
+      ledgerEffectiveTime,
+      offset,
+      committedTransaction,
+      divulged,
+      blindingInfo)
+
+    PreparedBatch(null, null, Seq(preparedRawEntry))
+  }
+
   protected final def storeOffsetStepAndTx(
       divulgedContracts: Map[(ContractId, v1.ContractInst), Set[Party]],
       blindingInfo: Option[BlindingInfo],
@@ -533,16 +555,8 @@ private[dao] trait JdbcLedgerDaoSuite extends JdbcLedgerDaoBackend {
     val committedTransaction = CommittedTransaction(entry.transaction)
     val ledgerEffectiveTime = entry.ledgerEffectiveTime
     val divulged = divulgedContracts.keysIterator.map(c => v1.DivulgedContract(c._1, c._2)).toList
-    val preparedTransactionInsert = ledgerDao.prepareTransactionInsert(
-      submitterInfo,
-      entry.workflowId,
-      entry.transactionId,
-      ledgerEffectiveTime,
-      offsetStep.offset,
-      committedTransaction,
-      divulged,
-      blindingInfo,
-    )
+    val preparedBatch = prepareBatch(divulgedContracts, blindingInfo, (offsetStep.offset, entry))
+    val preparedTransactionInsert = ledgerDao.prepareTransactionInsert(preparedBatch)
     for{
       _ <- ledgerDao
         .storeTransactionState(

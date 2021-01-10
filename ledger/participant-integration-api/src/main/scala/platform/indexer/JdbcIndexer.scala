@@ -7,7 +7,7 @@ import java.util.concurrent.atomic.AtomicReference
 
 import akka.NotUsed
 import akka.stream._
-import akka.stream.scaladsl.{Flow, Keep, Sink}
+import akka.stream.scaladsl.{Flow, Keep, Sink, Source}
 import com.daml.daml_lf_dev.DamlLf
 import com.daml.ledger.api.domain
 import com.daml.ledger.api.domain.ParticipantId
@@ -24,7 +24,7 @@ import com.daml.platform.ApiOffset.ApiOffsetConverter
 import com.daml.platform.common
 import com.daml.platform.common.MismatchException
 import com.daml.platform.configuration.ServerRole
-import com.daml.platform.indexer.OffsetUpdate.{OffsetStepUpdatePair, PreparedTransactionInsert}
+import com.daml.platform.indexer.OffsetUpdate.{OffsetStepUpdatePair, PreparedBatch, PreparedRawEntryStep, PreparedTransactionInsert}
 import com.daml.platform.store.FlywayMigrations
 import com.daml.platform.store.dao.events.LfValueTranslation
 import com.daml.platform.store.dao.{JdbcLedgerDao, LedgerDao, PersistenceResponse}
@@ -32,6 +32,7 @@ import com.daml.platform.store.entries.{PackageLedgerEntry, PartyLedgerEntry}
 
 import scala.concurrent.Future
 import scala.util.control.NonFatal
+import scala.concurrent.duration._
 
 object JdbcIndexer {
 
@@ -236,6 +237,33 @@ private[daml] class JdbcIndexer private[indexer](
   override def subscription(readService: ReadService): ResourceOwner[IndexFeedHandle] =
     new SubscriptionResourceOwner(readService)
 
+  def prepareRawEntry(offsetUpdate: OffsetUpdate): OffsetUpdate =
+    offsetUpdate match {
+      case OffsetStepUpdatePair(offsetStep, tx: TransactionAccepted) =>
+        PreparedRawEntryStep(offsetStep, tx, ledgerDao.prepareEntry(
+          submitterInfo = tx.optSubmitterInfo,
+          workflowId = tx.transactionMeta.workflowId,
+          transactionId = tx.transactionId,
+          ledgerEffectiveTime = tx.transactionMeta.ledgerEffectiveTime.toInstant,
+          offset = offsetStep.offset,
+          transaction = tx.transaction,
+          divulgedContracts = tx.divulgedContracts,
+          blindingInfo = tx.blindingInfo))
+      case offsetUpdate => offsetUpdate
+    }
+
+  private def prepareBatches(seq: Seq[OffsetUpdate]): Seq[OffsetUpdate] =
+    seq.foldLeft(List.empty[OffsetUpdate]){
+      case (Nil, PreparedRawEntryStep(offsetStep, update, preparedRawEntry)) =>
+        PreparedBatch(offsetStep, update, Seq(preparedRawEntry)) :: Nil
+      case (Nil, offsetUpdate) => offsetUpdate :: Nil
+      case (PreparedBatch(_, _, batch) :: tl, PreparedRawEntryStep(offsetStep, update, preparedRawEntry)) =>
+        PreparedBatch(offsetStep, update, batch :+ preparedRawEntry) :: tl
+      case (batches, PreparedRawEntryStep(offsetStep, update, preparedRawEntry)) =>
+        PreparedBatch(offsetStep, update, Seq(preparedRawEntry)) :: batches
+      case (batches, offsetStep) => offsetStep :: batches
+    }.reverse.toVector
+
   private def handleStateUpdate(
                                  implicit loggingContext: LoggingContext): Flow[OffsetUpdate, Unit, NotUsed] =
     Flow[OffsetUpdate]
@@ -248,7 +276,15 @@ private[daml] class JdbcIndexer private[indexer](
           metrics.daml.indexer.lastReceivedRecordTime.updateValue(lastReceivedRecordTime)
           metrics.daml.indexer.lastReceivedOffset.updateValue(offsetStep.offset.toApiString)
       })
-      .mapAsync(4)(prepareTransactionInsert)
+      .mapAsync(4)(offsetUpdate => Future(prepareRawEntry(offsetUpdate))(mat.executionContext))
+      .groupedWithin(100, 100.millis)
+      .buffer(4, OverflowStrategy.backpressure) // Remove if necessary
+      .mapAsync(1)(offsetUpdate => Future(prepareBatches(offsetUpdate))(mat.executionContext))
+      .flatMapConcat(batches => Source.fromIterator(() => batches.iterator))
+      .mapAsync(4){
+        case pb@PreparedBatch(offsetStep, update, _) => Future(PreparedTransactionInsert(offsetStep, update, ledgerDao.prepareTransactionInsert(pb)))(mat.executionContext)
+        case offsetUpdate => Future.successful(offsetUpdate)
+      }
       .mapAsync(1) {
         case ou@OffsetUpdate.PreparedTransactionInsert(
         offsetStep,
@@ -291,31 +327,6 @@ private[daml] class JdbcIndexer private[indexer](
           }
       }
       .map(_ => ())
-
-  private def prepareTransactionInsert(offsetUpdate: OffsetUpdate): Future[OffsetUpdate] =
-    offsetUpdate match {
-      case OffsetStepUpdatePair(offsetStep, tx: TransactionAccepted) =>
-        Timed.future(
-          metrics.daml.index.db.storeTransactionDbMetrics.prepareBatches,
-          Future {
-            OffsetUpdate.PreparedTransactionInsert(
-              offsetStep = offsetStep,
-              update = tx,
-              preparedInsert = ledgerDao.prepareTransactionInsert(
-                submitterInfo = tx.optSubmitterInfo,
-                workflowId = tx.transactionMeta.workflowId,
-                transactionId = tx.transactionId,
-                ledgerEffectiveTime = tx.transactionMeta.ledgerEffectiveTime.toInstant,
-                offset = offsetStep.offset,
-                transaction = tx.transaction,
-                divulgedContracts = tx.divulgedContracts,
-                blindingInfo = tx.blindingInfo,
-              )
-            )
-          }(mat.executionContext)
-        )
-      case offsetUpdate => Future.successful(offsetUpdate)
-    }
 
   private def executeUpdate(offsetUpdate: OffsetUpdate)(
     implicit loggingContext: LoggingContext): Future[PersistenceResponse] =
@@ -402,31 +413,7 @@ private[daml] class JdbcIndexer private[indexer](
 
           case CommandRejected(recordTime, submitterInfo, reason) =>
             ledgerDao.storeRejection(Some(submitterInfo), recordTime.toInstant, offsetStep, reason)
-          case update: TransactionAccepted =>
-            import update._
-            logger.warn(
-              """For performance considerations, TransactionAccepted should be handled in a different branch.
-                |Recomputing PreparedInsert..""".stripMargin)
-            ledgerDao.storeTransactionState(
-              preparedInsert = ledgerDao.prepareTransactionInsert(
-                submitterInfo = optSubmitterInfo,
-                workflowId = transactionMeta.workflowId,
-                transactionId = transactionId,
-                ledgerEffectiveTime = transactionMeta.ledgerEffectiveTime.toInstant,
-                offset = offsetStep.offset,
-                transaction = transaction,
-                divulgedContracts = divulgedContracts,
-                blindingInfo = blindingInfo,
-              ),
-              submitterInfo = optSubmitterInfo,
-              transactionId = transactionId,
-              recordTime = recordTime.toInstant,
-              ledgerEffectiveTime = transactionMeta.ledgerEffectiveTime.toInstant,
-              offsetStep = offsetStep,
-              transaction = transaction,
-              divulged = divulgedContracts,
-              blindingInfo = blindingInfo,
-            )
+          case _ => throw new RuntimeException("Should not be here")
         }
     }
 

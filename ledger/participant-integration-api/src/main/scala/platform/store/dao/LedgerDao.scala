@@ -20,8 +20,8 @@ import com.daml.lf.value.Value
 import com.daml.lf.value.Value.{ContractId, ContractInst}
 import com.daml.logging.LoggingContext
 import com.daml.platform.indexer.OffsetStep
-import com.daml.platform.store.dao.PersistenceResponse.Ok
-import com.daml.platform.store.dao.events.{TransactionsReader, TransactionsWriter}
+import com.daml.platform.indexer.OffsetUpdate.PreparedBatch
+import com.daml.platform.store.dao.events.{PreparedRawEntry, TransactionsReader, TransactionsWriter}
 import com.daml.platform.store.dao.events.TransactionsWriter.PreparedInsert
 import com.daml.platform.store.entries.{ConfigurationEntry, LedgerEntry, PackageLedgerEntry, PartyLedgerEntry}
 
@@ -179,16 +179,18 @@ private[platform] trait LedgerWriteDao extends ReportsHealth {
       implicit loggingContext: LoggingContext,
   ): Future[Unit]
 
-  def prepareTransactionInsert(
-      submitterInfo: Option[SubmitterInfo],
-      workflowId: Option[WorkflowId],
-      transactionId: TransactionId,
-      ledgerEffectiveTime: Instant,
-      offset: Offset,
-      transaction: CommittedTransaction,
-      divulgedContracts: Iterable[DivulgedContract],
-      blindingInfo: Option[BlindingInfo],
-  )(implicit loggingContext: LoggingContext): TransactionsWriter.PreparedInsert
+  def prepareEntry(
+                    submitterInfo: Option[SubmitterInfo],
+                    workflowId: Option[WorkflowId],
+                    transactionId: TransactionId,
+                    ledgerEffectiveTime: Instant,
+                    offset: Offset,
+                    transaction: CommittedTransaction,
+                    divulgedContracts: Iterable[DivulgedContract],
+                    blindingInfo: Option[BlindingInfo],
+                  ): PreparedRawEntry
+
+  def prepareTransactionInsert(preparedBatch: PreparedBatch)(implicit loggingContext: LoggingContext): TransactionsWriter.PreparedInsert
 
   def storeTransactionState(
       preparedInsert: PreparedInsert,

@@ -373,27 +373,28 @@ private final class SqlLedger(
             // so it doesn't need to pre-compute blinding information.
             val blindingInfo = None
 
-            val preparedInsert = ledgerDao.prepareTransactionInsert(
-              submitterInfo = Some(submitterInfo),
-              workflowId = transactionMeta.workflowId,
-              transactionId = transactionId,
-              ledgerEffectiveTime = transactionMeta.ledgerEffectiveTime.toInstant,
-              offset = offset,
-              transaction = transactionCommitter.commitTransaction(transactionId, transaction),
-              divulgedContracts = divulgedContracts,
-              blindingInfo = blindingInfo
-            )
-            ledgerDao.storeTransactionState(
-              preparedInsert,
-              Some(submitterInfo),
-              transactionId,
-              recordTime,
-              transactionMeta.ledgerEffectiveTime.toInstant,
-              CurrentOffset(offset),
-              transactionCommitter.commitTransaction(transactionId, transaction),
-              divulgedContracts,
-              blindingInfo,
-            )
+//            val preparedInsert = ledgerDao.prepareTransactionInsert(
+//              submitterInfo = Some(submitterInfo),
+//              workflowId = transactionMeta.workflowId,
+//              transactionId = transactionId,
+//              ledgerEffectiveTime = transactionMeta.ledgerEffectiveTime.toInstant,
+//              offset = offset,
+//              transaction = transactionCommitter.commitTransaction(transactionId, transaction),
+//              divulgedContracts = divulgedContracts,
+//              blindingInfo = blindingInfo
+//            )
+//            ledgerDao.storeTransactionState(
+//              preparedInsert,
+//              Some(submitterInfo),
+//              transactionId,
+//              recordTime,
+//              transactionMeta.ledgerEffectiveTime.toInstant,
+//              CurrentOffset(offset),
+//              transactionCommitter.commitTransaction(transactionId, transaction),
+//              divulgedContracts,
+//              blindingInfo,
+//            )
+            ???
           }
         )
         .transform(

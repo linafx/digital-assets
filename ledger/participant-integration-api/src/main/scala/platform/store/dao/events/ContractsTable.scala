@@ -9,6 +9,7 @@ import java.time.Instant
 import anorm.SqlParser.int
 import anorm.{BatchSql, NamedParameter, SqlStringInterpolation, ~}
 import com.daml.ledger.api.domain.PartyDetails
+import com.daml.ledger.participant.state.v1.DivulgedContract
 import com.daml.platform.store.Conversions._
 import com.daml.platform.store.DbType
 import com.daml.platform.store.dao.JdbcLedgerDao
@@ -16,6 +17,8 @@ import com.daml.platform.store.dao.JdbcLedgerDao
 import scala.util.{Failure, Success, Try}
 
 private[events] sealed abstract class ContractsTable extends PostCommitValidationData {
+  protected val TableName = "participant_contract_witnesses"
+  protected val IdColumn = "contract_id"
 
   protected val insertContractQuery: String
 
@@ -25,23 +28,80 @@ private[events] sealed abstract class ContractsTable extends PostCommitValidatio
   private def deleteContract(contractId: ContractId): Vector[NamedParameter] =
     Vector[NamedParameter]("contract_id" -> contractId)
 
-  def toExecutables(
-      tx: TransactionIndexing.TransactionInfo,
-      info: TransactionIndexing.ContractsInfo,
-  ): ContractsTable.Executables = {
-    val deletes = info.netArchives.iterator.map(deleteContract).toSeq
+  def toExecutables(preparedRawEntries: Seq[PreparedRawEntry]): ContractsTable.Executables =
     ContractsTable.Executables(
-      deleteContracts = batch(deleteContractQuery, deletes),
+      deleteContracts = batch(deleteContractQuery, preparedRawEntries.flatMap {
+        case PreparedRawEntry(_, _, _, contracts, _) =>
+          contracts.netArchives.iterator.map(deleteContract)
+      }),
+      insertContracts = {
+        val allNetArchives = preparedRawEntries.flatMap(_.contracts.netArchives).toSet
+
+        val allNetCreates =
+          preparedRawEntries.flatMap{
+            pre =>
+              pre.contracts.netCreates.map(create => create -> java.sql.Timestamp.from(pre.tx.ledgerEffectiveTime))
+          }.filterNot(create => allNetArchives(create._1.coid))
+        val allDivulged = preparedRawEntries.flatMap {
+          pre =>
+            pre.contracts.divulgedContracts.map{
+              dc => dc -> java.sql.Timestamp.from(pre.tx.ledgerEffectiveTime)
+            }
+        }.filterNot(dc => allNetArchives(dc._1.contractId))
+
+        val netCreatesSize = allNetCreates.size
+        val divulgedSize = allDivulged.size
+        val batchSize = netCreatesSize + divulgedSize
+
+        val timestamps = (allNetCreates.map(_._2) ++ Array.fill[AnyRef](divulgedSize)(null)).toArray[AnyRef]
+
+        val contractIds, templateIds, stakeholders = Array.ofDim[String](batchSize)
+        val createArgs, hashes = Array.ofDim[Array[Byte]](batchSize)
+
+        val argsBySerialized = preparedRawEntries.flatMap { pre =>
+          pre.contracts.netCreates.map(c => c.coid -> pre.compressed) ++
+            pre.contracts.divulgedContracts.map(dc => dc.contractId -> pre.compressed)
+        }.toMap
+
+        allNetCreates.iterator.zipWithIndex.foreach { case ((create, _), idx) =>
+          contractIds(idx) = create.coid.coid
+          templateIds(idx) = create.templateId.toString
+          stakeholders(idx) = create.stakeholders.mkString("|")
+          createArgs(idx) = argsBySerialized(create.coid).createArgumentsByContract(create.coid)
+          hashes(idx) = create.versionedKey.map(convert(create.templateId, _)).map(_.hash.bytes.toByteArray).orNull
+        }
+
+        allDivulged.iterator.zipWithIndex.foreach {
+          case ((DivulgedContract(contractId, contractInst), _), idx) =>
+            contractIds(idx + netCreatesSize) = contractId.coid
+            templateIds(idx + netCreatesSize) = contractInst.template.toString
+            stakeholders(idx + netCreatesSize) = ""
+            createArgs(idx + netCreatesSize) = argsBySerialized(contractId).createArgumentsByContract(contractId)
+            hashes(idx + netCreatesSize) = null
+        }
+
+        if (batchSize == 0) None else Some {
+          (conn: Connection) => {
+            val preparedStatement = conn.prepareStatement(insertContractQuery)
+            preparedStatement.setObject(1, contractIds)
+            preparedStatement.setObject(2, templateIds)
+            preparedStatement.setObject(3, createArgs)
+            preparedStatement.setArray(4, conn.createArrayOf("TIMESTAMP", timestamps))
+            preparedStatement.setObject(5, hashes)
+            preparedStatement.setObject(6, stakeholders)
+            preparedStatement
+          }
+        }
+      }
     )
-  }
 
   override final def lookupContractKeyGlobally(key: Key)(
-      implicit connection: Connection): Option[ContractId] =
+    implicit connection: Connection): Option[ContractId] =
     SQL"select participant_contracts.contract_id from participant_contracts where create_key_hash = ${key.hash}"
       .as(contractId("contract_id").singleOpt)
 
   override final def lookupMaximumLedgerTime(ids: Set[ContractId])(
-      implicit connection: Connection): Try[Option[Instant]] =
+    implicit connection: Connection): Try[Option[Instant]] =
     if (ids.isEmpty) {
       Failure(ContractsTable.emptyContractIds)
     } else {
@@ -55,13 +115,13 @@ private[events] sealed abstract class ContractsTable extends PostCommitValidatio
     }
 
   override final def lookupParties(parties: Seq[Party])(
-      implicit connection: Connection): List[PartyDetails] =
+    implicit connection: Connection): List[PartyDetails] =
     JdbcLedgerDao.selectParties(parties).map(JdbcLedgerDao.constructPartyDetails)
 }
 
 private[events] object ContractsTable {
 
-  final case class Executables(deleteContracts: Option[BatchSql])
+  final case class Executables(deleteContracts: Option[BatchSql], insertContracts: Option[Connection => PreparedStatement])
 
   def apply(dbType: DbType): ContractsTable =
     dbType match {
@@ -70,16 +130,16 @@ private[events] object ContractsTable {
     }
 
   object Postgresql extends ContractsTable {
-    override protected val insertContractQuery: String =
-      """insert into participant_contracts(
-           contract_id, template_id, create_argument, create_ledger_effective_time, create_key_hash, create_stakeholders
-         )
-         select
-           contract_id, template_id, create_argument, create_ledger_effective_time, create_key_hash, string_to_array(create_stakeholders,'|')
-         from
-           unnest(?, ?, ?, ?, ?, ?)
-           as t(contract_id, template_id, create_argument, create_ledger_effective_time, create_key_hash, create_stakeholders)
-         on conflict do nothing"""
+    override protected val insertContractQuery =
+      s"""insert into participant_contracts(
+       contract_id, template_id, create_argument, create_ledger_effective_time, create_key_hash, create_stakeholders
+     )
+     select
+       contract_id, template_id, create_argument, create_ledger_effective_time, create_key_hash, string_to_array(create_stakeholders,'|')
+     from
+       unnest(?, ?, ?, ?, ?, ?)
+       as t(contract_id, template_id, create_argument, create_ledger_effective_time, create_key_hash, create_stakeholders)
+     on conflict do nothing;"""
   }
 
   object H2Database extends ContractsTable {

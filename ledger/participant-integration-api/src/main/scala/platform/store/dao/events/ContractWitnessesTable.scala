@@ -3,6 +3,8 @@
 
 package com.daml.platform.store.dao.events
 
+import java.sql.{Connection, PreparedStatement}
+
 import anorm.{BatchSql, NamedParameter}
 import com.daml.platform.store.Conversions._
 import com.daml.platform.store.DbType
@@ -20,15 +22,32 @@ private[events] sealed abstract class ContractWitnessesTable {
   private def prepareBatchDelete(ids: Seq[ContractId]): Option[BatchSql] =
     batch(delete, ids.map(id => List[NamedParameter](IdColumn -> id)))
 
-  def toExecutables(
-      info: TransactionIndexing.ContractWitnessesInfo,
-  ): ContractWitnessesTable.Executables =
-    ContractWitnessesTable.Executables(prepareBatchDelete(info.netArchives.toList))
+  def toExecutables(preparedRawEntries: Seq[PreparedRawEntry]): ContractWitnessesTable.Executables = {
+    val witnessArchivals = preparedRawEntries.flatMap(_.contractWitnesses.netArchives).toSet
+
+    ContractWitnessesTable.Executables(
+      deleteWitnesses = prepareBatchDelete(witnessArchivals.toList),
+      insertWitnesses = {
+        (conn: Connection) => {
+          val preparedStatement = conn.prepareStatement(insert)
+          val netWitnesses: Seq[(ContractId, String)] = preparedRawEntries.flatMap(pre => Relation.flatten(pre.contractWitnesses.netVisibility))
+            .filterNot{ case (coid, _) => witnessArchivals(coid)}
+          val (witnessesContractIds, parties) = netWitnesses.map {
+            case (id, party) => id.coid -> party
+          }.unzip
+
+          preparedStatement.setObject(1, witnessesContractIds.toArray)
+          preparedStatement.setObject(2, parties.toArray)
+          preparedStatement
+        }
+      }
+    )
+  }
 }
 
 private[events] object ContractWitnessesTable {
 
-  final case class Executables(deleteWitnesses: Option[BatchSql])
+  final case class Executables(deleteWitnesses: Option[BatchSql], insertWitnesses: Connection => PreparedStatement)
 
   def apply(dbType: DbType): ContractWitnessesTable =
     dbType match {

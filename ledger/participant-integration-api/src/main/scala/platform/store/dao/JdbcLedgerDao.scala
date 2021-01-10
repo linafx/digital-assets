@@ -13,16 +13,11 @@ import anorm.SqlParser._
 import anorm.ToStatement.optionToStatement
 import anorm.{BatchSql, Macro, NamedParameter, RowParser, SQL, SqlParser}
 import com.daml.daml_lf_dev.DamlLf.Archive
-import com.daml.ledger.WorkflowId
+import com.daml.ledger.{TransactionId, WorkflowId}
 import com.daml.ledger.api.domain
 import com.daml.ledger.api.domain.{LedgerId, ParticipantId, PartyDetails}
 import com.daml.ledger.api.health.HealthStatus
-import com.daml.ledger.participant.state.index.v2.{
-  CommandDeduplicationDuplicate,
-  CommandDeduplicationNew,
-  CommandDeduplicationResult,
-  PackageDetails
-}
+import com.daml.ledger.participant.state.index.v2.{CommandDeduplicationDuplicate, CommandDeduplicationNew, CommandDeduplicationResult, PackageDetails}
 import com.daml.ledger.participant.state.v1._
 import com.daml.ledger.resources.ResourceOwner
 import com.daml.lf.archive.Decode
@@ -34,24 +29,16 @@ import com.daml.logging.LoggingContext.withEnrichedLoggingContext
 import com.daml.logging.{ContextualizedLogger, LoggingContext}
 import com.daml.metrics.{Metrics, Timed}
 import com.daml.platform.configuration.ServerRole
+import com.daml.platform.indexer.OffsetUpdate.PreparedBatch
 import com.daml.platform.indexer.{CurrentOffset, OffsetStep}
 import com.daml.platform.store.Conversions._
 import com.daml.platform.store.SimpleSqlAsVectorOf.SimpleSqlAsVectorOf
 import com.daml.platform.store._
-import com.daml.platform.store.dao.CommandCompletionsTable.{
-  prepareCompletionInsert,
-  prepareCompletionsDelete,
-  prepareRejectionInsert
-}
+import com.daml.platform.store.dao.CommandCompletionsTable.{prepareCompletionInsert, prepareCompletionsDelete, prepareRejectionInsert}
 import com.daml.platform.store.dao.PersistenceResponse.Ok
 import com.daml.platform.store.dao.events.TransactionsWriter.PreparedInsert
 import com.daml.platform.store.dao.events._
-import com.daml.platform.store.entries.{
-  ConfigurationEntry,
-  LedgerEntry,
-  PackageLedgerEntry,
-  PartyLedgerEntry
-}
+import com.daml.platform.store.entries.{ConfigurationEntry, LedgerEntry, PackageLedgerEntry, PartyLedgerEntry}
 import scalaz.syntax.tag._
 
 import scala.concurrent.{ExecutionContext, Future}
@@ -413,26 +400,22 @@ private class JdbcLedgerDao(
   ): Future[Option[ContractId]] =
     contractsReader.lookupContractKey(forParties, key)
 
+  override def prepareEntry(
+                             submitterInfo: Option[SubmitterInfo],
+                             workflowId: Option[WorkflowId],
+                             transactionId: TransactionId,
+                             ledgerEffectiveTime: Instant,
+                             offset: Offset,
+                             transaction: CommittedTransaction,
+                             divulgedContracts: Iterable[DivulgedContract],
+                             blindingInfo: Option[BlindingInfo],
+                           ): PreparedRawEntry =
+    transactionsWriter.prepareEntry(submitterInfo, workflowId, transactionId, ledgerEffectiveTime, offset, transaction, divulgedContracts, blindingInfo)
+
   override def prepareTransactionInsert(
-      submitterInfo: Option[SubmitterInfo],
-      workflowId: Option[WorkflowId],
-      transactionId: TransactionId,
-      ledgerEffectiveTime: Instant,
-      offset: Offset,
-      transaction: CommittedTransaction,
-      divulgedContracts: Iterable[DivulgedContract],
-      blindingInfo: Option[BlindingInfo],
+      preparedBatch: PreparedBatch
   )(implicit loggingContext: LoggingContext): PreparedInsert =
-    transactionsWriter.prepare(
-      submitterInfo,
-      workflowId,
-      transactionId,
-      ledgerEffectiveTime,
-      offset,
-      transaction,
-      divulgedContracts,
-      blindingInfo,
-    )
+    transactionsWriter.prepareInsert(preparedBatch.batch)
 
   private def handleError(
       offset: Offset,
@@ -462,7 +445,7 @@ private class JdbcLedgerDao(
                                )(implicit loggingContext: LoggingContext): Future[PersistenceResponse] =
     dbDispatcher
       .executeSql(metrics.daml.index.db.storeTransactionDbMetrics) { implicit conn =>
-        preparedInsert.completeTransaction(metrics, submitterInfo, offsetStep.offset, recordTime, transactionId)
+        preparedInsert.completeTransaction(metrics)
         Ok
       }
 
@@ -496,16 +479,6 @@ private class JdbcLedgerDao(
         Ok
       }
 
-  private def setAsyncCommit(implicit conn: Connection) = {
-    val statement = conn.prepareStatement("SET LOCAL synchronous_commit = 'off'")
-    try {
-      statement.execute()
-      ()
-    } finally {
-      statement.close()
-    }
-  }
-
   override def storeRejection(
       submitterInfo: Option[SubmitterInfo],
       recordTime: Instant,
@@ -526,72 +499,7 @@ private class JdbcLedgerDao(
   override def storeInitialState(
       ledgerEntries: Vector[(Offset, LedgerEntry)],
       newLedgerEnd: Offset,
-  )(implicit loggingContext: LoggingContext): Future[Unit] = {
-    val stateUpdateFuture = dbDispatcher.executeSql(metrics.daml.index.db.storeInitialStateFromScenario) {
-      implicit connection =>
-        setAsyncCommit
-        ledgerEntries.foreach {
-          case (offset, entry) =>
-            entry match {
-              case tx: LedgerEntry.Transaction =>
-                val submitterInfo =
-                  for (appId <- tx.applicationId;
-                    actAs <- if (tx.actAs.isEmpty) None else Some(tx.actAs); cmdId <- tx.commandId)
-                    yield SubmitterInfo(actAs, appId, cmdId, Instant.EPOCH)
-                prepareTransactionInsert(
-                  submitterInfo = submitterInfo,
-                  workflowId = tx.workflowId,
-                  transactionId = tx.transactionId,
-                  ledgerEffectiveTime = tx.ledgerEffectiveTime,
-                  offset = offset,
-                  transaction = tx.transaction,
-                  divulgedContracts = Nil,
-                  blindingInfo = None,
-                ).writeState(metrics)
-              case LedgerEntry.Rejection(recordTime, commandId, applicationId, actAs, reason) =>
-                val _ = prepareRejectionInsert(
-                  submitterInfo = SubmitterInfo(actAs, applicationId, commandId, Instant.EPOCH),
-                  offset = offset,
-                  recordTime = recordTime,
-                  reason = toParticipantRejection(reason),
-                ).execute()
-            }
-        }
-    }
-    val eventsUpdateFuture = dbDispatcher.executeSql(metrics.daml.index.db.storeInitialStateFromScenario) {
-      implicit connection =>
-        ledgerEntries.foreach {
-          case (offset, entry) =>
-            entry match {
-              case tx: LedgerEntry.Transaction =>
-                val submitterInfo =
-                  for (appId <- tx.applicationId;
-                       actAs <- if (tx.actAs.isEmpty) None else Some(tx.actAs); cmdId <- tx.commandId)
-                    yield SubmitterInfo(actAs, appId, cmdId, Instant.EPOCH)
-                prepareTransactionInsert(
-                  submitterInfo = submitterInfo,
-                  workflowId = tx.workflowId,
-                  transactionId = tx.transactionId,
-                  ledgerEffectiveTime = tx.ledgerEffectiveTime,
-                  offset = offset,
-                  transaction = tx.transaction,
-                  divulgedContracts = Nil,
-                  blindingInfo = None,
-                ).writeEvents(metrics)
-                submitterInfo
-                  .map(prepareCompletionInsert(_, offset, tx.transactionId, tx.recordedAt))
-                  .foreach(_.execute())
-              case LedgerEntry.Rejection(_, _, _, _, _) => Future.unit
-            }
-        }
-        ParametersTable.updateLedgerEnd(CurrentOffset(newLedgerEnd))
-    }
-    implicit val ec: ExecutionContext = executionContext
-    for {
-      stateUpdateResponse <- stateUpdateFuture
-      _ <- eventsUpdateFuture
-    } yield stateUpdateResponse
-  }
+  )(implicit loggingContext: LoggingContext): Future[Unit] = ???
 
   private def toParticipantRejection(reason: domain.RejectionReason): RejectionReason =
     reason match {

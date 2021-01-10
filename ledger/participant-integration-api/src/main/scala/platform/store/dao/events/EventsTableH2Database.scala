@@ -13,13 +13,14 @@ import com.daml.platform.store.Conversions._
 
 object EventsTableH2Database extends EventsTable {
 
+  def toExecutables(preparedRawEntries: Seq[PreparedRawEntry]): EventsTable.Batches = ???
+
   final class Batches(insertEvents: Option[BatchSql], updateArchives: Option[BatchSql])
       extends EventsTable.Batches {
-    override def executeEventsInsert()(implicit connection: Connection): Unit = {
+    def executeEventsInsert()(implicit connection: Connection): Unit = {
       insertEvents.foreach(_.execute())
       updateArchives.foreach(_.execute())
     }
-    override def executeTransactionComplete(maybeSubmitterInfo: Option[SubmitterInfo], offset: Offset, recordTime: Instant, transactionId: TransactionId)(implicit connection: Connection): Unit = ()
   }
 
   private val insertEvent: String = {
@@ -178,35 +179,4 @@ object EventsTableH2Database extends EventsTable {
       "consumed_at" -> consumedAt,
       "contract_id" -> contractId.coid,
     )
-
-  def toExecutables(
-      tx: TransactionIndexing.TransactionInfo,
-      info: TransactionIndexing.EventsInfo,
-      serialized: TransactionIndexing.Serialized,
-  ): EventsTable.Batches = {
-
-    val events = transaction(
-      offset = tx.offset,
-      transactionId = tx.transactionId,
-      workflowId = tx.workflowId,
-      ledgerEffectiveTime = tx.ledgerEffectiveTime,
-      submitterInfo = tx.submitterInfo,
-      events = info.events,
-      stakeholders = info.stakeholders,
-      disclosure = info.disclosure,
-      createArguments = serialized.createArguments,
-      createKeyValues = serialized.createKeyValues,
-      exerciseArguments = serialized.exerciseArguments,
-      exerciseResults = serialized.exerciseResults,
-    )
-
-    val archivals =
-      info.archives.iterator.map(archive(tx.offset)).toList
-
-    new Batches(
-      insertEvents = batch(insertEvent, events),
-      updateArchives = batch(updateArchived, archivals),
-    )
-
-  }
 }
