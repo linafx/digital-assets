@@ -203,10 +203,9 @@ object EventsTablePostgresql extends EventsTable {
     preparedStatement.setObject(25, exerciseChildEventIds)
     preparedStatement
   }
-
+// was at the beginning: SET LOCAL synchronous_commit = 'off';
   private val batchInsertSqlString =
     """
-       SET LOCAL synchronous_commit = 'off';
        insert into participant_events(
            event_id, event_offset, contract_id, transaction_id, workflow_id, ledger_effective_time, template_id, node_index, command_id, application_id, submitters, flat_event_witnesses, tree_event_witnesses,
            create_argument, create_signatories, create_observers, create_agreement_text, create_consumed_at, create_key_value,
