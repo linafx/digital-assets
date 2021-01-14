@@ -225,6 +225,7 @@ object Value extends CidContainer1[Value] {
   }
 
   object VersionedValue extends CidContainer1[VersionedValue] {
+    // Should be used only values of same type.
     implicit def `VersionedValue Equal instance`[Cid: Equal]: Equal[VersionedValue[Cid]] =
       ScalazEqual.withNatural(Equal[Cid].equalIsNatural) { (a, b) =>
         import a._
