@@ -193,25 +193,25 @@ class ValueCoderSpec
 
     import scala.Ordering.Implicits._
 
-    def go(value: Value[ContractId]): Value[ContractId] =
+    def stripTypes(value: Value[ContractId]): Value[ContractId] =
       value match {
         case ValueRecord(_, fields) =>
-          ValueRecord(None, fields.map { case (_, value) => None -> go(value) })
+          ValueRecord(None, fields.map { case (_, value) => None -> stripTypes(value) })
         case ValueVariant(_, variant, value) =>
-          ValueVariant(None, variant, go(value))
+          ValueVariant(None, variant, stripTypes(value))
         case _: ValueCidlessLeaf | _: ValueContractId[_] => value
         case ValueList(values) =>
-          ValueList(values.map(go))
+          ValueList(values.map(stripTypes))
         case ValueOptional(value) =>
-          ValueOptional(value.map(go))
+          ValueOptional(value.map(stripTypes))
         case ValueTextMap(value) =>
-          ValueTextMap(value.mapValue(go))
+          ValueTextMap(value.mapValue(stripTypes))
         case ValueGenMap(entries) =>
-          ValueGenMap(entries.map { case (k, v) => go(k) -> go(v) })
+          ValueGenMap(entries.map { case (k, v) => stripTypes(k) -> stripTypes(v) })
       }
 
     if (version >= TransactionVersion.minTypeErasure)
-      go(value0)
+      stripTypes(value0)
     else
       value0
 

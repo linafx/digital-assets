@@ -9,17 +9,16 @@ import java.util
 import com.daml.lf.data.Ref._
 import com.daml.lf.data.{FrontStack, ImmArray, Ref, Time}
 import com.daml.lf.language.Ast._
+import com.daml.lf.language.{Util => AstUtil}
 import com.daml.lf.ledger.{Authorize, CheckAuthorizationMode}
 import com.daml.lf.speedy.Compiler.{CompilationError, PackageNotFound}
 import com.daml.lf.speedy.SError._
 import com.daml.lf.speedy.SExpr._
 import com.daml.lf.speedy.SResult._
-import com.daml.lf.speedy.SValue._
 import com.daml.lf.transaction.TransactionVersion
 import com.daml.lf.value.{Value => V}
 import org.slf4j.LoggerFactory
 
-import scala.annotation.tailrec
 import scala.jdk.CollectionConverters._
 import scala.util.control.NoStackTrace
 
@@ -480,7 +479,7 @@ private[lf] object Speedy {
     // TODO: share common code with executeApplication
     private[speedy] def enterApplication(vfun: SValue, newArgs: Array[SExprAtomic]): Unit = {
       vfun match {
-        case SPAP(prim, actualsSoFar, arity) =>
+        case SValue.SPAP(prim, actualsSoFar, arity) =>
           val missing = arity - actualsSoFar.size
           val newArgsLimit = Math.min(missing, newArgs.length)
 
@@ -500,7 +499,7 @@ private[lf] object Speedy {
 
           // Not enough arguments. Return a PAP.
           if (othersLength < 0) {
-            this.returnValue = SPAP(prim, actuals, arity)
+            this.returnValue = SValue.SPAP(prim, actuals, arity)
 
           } else {
             // Too many arguments: Push a continuation to re-apply the over-applied args.
@@ -511,7 +510,7 @@ private[lf] object Speedy {
             }
             // Now the correct number of arguments is ensured. What kind of prim do we have?
             prim match {
-              case closure: PClosure =>
+              case closure: SValue.PClosure =>
                 this.frame = closure.frame
                 this.actuals = actuals
                 // Maybe push a continuation for the profiler
@@ -524,7 +523,7 @@ private[lf] object Speedy {
                 popTempStackToBase()
                 this.ctrl = closure.expr
 
-              case PBuiltin(builtin) =>
+              case SValue.PBuiltin(builtin) =>
                 this.actuals = actuals
                 try {
                   builtin.execute(actuals, this)
@@ -545,7 +544,7 @@ private[lf] object Speedy {
     /** The function has been evaluated to a value, now start evaluating the arguments. */
     private[speedy] def executeApplication(vfun: SValue, newArgs: Array[SExpr]): Unit = {
       vfun match {
-        case SPAP(prim, actualsSoFar, arity) =>
+        case SValue.SPAP(prim, actualsSoFar, arity) =>
           val missing = arity - actualsSoFar.size
           val newArgsLimit = Math.min(missing, newArgs.length)
 
@@ -566,11 +565,11 @@ private[lf] object Speedy {
             }
             // Now the correct number of arguments is ensured. What kind of prim do we have?
             prim match {
-              case closure: PClosure =>
+              case closure: SValue.PClosure =>
                 // Push a continuation to execute the function body when the arguments have been evaluated
                 this.pushKont(KFun(this, closure, actuals))
 
-              case PBuiltin(builtin) =>
+              case SValue.PBuiltin(builtin) =>
                 // Push a continuation to execute the builtin when the arguments have been evaluated
                 this.pushKont(KBuiltin(this, builtin, actuals))
             }
@@ -643,36 +642,10 @@ private[lf] object Speedy {
       )
     }
 
-    @tailrec
-    private[this] def destructApp(typ: Type, tyArgs: List[Type] = List.empty): (Type, List[Type]) =
-      typ match {
-        case TApp(tyFun, tyArg) => destructApp(tyFun, tyArg :: tyArgs)
-        case otherwise => (otherwise, tyArgs)
-      }
-
-    // note: all the types in params must be closed.
-    private[this] def replaceParameters(params: Map[TypeVarName, Type], typ0: Type): Type = {
-      def go(typ: Type): Type =
-        typ match {
-          case TVar(v) =>
-            params.getOrElse(
-              v,
-              crash(s"Got out of bounds type variable $v when replacing parameters"),
-            )
-          case TApp(tyfun, arg) => TApp(go(tyfun), go(arg))
-          case _: TForall | _: TStruct | _: TSynApp | _: TVar =>
-            crash(
-              s"Unexpected type $typ application when replacing parameters in value import -- all types should be serializable, and $typ are not."
-            )
-          case _ =>
-            typ
-        }
-
-      go(typ0)
-    }
-
     // This translates a well-typed LF value (typically coming from the ledger)
     // to speedy value and set the control of with the result.
+    // Note the method does not check the value is well-typed as opposed as
+    // com.daml.lf.engine.preprocessing.ValueTranslator.translateValue.
     // All the contract IDs contained in the value are considered global.
     // Raises an exception if missing a package.
     private[speedy] def importValue(typ0: Type, value0: V[V.ContractId]): Unit = {
@@ -680,10 +653,10 @@ private[lf] object Speedy {
       def go(ty: Type, value: V[V.ContractId]): SValue = {
         def typeMismatch = crash(s"mismatching type: $ty and value: $value")
 
-        val (tyFun, tyArgs) = destructApp(ty)
+        val (tyFun, argTypes) = AstUtil.destructApp(ty)
         tyFun match {
           case TBuiltin(_) =>
-            tyArgs match {
+            argTypes match {
               case Nil =>
                 value match {
                   case V.ValueInt64(value) =>
@@ -711,12 +684,7 @@ private[lf] object Speedy {
                     addGlobalCid(cid)
                     SValue.SContractId(cid)
                   case V.ValueNumeric(d) =>
-                    elemType match {
-                      case TNat(s) =>
-                        data.Numeric.fromBigDecimal(s, d).fold(crash, SValue.SNumeric)
-                      case _ =>
-                        typeMismatch
-                    }
+                    SValue.SNumeric(d)
                   case V.ValueOptional(mb) =>
                     mb match {
                       case Some(value) => SValue.SOptional(Some(go(elemType, value)))
@@ -759,22 +727,15 @@ private[lf] object Speedy {
               case V.ValueRecord(_, fields) =>
                 signature.lookupRecord(tyCon.qualifiedName) match {
                   case Right((params, DataRecord(fieldsDef))) =>
-                    lazy val subst = (params.toSeq.view.map(_._1) zip tyArgs).toMap
+                    lazy val subst = (params.toSeq.view.map(_._1) zip argTypes).toMap
                     val n = fields.length
-                    var i = 0
                     val values = new util.ArrayList[SValue](n)
-                    while (i < n) {
-                      val typDef = fieldsDef(i)._2
-                      val typ = if (tyArgs.isEmpty) {
-                        // optimization
-                        typDef
-                      } else {
-                        replaceParameters(subst, typDef)
-                      }
-                      values.add(go(typ, fields(i)._2))
-                      i += 1
+                    (fieldsDef.iterator zip fields.iterator).foreach {
+                      case ((_, fieldType), (_, fieldValue)) =>
+                        values.add(go(AstUtil.substitute(fieldType, subst), fieldValue))
+                        ()
                     }
-                    SRecord(tyCon, fieldsDef.map(_._1), values)
+                    SValue.SRecord(tyCon, fieldsDef.map(_._1), values)
                   case Left(err) => crash(err)
                 }
               case V.ValueVariant(_, constructor, value) =>
@@ -782,14 +743,9 @@ private[lf] object Speedy {
                   case Right((params, variantDef)) =>
                     val rank = variantDef.constructorRank(constructor)
                     val typDef = variantDef.variants(rank)._2
-                    val typ = if (tyArgs.isEmpty) {
-                      // optimization
-                      typDef
-                    } else {
-                      val subst = (params.toSeq.view.map(_._1) zip tyArgs).toMap
-                      replaceParameters(subst, typDef)
-                    }
-                    SValue.SVariant(tyCon, constructor, rank, go(typ, value))
+                    val valType =
+                      AstUtil.substitute(typDef, params.toSeq.view.map(_._1) zip argTypes)
+                    SValue.SVariant(tyCon, constructor, rank, go(valType, value))
                   case Left(err) => crash(err)
                 }
               case V.ValueEnum(_, constructor) =>
@@ -996,7 +952,7 @@ private[lf] object Speedy {
   /** The function-closure and arguments have been evaluated. Now execute the body. */
   private[speedy] final case class KFun(
       machine: Machine,
-      closure: PClosure,
+      closure: SValue.PClosure,
       actuals: util.ArrayList[SValue],
   ) extends Kont
       with SomeArrayEquals {
@@ -1047,21 +1003,21 @@ private[lf] object Speedy {
   /** The function's partial-arguments have been evaluated. Construct and return the PAP */
   private[speedy] final case class KPap(
       machine: Machine,
-      prim: Prim,
+      prim: SValue.Prim,
       actuals: util.ArrayList[SValue],
       arity: Int,
   ) extends Kont {
 
     def execute(v: SValue) = {
       actuals.add(v)
-      machine.returnValue = SPAP(prim, actuals, arity)
+      machine.returnValue = SValue.SPAP(prim, actuals, arity)
     }
   }
 
   /** The scrutinee of a match has been evaluated, now match the alternatives against it. */
   private[speedy] def executeMatchAlts(machine: Machine, alts: Array[SCaseAlt], v: SValue): Unit = {
     val altOpt = v match {
-      case SBool(b) =>
+      case SValue.SBool(b) =>
         alts.find { alt =>
           alt.pattern match {
             case SCPPrimCon(PCTrue) => b
@@ -1070,7 +1026,7 @@ private[lf] object Speedy {
             case _ => false
           }
         }
-      case SVariant(_, _, rank1, arg) =>
+      case SValue.SVariant(_, _, rank1, arg) =>
         alts.find { alt =>
           alt.pattern match {
             case SCPVariant(_, _, rank2) if rank1 == rank2 =>
@@ -1080,7 +1036,7 @@ private[lf] object Speedy {
             case _ => false
           }
         }
-      case SEnum(_, _, rank1) =>
+      case SValue.SEnum(_, _, rank1) =>
         alts.find { alt =>
           alt.pattern match {
             case SCPEnum(_, _, rank2) => rank1 == rank2
@@ -1088,20 +1044,20 @@ private[lf] object Speedy {
             case _ => false
           }
         }
-      case SList(lst) =>
+      case SValue.SList(lst) =>
         alts.find { alt =>
           alt.pattern match {
             case SCPNil if lst.isEmpty => true
             case SCPCons if !lst.isEmpty =>
               val Some((head, tail)) = lst.pop
               machine.pushEnv(head)
-              machine.pushEnv(SList(tail))
+              machine.pushEnv(SValue.SList(tail))
               true
             case SCPDefault => true
             case _ => false
           }
         }
-      case SUnit =>
+      case SValue.SUnit =>
         alts.find { alt =>
           alt.pattern match {
             case SCPPrimCon(PCUnit) => true
@@ -1109,7 +1065,7 @@ private[lf] object Speedy {
             case _ => false
           }
         }
-      case SOptional(mbVal) =>
+      case SValue.SOptional(mbVal) =>
         alts.find { alt =>
           alt.pattern match {
             case SCPNone if mbVal.isEmpty => true
@@ -1124,11 +1080,10 @@ private[lf] object Speedy {
             case _ => false
           }
         }
-      case SContractId(_) | SDate(_) | SNumeric(_) | SInt64(_) | SParty(_) | SText(_) | STimestamp(
-            _
-          ) | SStruct(_, _) | SGenMap(_, _) | SRecord(_, _, _) | SAny(_, _) | STypeRep(_) | STNat(
-            _
-          ) | _: SPAP | SToken =>
+      case SValue.SContractId(_) | SValue.SDate(_) | SValue.SNumeric(_) | SValue.SInt64(_) |
+          SValue.SParty(_) | SValue.SText(_) | SValue.STimestamp(_) | SValue.SStruct(_, _) |
+          SValue.SGenMap(_, _) | SValue.SRecord(_, _, _) | SValue.SAny(_, _) | SValue.STypeRep(_) |
+          SValue.STNat(_) | _: SValue.SPAP | SValue.SToken =>
         crash("Match on non-matchable value")
     }
 
@@ -1346,8 +1301,8 @@ private[lf] object Speedy {
       extends Kont {
     def execute(v: SValue) = {
       v match {
-        case SPAP(PClosure(_, expr, closure), args, arity) =>
-          machine.returnValue = SPAP(PClosure(label, expr, closure), args, arity)
+        case SValue.SPAP(SValue.PClosure(_, expr, closure), args, arity) =>
+          machine.returnValue = SValue.SPAP(SValue.PClosure(label, expr, closure), args, arity)
         case _ =>
           machine.returnValue = v
       }
