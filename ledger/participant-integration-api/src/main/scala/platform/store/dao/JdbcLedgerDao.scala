@@ -424,6 +424,7 @@ private class JdbcLedgerDao(
       transaction: CommittedTransaction,
       divulgedContracts: Iterable[DivulgedContract],
       blindingInfo: Option[BlindingInfo],
+      recordTime: Instant,
   )(implicit loggingContext: LoggingContext): PreparedInsert =
     transactionsWriter.prepare(
       submitterInfo,
@@ -434,6 +435,7 @@ private class JdbcLedgerDao(
       transaction,
       divulgedContracts,
       blindingInfo,
+      recordTime
     )
 
   private def handleError(
@@ -471,19 +473,13 @@ private class JdbcLedgerDao(
           )
         if (error.isEmpty) {
           preparedInsert.write(metrics)
-          Timed.value(
-            metrics.daml.index.db.storeTransactionDbMetrics.insertCompletion,
-            submitterInfo
-              .map(prepareCompletionInsert(_, offsetStep.offset, transactionId, recordTime))
-              .foreach(_.execute()),
-          )
         } else {
           submitterInfo.foreach(handleError(offsetStep.offset, _, recordTime, error.get))
+          Timed.value(
+            metrics.daml.index.db.storeTransactionDbMetrics.updateLedgerEnd,
+            ParametersTable.updateLedgerEnd(offsetStep),
+          )
         }
-        Timed.value(
-          metrics.daml.index.db.storeTransactionDbMetrics.updateLedgerEnd,
-          ParametersTable.updateLedgerEnd(offsetStep),
-        )
         Ok
       }
 
@@ -526,6 +522,7 @@ private class JdbcLedgerDao(
                 transaction = tx.transaction,
                 divulgedContracts = Nil,
                 blindingInfo = None,
+                recordTime = tx.recordedAt
               ).write(metrics)
               submitterInfo
                 .map(prepareCompletionInsert(_, offset, tx.transactionId, tx.recordedAt))

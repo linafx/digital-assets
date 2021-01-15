@@ -384,6 +384,7 @@ private final class SqlLedger(
               transaction = transactionCommitter.commitTransaction(transactionId, transaction),
               divulgedContracts = divulgedContracts,
               blindingInfo = blindingInfo,
+              recordTime
             )
             ledgerDao.storeTransaction(
               preparedInsert,

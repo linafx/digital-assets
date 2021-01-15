@@ -3,14 +3,13 @@
 
 package com.daml.platform.store.dao.events
 
-import java.sql.Connection
+import java.sql.{Connection, Timestamp}
 import java.time.Instant
 
 import anorm.{BatchSql, NamedParameter, Row, SimpleSql}
-import com.daml.ledger.participant.state.v1.Offset
 import com.daml.lf.ledger.EventId
 import com.daml.platform.store.Conversions._
-
+import com.daml.ledger.participant.state.v1.{CommittedTransaction, Offset, SubmitterInfo, TransactionId}
 object EventsTablePostgresql extends EventsTable {
 
   /** Insertions are represented by a single statement made of nested arrays, one per column, instead of JDBC batches.
@@ -40,6 +39,11 @@ object EventsTablePostgresql extends EventsTable {
       tx: TransactionIndexing.TransactionInfo,
       info: TransactionIndexing.EventsInfo,
       serialized: TransactionIndexing.Serialized,
+      maybeSubmitterInfo: Option[SubmitterInfo],
+      offset: Offset,
+      transaction: CommittedTransaction,
+      recordTime: Instant,
+      transactionId: TransactionId
   ): EventsTable.Batches = {
 
     val batchSize = info.events.size
@@ -137,6 +141,13 @@ object EventsTablePostgresql extends EventsTable {
       exerciseResults,
       exerciseActors,
       exerciseChildEventIds,
+      completionOffset = maybeSubmitterInfo.map(_ => Array(offset.toByteArray)).getOrElse(Array.empty[Array[Byte]]), // TODO can be extracted to separate case class
+      recordTime = maybeSubmitterInfo.map(_ => Array(java.sql.Timestamp.from(recordTime))).getOrElse(Array.empty[Timestamp]),
+      applicationId = maybeSubmitterInfo.map(i => Array[String](i.applicationId)).getOrElse(Array.empty[String]),
+      completionSubmitters = maybeSubmitterInfo.map(i => Array[String](i.actAs.toArray[String].mkString("|"))).getOrElse(Array.empty[String]),
+      commandId =  maybeSubmitterInfo.map(i => Array[String](i.commandId)).getOrElse(Array.empty[String]),
+      transactionId =  maybeSubmitterInfo.map(_ => Array[String](transactionId)).getOrElse(Array.empty[String]),
+      ledgerEnd = offset.toByteArray,
     )
 
     val archivals =
@@ -174,6 +185,13 @@ object EventsTablePostgresql extends EventsTable {
     val exerciseResults = "exerciseResults"
     val exerciseActors = "exerciseActors"
     val exerciseChildEventIds = "exerciseChildEventIds"
+    val completionOffset = "completionOffset"
+    val recordTime= "recordTime"
+    val applicationId = "applicationId"
+    val completionSubmitters = "completionSubmitters"
+    val commandId = "commandId"
+    val transactionId = "transactionId"
+    val ledgerEnd = "ledgerEnd"
   }
 
   private val insertStmt = {
@@ -198,7 +216,11 @@ object EventsTablePostgresql extends EventsTable {
                  event_id, event_offset, contract_id, transaction_id, workflow_id, ledger_effective_time, template_id, node_index, command_id, application_id, submitters, flat_event_witnesses, tree_event_witnesses,
                  create_argument, create_signatories, create_observers, create_agreement_text, create_consumed_at, create_key_value,
                  exercise_consuming, exercise_choice, exercise_argument, exercise_result, exercise_actors, exercise_child_event_ids
-               )
+               );
+         insert into participant_command_completions(completion_offset, record_time, application_id, submitters, command_id, transaction_id)
+         select completion_offset, record_time, application_id, string_to_array(submitters,'|'), command_id, transaction_id
+         from unnest({$completionOffset}, {$recordTime}, {$applicationId}, {$completionSubmitters}, {$commandId}, {$transactionId}) as t(completion_offset, record_time, application_id, submitters, command_id, transaction_id);
+         update parameters set ledger_end = {$ledgerEnd} where (ledger_end is null or ledger_end < {$ledgerEnd});
        """)
   }
 
@@ -228,6 +250,13 @@ object EventsTablePostgresql extends EventsTable {
       exerciseResults: Array[Array[Byte]],
       exerciseActors: Array[String],
       exerciseChildEventIds: Array[String],
+      completionOffset: Array[Array[Byte]],
+      recordTime: Array[Timestamp],
+      applicationId: Array[String],
+      completionSubmitters: Array[String],
+      commandId: Array[String],
+      transactionId: Array[String],
+      ledgerEnd : Array[Byte],
   ): SimpleSql[Row] = {
     import com.daml.platform.store.Conversions._
     insertStmt.on(
@@ -256,6 +285,13 @@ object EventsTablePostgresql extends EventsTable {
       Params.exerciseResults -> exerciseResults,
       Params.exerciseActors -> exerciseActors,
       Params.exerciseChildEventIds -> exerciseChildEventIds,
+      Params.completionOffset -> completionOffset,
+      Params.recordTime -> recordTime,
+      Params.applicationId -> applicationId,
+      Params.completionSubmitters -> completionSubmitters,
+      Params.commandId -> commandId,
+      Params.transactionId -> transactionId,
+      Params.ledgerEnd -> ledgerEnd,
     )
   }
 }

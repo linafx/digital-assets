@@ -195,6 +195,7 @@ private[platform] trait LedgerWriteDao extends ReportsHealth {
       transaction: CommittedTransaction,
       divulgedContracts: Iterable[DivulgedContract],
       blindingInfo: Option[BlindingInfo],
+      recordTime: Instant,
   )(implicit loggingContext: LoggingContext): TransactionsWriter.PreparedInsert
 
   def storeTransaction(

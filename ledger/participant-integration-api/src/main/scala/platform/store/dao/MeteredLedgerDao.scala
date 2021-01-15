@@ -205,6 +205,7 @@ private[platform] class MeteredLedgerDao(ledgerDao: LedgerDao, metrics: Metrics)
       transaction: CommittedTransaction,
       divulgedContracts: Iterable[DivulgedContract],
       blindingInfo: Option[BlindingInfo],
+      recordTime: Instant,
   )(implicit loggingContext: LoggingContext): TransactionsWriter.PreparedInsert =
     ledgerDao.prepareTransactionInsert(
       submitterInfo,
@@ -215,6 +216,7 @@ private[platform] class MeteredLedgerDao(ledgerDao: LedgerDao, metrics: Metrics)
       transaction,
       divulgedContracts,
       blindingInfo,
+      recordTime,
     )
 
   override def storeRejection(

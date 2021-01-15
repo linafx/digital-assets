@@ -8,7 +8,12 @@ import java.time.Instant
 
 import anorm.{BatchSql, NamedParameter}
 import com.daml.ledger.{EventId, TransactionId}
-import com.daml.ledger.participant.state.v1.{Offset, SubmitterInfo, WorkflowId}
+import com.daml.ledger.participant.state.v1.{
+  CommittedTransaction,
+  Offset,
+  SubmitterInfo,
+  WorkflowId,
+}
 import com.daml.platform.store.Conversions._
 
 object EventsTableH2Database extends EventsTable {
@@ -177,10 +182,15 @@ object EventsTableH2Database extends EventsTable {
       "contract_id" -> contractId.coid,
     )
 
-  def toExecutables(
+  override def toExecutables(
       tx: TransactionIndexing.TransactionInfo,
       info: TransactionIndexing.EventsInfo,
       serialized: TransactionIndexing.Serialized,
+      maybeSubmitterInfo: Option[SubmitterInfo],
+      offset: Offset,
+      committedTransaction: CommittedTransaction,
+      recordTime: Instant,
+      transactionId: TransactionId,
   ): EventsTable.Batches = {
 
     val events = transaction(

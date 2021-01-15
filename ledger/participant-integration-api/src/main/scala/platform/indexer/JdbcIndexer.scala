@@ -279,6 +279,7 @@ private[daml] class JdbcIndexer private[indexer] (
                 transaction = tx.transaction,
                 divulgedContracts = tx.divulgedContracts,
                 blindingInfo = tx.blindingInfo,
+                recordTime = tx.recordTime.toInstant
               ),
             )
           }(mat.executionContext),
@@ -402,6 +403,7 @@ private[daml] class JdbcIndexer private[indexer] (
                 transaction = transaction,
                 divulgedContracts = divulgedContracts,
                 blindingInfo = blindingInfo,
+                recordTime = recordTime.toInstant
               ),
               submitterInfo = optSubmitterInfo,
               transactionId = transactionId,

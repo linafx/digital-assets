@@ -546,6 +546,7 @@ private[dao] trait JdbcLedgerDaoSuite extends JdbcLedgerDaoBackend {
       committedTransaction,
       divulged,
       blindingInfo,
+      entry.recordedAt,
     )
     ledgerDao
       .storeTransaction(

@@ -74,6 +74,7 @@ private[dao] final class TransactionsWriter(
       transaction: CommittedTransaction,
       divulgedContracts: Iterable[DivulgedContract],
       blindingInfo: Option[BlindingInfo],
+      recordTime: Instant,
   ): TransactionsWriter.PreparedInsert = {
 
     // Backwards-compatibility: blinding info was previously not pre-computed and saved by the committer
@@ -105,7 +106,12 @@ private[dao] final class TransactionsWriter(
       )
 
     new TransactionsWriter.PreparedInsert(
-      eventsTable.toExecutables(indexing.transaction, indexing.events, serialized),
+      eventsTable.toExecutables(indexing.transaction, indexing.events, serialized,
+        maybeSubmitterInfo = submitterInfo,
+        offset = offset,
+        transaction = transaction,
+        recordTime = recordTime,
+        transactionId = transactionId),
       contractsTable.toExecutables(indexing.contracts, indexing.transaction, serialized),
       contractWitnessesTable.toExecutables(indexing.contractWitnesses),
     )
