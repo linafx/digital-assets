@@ -51,7 +51,7 @@ message Node {
 message KeyWithMaintainers {
     oneof key {
         com.daml.lf.value.VersionedValue key_versioned = 1; // defined in version < dev
-        com.daml.lf.value.Value key_unversioned = 3;
+        com.daml.lf.value.Value key_unversioned = 3; // defined in version >= dev
     }
     repeated string maintainers = 2; // the maintainers induced by the key
 }
