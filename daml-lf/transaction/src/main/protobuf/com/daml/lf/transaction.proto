@@ -58,16 +58,14 @@ message KeyWithMaintainers {
 
 message NodeCreate {
     reserved 1; // was contract_id
-    oneof contract {
-        ContractInstance contract_instance = 2;  // defined in version < dev
-        com.daml.lf.value.Value arg_unversioned = 7; // defined in version >= dev
-    }
+    ContractInstance contract_instance = 2;  // defined in version < dev
+    com.daml.lf.value.Identifier template_id = 7; // defined in version >= dev
+    com.daml.lf.value.Value arg_unversioned = 8; // defined in version >= dev
+    string agreement = 9; // defined in version >= dev
     repeated string stakeholders = 3;
     repeated string signatories = 4;
     KeyWithMaintainers key_with_maintainers = 5;
     com.daml.lf.value.ContractId contract_id_struct = 6;
-    com.daml.lf.value.Identifier templateID = 8; // defined in version >= dev
-    string agreement = 9; // defined in version >= dev
 }
 
 message NodeFetch {
