@@ -4,16 +4,15 @@
 package com.daml.lf.value
 
 import com.daml.lf.EitherAssertions
-import com.daml.lf.data.Ref.Party
 import com.daml.lf.data._
 import com.daml.lf.transaction.TransactionVersion
 import com.daml.lf.value.Value._
 import com.daml.lf.value.{ValueOuterClass => proto}
-import org.scalacheck.Shrink
-import org.scalatestplus.scalacheck.ScalaCheckPropertyChecks
+import org.scalacheck.{Arbitrary, Shrink}
 import org.scalatest.Assertion
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
+import org.scalatestplus.scalacheck.ScalaCheckPropertyChecks
 
 class ValueCoderSpec
     extends AnyWordSpec
@@ -30,17 +29,15 @@ class ValueCoderSpec
 
   "encode-decode" should {
     "do Int" in {
-      forAll("Int64 (Long) invariant") { i: Long =>
-        val value = ValueInt64(i)
-        testRoundTrip(TransactionVersion.minVersion, value)
-      }
+      forAll(Arbitrary.arbLong.arbitrary, transactionVersionGen())((i, v) =>
+        testRoundTrip(ValueInt64(i), v)
+      )
     }
 
     "do Bool" in {
-      forAll("Bool invariant") { b: Boolean =>
-        val value = ValueBool(b)
-        testRoundTrip(TransactionVersion.minVersion, value)
-      }
+      forAll(Arbitrary.arbBool.arbitrary, transactionVersionGen())((b, v) =>
+        testRoundTrip(ValueBool(b), v)
+      )
     }
 
     "do Numeric" in {
@@ -75,79 +72,59 @@ class ValueCoderSpec
     }
 
     "do Text" in {
-      forAll("Text (String) invariant") { t: String =>
-        val value = ValueText(t)
-        testRoundTrip(TransactionVersion.minVersion, value)
-      }
+      forAll("Text (String) invariant", transactionVersionGen())((t, v) =>
+        testRoundTrip(ValueText(t), v)
+      )
     }
 
     "do Party" in {
-      forAll(party) { p: Party =>
-        val value = ValueParty(p)
-        testRoundTrip(TransactionVersion.minVersion, value)
-      }
+      forAll(party, transactionVersionGen())((p, v) => testRoundTrip(ValueParty(p), v))
     }
 
     "do TimeStamp" in {
-      forAll(timestampGen) { t: Time.Timestamp => // TODO: fails with Longs
-        testRoundTrip(TransactionVersion.minVersion, ValueTimestamp(t))
-      }
+      forAll(timestampGen, transactionVersionGen())((t, v) => testRoundTrip(ValueTimestamp(t), v))
     }
 
     "do Date" in {
-      forAll(dateGen) { d: Time.Date =>
-        testRoundTrip(TransactionVersion.minVersion, ValueDate(d))
-      }
+      forAll(dateGen, transactionVersionGen())((d, v) => testRoundTrip(ValueDate(d), v))
     }
 
     "do ContractId" in {
-      forAll(coidValueGen) { v: Value[ContractId] =>
-        testRoundTrip(TransactionVersion.minVersion, v)
-      }
+      forAll(coidValueGen, transactionVersionGen())(testRoundTrip)
     }
 
     "do ContractId V0 in any ValueVersion" in forAll(coidValueGen, transactionVersionGen())(
-      testRoundTripWithVersion
+      testRoundTrip
     )
 
     "do lists" in {
-      forAll(valueListGen) { v: ValueList[ContractId] =>
-        testRoundTrip(TransactionVersion.minVersion, v)
-      }
+      forAll(valueListGen, transactionVersionGen())(testRoundTrip)
     }
 
     "do optionals" in {
-      forAll(valueOptionalGen) { v: ValueOptional[ContractId] =>
-        testRoundTrip(TransactionVersion.minVersion, v)
-      }
+      forAll(valueOptionalGen, transactionVersionGen())(testRoundTrip)
     }
 
     "do maps" in {
-      forAll(valueMapGen) { v: ValueTextMap[ContractId] =>
-        testRoundTrip(TransactionVersion.minVersion, v)
-      }
+      forAll(valueMapGen, transactionVersionGen())(testRoundTrip)
     }
 
     "do genMaps" in {
-      forAll(valueGenMapGen) { v: ValueGenMap[ContractId] =>
-        testRoundTrip(TransactionVersion.minGenMap, v)
-      }
+      forAll(valueGenMapGen, transactionVersionGen(TransactionVersion.minGenMap))(
+        testRoundTrip
+      )
     }
 
     "do variant" in {
-      forAll(variantGen) { v: ValueVariant[ContractId] =>
-        testRoundTrip(TransactionVersion.minVersion, v)
-      }
+      forAll(variantGen, transactionVersionGen())(testRoundTrip)
     }
 
     "do record" in {
-      forAll(recordGen) { v: ValueRecord[ContractId] =>
-        testRoundTrip(TransactionVersion.minVersion, v)
-      }
+      forAll(recordGen, transactionVersionGen())(testRoundTrip)
     }
 
     "do unit" in {
-      testRoundTrip(TransactionVersion.minVersion, ValueUnit)
+      forAll(transactionVersionGen())(testRoundTrip(ValueUnit, _))
     }
 
     "do identifier" in {
@@ -163,65 +140,12 @@ class ValueCoderSpec
     }
 
     "do versioned value with supported override version" in forAll(versionedValueGen) {
-      case VersionedValue(version, value) => testRoundTripWithVersion(value, version)
+      case VersionedValue(version, value) => testRoundTrip(value, version)
     }
   }
 
-  def testRoundTrip(version: TransactionVersion, value: Value[ContractId]): Assertion = {
-    val recovered = ValueCoder.decodeValue(
-      ValueCoder.CidDecoder,
-      version,
-      assertRight(ValueCoder.encodeValue[ContractId](ValueCoder.CidEncoder, version, value)),
-    )
-    val bytes =
-      assertRight(
-        ValueCoder.encodeVersionedValue(
-          ValueCoder.CidEncoder,
-          VersionedValue(version, value),
-        )
-      ).toByteArray
-
-    val fromToBytes = ValueCoder.valueFromBytes(
-      ValueCoder.CidDecoder,
-      bytes,
-    )
-    Right(value) shouldEqual recovered
-    Right(value) shouldEqual fromToBytes
-  }
-
-  def normalize(value0: Value[ContractId], version: TransactionVersion): Value[ContractId] = {
-
-    import scala.Ordering.Implicits._
-
-    def stripTypes(value: Value[ContractId]): Value[ContractId] =
-      value match {
-        case ValueRecord(_, fields) =>
-          ValueRecord(None, fields.map { case (_, value) => None -> stripTypes(value) })
-        case ValueVariant(_, variant, value) =>
-          ValueVariant(None, variant, stripTypes(value))
-        case _: ValueCidlessLeaf | _: ValueContractId[_] => value
-        case ValueList(values) =>
-          ValueList(values.map(stripTypes))
-        case ValueOptional(value) =>
-          ValueOptional(value.map(stripTypes))
-        case ValueTextMap(value) =>
-          ValueTextMap(value.mapValue(stripTypes))
-        case ValueGenMap(entries) =>
-          ValueGenMap(entries.map { case (k, v) => stripTypes(k) -> stripTypes(v) })
-      }
-
-    if (version >= TransactionVersion.minTypeErasure)
-      stripTypes(value0)
-    else
-      value0
-
-  }
-
-  def testRoundTripWithVersion(
-      value0: Value[ContractId],
-      version: TransactionVersion,
-  ): Assertion = {
-    val normalizedValue = normalize(value0, version)
+  def testRoundTrip(value0: Value[ContractId], version: TransactionVersion): Assertion = {
+    val normalizedValue = test.ValueNormalizer.normalize(value0, version)
     val encoded: proto.VersionedValue = assertRight(
       ValueCoder
         .encodeVersionedValue(ValueCoder.CidEncoder, VersionedValue(version, value0))

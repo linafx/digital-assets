@@ -225,7 +225,6 @@ object Value extends CidContainer1[Value] {
   }
 
   object VersionedValue extends CidContainer1[VersionedValue] {
-    // Should be used only values of same type.
     implicit def `VersionedValue Equal instance`[Cid: Equal]: Equal[VersionedValue[Cid]] =
       ScalazEqual.withNatural(Equal[Cid].equalIsNatural) { (a, b) =>
         import a._
@@ -545,7 +544,7 @@ private final class `Value Equal instance`[Cid: Equal] extends Equal[Value[Cid]]
   import Value._
   import ScalazEqual._
 
-  override final def equalIsNatural: Boolean = false
+  override final def equalIsNatural: Boolean = Equal[Cid].equalIsNatural
 
   implicit final def Self: this.type = this
 
@@ -553,19 +552,17 @@ private final class `Value Equal instance`[Cid: Equal] extends Equal[Value[Cid]]
     (a, b).match2 {
       case a @ (_: ValueInt64 | _: ValueNumeric | _: ValueText | _: ValueTimestamp | _: ValueParty |
           _: ValueBool | _: ValueDate | ValueUnit) => { case b => a == b }
-      case r: ValueRecord[Cid] => { case ValueRecord(_, fields2) =>
+      case r: ValueRecord[Cid] => { case ValueRecord(tycon2, fields2) =>
         import r._
-        (fields.iterator zip fields2.iterator).forall { case ((_, x), (_, y)) =>
-          x === y
-        }
+        tycon == tycon2 && fields === fields2
       }
-      case v: ValueVariant[Cid] => { case ValueVariant(_, variant2, value2) =>
+      case v: ValueVariant[Cid] => { case ValueVariant(tycon2, variant2, value2) =>
         import v._
-        variant == variant2 && value === value2
+        tycon == tycon2 && variant == variant2 && value === value2
       }
-      case v: ValueEnum => { case ValueEnum(_, value2) =>
+      case v: ValueEnum => { case ValueEnum(tycon2, value2) =>
         import v._
-        value == value2
+        tycon == tycon2 && value == value2
       }
       case ValueContractId(value) => { case ValueContractId(value2) =>
         value === value2

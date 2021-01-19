@@ -1,14 +1,15 @@
 // Copyright (c) 2021 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-package com.daml.lf
+package com.daml
+package lf
 package transaction
 
 import com.daml.lf.data.ImmArray
 import com.daml.lf.data.Ref.{Identifier, Party}
 import com.daml.lf.transaction.Node._
 import com.daml.lf.transaction.{TransactionOuterClass => proto}
-import com.daml.lf.value.Value.{ContractId, ValueParty}
+import com.daml.lf.value.Value.{ContractId, ContractInst, ValueParty}
 import com.daml.lf.value.ValueCoder.{DecodeError, EncodeError}
 import com.daml.lf.value.{Value, ValueCoder}
 import org.scalacheck.{Arbitrary, Gen}
@@ -582,7 +583,22 @@ class TransactionCoderSpec
             encoded,
           )
 
-          result shouldBe Right(nodeId -> normalizedNode)
+          val e = Right(nodeId -> normalizedNode)
+          if (e != result) {
+            val x = TransactionCoder
+              .encodeNode(
+                TransactionCoder.NidEncoder,
+                ValueCoder.CidEncoder,
+                V10,
+                nodeId,
+                normalizedNode,
+              )
+            remy.log(x)
+            remy.log(scala.util.Try {
+              result shouldBe e
+            })
+            result shouldBe e
+          }
         }
       }
     }
@@ -709,7 +725,7 @@ class TransactionCoderSpec
 
   private def normalizeCreate(create: Node.NodeCreate[ContractId]): Node.NodeCreate[ContractId] = {
     create.copy(
-      coinst = create.coinst.copy(arg = normalize(create.coinst.arg, create.version)),
+      arg = normalize(create.arg, create.version),
       key = create.key.map(normalizeKey(_, create.version)),
     )
   }
@@ -719,11 +735,6 @@ class TransactionCoderSpec
       key = fetch.key.map(normalizeKey(_, fetch.version)),
       byKey = false,
     )
-//
-//  private def normalizeLookup(lookup: Node.NodeLookupByKey[ContractId]) =
-//    lookup.copy(
-//      key = normalizeKey(lookup.key, lookup.version)
-//    )
 
   private def normalizeExe[Nid](exe: Node.NodeExercises[Nid, ContractId]) =
     exe.copy(
@@ -754,32 +765,6 @@ class TransactionCoderSpec
   private def normalize(
       value0: Value[ContractId],
       version: TransactionVersion,
-  ): Value[ContractId] = {
-    import Value._
-    import scala.Ordering.Implicits._
-
-    def go(value: Value[ContractId]): Value[ContractId] =
-      value match {
-        case ValueRecord(_, fields) =>
-          ValueRecord(None, fields.map { case (_, value) => None -> go(value) })
-        case ValueVariant(_, variant, value) =>
-          ValueVariant(None, variant, go(value))
-        case _: ValueCidlessLeaf | _: ValueContractId[_] => value
-        case ValueList(values) =>
-          ValueList(values.map(go))
-        case ValueOptional(value) =>
-          ValueOptional(value.map(go))
-        case ValueTextMap(value) =>
-          ValueTextMap(value.mapValue(go))
-        case ValueGenMap(entries) =>
-          ValueGenMap(entries.map { case (k, v) => go(k) -> go(v) })
-      }
-
-    if (version >= TransactionVersion.minTypeErasure)
-      go(value0)
-    else
-      value0
-
-  }
+  ): Value[ContractId] = lf.value.test.ValueNormalizer.normalize(value0, version)
 
 }
