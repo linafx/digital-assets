@@ -735,58 +735,6 @@ object TransactionCoder {
     else
       decodeVersion(node.getVersion)
 
-  /* fast decode the contract key of a create Node.
-   * Does not attempt to decode or validate the rest of the node.
-   *  */
-  def nodeGlobalKey(
-      nodeVersion: TransactionVersion,
-      protoCreate: TransactionOuterClass.NodeCreate,
-  ): Either[DecodeError, Option[GlobalKey]] =
-    if (protoCreate.hasKeyWithMaintainers) {
-      if (nodeVersion < TransactionVersion.minNoVersionValue) {
-        for {
-          tmplId <- ValueCoder.decodeIdentifier(protoCreate.getContractInstance.getTemplateId)
-          key <- decodeValue(
-            ValueCoder.NoCidDecoder,
-            nodeVersion,
-            protoCreate.getKeyWithMaintainers.getKeyVersioned,
-          )
-        } yield Some(GlobalKey(tmplId, key))
-      } else {
-        for {
-          tmplId <- ValueCoder.decodeIdentifier(protoCreate.getTemplateId)
-          key <- ValueCoder.decodeValue(
-            ValueCoder.NoCidDecoder,
-            nodeVersion,
-            protoCreate.getKeyWithMaintainers.getKeyUnversioned,
-          )
-        } yield Some(GlobalKey(tmplId, key))
-      }
-    } else {
-      RightNone
-    }
-
-  /* fast decode the contract key of a Exercise node.
-   * Does not attempt to decode or validate the rest of the node.
-   *  */
-  def nodeGlobalKey(
-      nodeVersion: TransactionVersion,
-      protoExercise: TransactionOuterClass.NodeExercise,
-  ): Either[DecodeError, Option[GlobalKey]] =
-    if (protoExercise.hasKeyWithMaintainers) {
-      for {
-        tmplId <- ValueCoder.decodeIdentifier(protoExercise.getTemplateId)
-        key <- decodeValue(
-          ValueCoder.NoCidDecoder,
-          nodeVersion,
-          protoExercise.getKeyWithMaintainers.getKeyVersioned,
-          protoExercise.getKeyWithMaintainers.getKeyUnversioned,
-        )
-      } yield Some(GlobalKey(tmplId, key))
-    } else {
-      RightNone
-    }
-
   /** Node information for a serialized transaction node. Used to compute
     * informees when deserialization is too costly.
     * This method is not supported for transaction version <5 (as NodeInfo does not support it).
@@ -857,6 +805,58 @@ object TransactionCoder {
         }
 
       case NodeTypeCase.NODETYPE_NOT_SET => Left(DecodeError("Unset Node type"))
+    }
+
+  private[this] def keyHash(
+      nodeVersion: TransactionVersion,
+      rawTmplId: ValueOuterClass.Identifier,
+      rawKey: ValueOuterClass.Value,
+  ): Either[DecodeError, GlobalKey] =
+    for {
+      tmplId <- ValueCoder.decodeIdentifier(rawTmplId)
+      value <- ValueCoder.decodeValue(ValueCoder.NoCidDecoder, nodeVersion, rawKey)
+      key <- GlobalKey.build(tmplId, value).left.map(DecodeError)
+    } yield key
+
+  /*
+   * Fast decoder for contract key of Create node.
+   * Does not decode or validate the rest of the node.
+   */
+  def nodeKey(
+      nodeVersion: TransactionVersion,
+      protoCreate: TransactionOuterClass.NodeCreate,
+  ): Either[DecodeError, Option[GlobalKey]] = {
+    if (protoCreate.hasKeyWithMaintainers) {
+      val (rawTmplId, rawKey) =
+        if (nodeVersion < TransactionVersion.minNodeVersion) {
+          protoCreate.getContractInstance.getTemplateId -> protoCreate.getKeyWithMaintainers.getKeyVersioned.getValue
+        } else {
+          protoCreate.getTemplateId -> protoCreate.getKeyWithMaintainers.getKeyUnversioned
+        }
+      keyHash(nodeVersion, rawTmplId, rawKey).map(Some(_))
+    } else {
+      Right(None)
+    }
+  }
+
+  /*
+   * Fast decoder for contract key of Exercise node.
+   * Does not decode or validate the rest of the node.
+   */
+  def nodeKey(
+      nodeVersion: TransactionVersion,
+      protoExercise: TransactionOuterClass.NodeExercise,
+  ): Either[DecodeError, Option[GlobalKey]] =
+    if (protoExercise.hasKeyWithMaintainers) {
+      val rawKey =
+        if (nodeVersion < TransactionVersion.minNodeVersion) {
+          protoExercise.getKeyWithMaintainers.getKeyVersioned.getValue
+        } else {
+          protoExercise.getKeyWithMaintainers.getKeyUnversioned
+        }
+      keyHash(nodeVersion, protoExercise.getTemplateId, rawKey).map(Some(_))
+    } else {
+      Right(None)
     }
 
 }

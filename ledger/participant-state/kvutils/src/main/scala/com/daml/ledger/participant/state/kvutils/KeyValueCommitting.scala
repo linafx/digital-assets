@@ -17,9 +17,16 @@ import com.daml.ledger.participant.state.kvutils.committer.{
 import com.daml.ledger.participant.state.v1.{Configuration, ParticipantId}
 import com.daml.lf.data.Time.Timestamp
 import com.daml.lf.crypto
+import com.daml.lf.crypto.Hash
 import com.daml.lf.engine.Engine
-import com.daml.lf.transaction.{TransactionCoder, TransactionOuterClass}
-import com.daml.lf.value.{ValueOuterClass}
+import com.daml.lf.transaction.{
+  GlobalKey,
+  TransactionCoder,
+  TransactionOuterClass,
+  TransactionVersion,
+}
+import com.daml.lf.value.ValueCoder.DecodeError
+import com.daml.lf.value.{ValueCoder, ValueOuterClass}
 import com.daml.metrics.Metrics
 import org.slf4j.LoggerFactory
 
@@ -221,9 +228,9 @@ object KeyValueCommitting {
 
         case TransactionOuterClass.Node.NodeTypeCase.CREATE =>
           val protoCreate = node.getCreate
-          TransactionCoder.nodeGlobalKey(nodeVersion, protoCreate) match {
-            case Right(Some(value)) =>
-              outputs += contractKeyToStateKey(protoCreate.getTemplateId, value.hash)
+          TransactionCoder.nodeKey(nodeVersion, protoCreate) match {
+            case Right(Some(key)) =>
+              outputs += contractKeyToStateKey(key)
             case Right(None) =>
             case Left(err) => throw Err.DecodeError("ContractKey", err.errorMessage)
           }
@@ -232,9 +239,9 @@ object KeyValueCommitting {
 
         case TransactionOuterClass.Node.NodeTypeCase.EXERCISE =>
           val protoExercise = node.getExercise
-          TransactionCoder.nodeGlobalKey(nodeVersion, protoExercise) match {
-            case Right(Some(value)) =>
-              outputs += contractKeyToStateKey(protoExercise.getTemplateId, value.hash)
+          TransactionCoder.nodeKey(nodeVersion, protoExercise) match {
+            case Right(Some(key)) =>
+              outputs += contractKeyToStateKey(key)
             case Right(None) =>
             case Left(err) => throw Err.DecodeError("ContractKey", err.errorMessage)
           }
@@ -258,8 +265,7 @@ object KeyValueCommitting {
   }
 
   private def contractKeyToStateKey(
-      templateId: ValueOuterClass.Identifier,
-      keyHash: crypto.Hash,
+      key: GlobalKey
   ): DamlStateKey = {
     // NOTE(JM): The deserialization of the values is meant to be temporary. With the removal of relative
     // contract ids from kvutils submissions we will be able to up-front compute the outputs without having
@@ -272,8 +278,8 @@ object KeyValueCommitting {
     DamlStateKey.newBuilder
       .setContractKey(
         DamlContractKey.newBuilder
-          .setTemplateId(templateId)
-          .setHash(keyHash.bytes.toByteString)
+          .setTemplateId(ValueCoder.encodeIdentifier(key.templateId))
+          .setHash(key.hash.bytes.toByteString)
       )
       .build
   }
