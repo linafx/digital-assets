@@ -16,17 +16,10 @@ import com.daml.ledger.participant.state.kvutils.committer.{
 }
 import com.daml.ledger.participant.state.v1.{Configuration, ParticipantId}
 import com.daml.lf.data.Time.Timestamp
-import com.daml.lf.crypto
-import com.daml.lf.crypto.Hash
+
 import com.daml.lf.engine.Engine
-import com.daml.lf.transaction.{
-  GlobalKey,
-  TransactionCoder,
-  TransactionOuterClass,
-  TransactionVersion,
-}
-import com.daml.lf.value.ValueCoder.DecodeError
-import com.daml.lf.value.{ValueCoder, ValueOuterClass}
+import com.daml.lf.transaction.{GlobalKey, TransactionCoder, TransactionOuterClass}
+import com.daml.lf.value.ValueCoder
 import com.daml.metrics.Metrics
 import org.slf4j.LoggerFactory
 
