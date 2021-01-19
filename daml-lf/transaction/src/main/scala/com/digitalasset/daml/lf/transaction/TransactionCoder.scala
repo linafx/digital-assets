@@ -184,8 +184,9 @@ object TransactionCoder {
       enclosingVersion: TransactionVersion,
       nodeId: Nid,
       node: GenNode[Nid, Cid],
-  ): Either[EncodeError, TransactionOuterClass.Node] =
-    if (enclosingVersion < node.version)
+  ): Either[EncodeError, TransactionOuterClass.Node] = {
+    val nodeVersion = node.version
+    if (enclosingVersion < nodeVersion)
       Left(
         EncodeError(
           s"A transaction of version $enclosingVersion cannot contain nodes of newer version (${node.version})"
@@ -286,6 +287,7 @@ object TransactionCoder {
           }
       }
     }
+  }
 
   private[this] def decodeKeyWithMaintainers[Cid](
       decodeCid: ValueCoder.DecodeCid[Cid],
