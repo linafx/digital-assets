@@ -240,61 +240,51 @@ object ValueCoder {
             )
 
           case proto.Value.SumCase.VARIANT =>
-            val variant = protoValue.getVariant
+            val protoVariant = protoValue.getVariant
             val id =
-              if (variant.getVariantId == ValueOuterClass.Identifier.getDefaultInstance) None
-              else {
-                assertUntil(
-                  TransactionVersion.minTypeErasure,
-                  "variant_id field in message Variant",
-                )
-                decodeIdentifier(variant.getVariantId).fold(
-                  { err =>
-                    throw Err(err.errorMessage)
-                  },
-                  { id =>
-                    Some(id)
-                  },
-                )
+              if (protoVariant.getVariantId == ValueOuterClass.Identifier.getDefaultInstance) {
+                None
+              } else {
+                decodeIdentifier(protoVariant.getVariantId)
+                  .fold(err => throw Err(err.errorMessage), Some(_))
+              }
+            val rank =
+              if (version < TransactionVersion.minTypeErasure) {
+                None
+              } else {
+                Some(protoVariant.getRank)
               }
             ValueVariant(
               id,
-              identifier(variant.getConstructor),
-              None,
-              go(newNesting, variant.getValue),
+              identifier(protoVariant.getConstructor),
+              rank,
+              go(newNesting, protoVariant.getValue),
             )
 
           case proto.Value.SumCase.ENUM =>
-            val enum = protoValue.getEnum
+            val protoEnum = protoValue.getEnum
             val id =
-              if (enum.getEnumId == ValueOuterClass.Identifier.getDefaultInstance) None
-              else {
-                assertUntil(TransactionVersion.minTypeErasure, "enum_id field in message Enum")
-                decodeIdentifier(enum.getEnumId).fold(
-                  { err =>
-                    throw Err(err.errorMessage)
-                  },
-                  { id =>
-                    Some(id)
-                  },
-                )
+              if (protoEnum.getEnumId == ValueOuterClass.Identifier.getDefaultInstance) {
+                None
+              } else {
+                decodeIdentifier(protoEnum.getEnumId)
+                  .fold(err => throw Err(err.errorMessage), Some(_))
               }
-            ValueEnum(id, identifier(enum.getValue), None)
-
+            val rank =
+              if (version < TransactionVersion.minTypeErasure) {
+                None
+              } else {
+                Some(protoEnum.getRank)
+              }
+            ValueEnum(id, identifier(protoEnum.getValue), rank)
           case proto.Value.SumCase.RECORD =>
-            val record = protoValue.getRecord
+            val protoRecord = protoValue.getRecord
             val id =
-              if (record.getRecordId == ValueOuterClass.Identifier.getDefaultInstance) None
-              else {
-                assertUntil(TransactionVersion.minTypeErasure, "record_id field in message Record")
-                decodeIdentifier(record.getRecordId).fold(
-                  { err =>
-                    throw Err(err.errorMessage)
-                  },
-                  { id =>
-                    Some(id)
-                  },
-                )
+              if (protoRecord.getRecordId == ValueOuterClass.Identifier.getDefaultInstance) {
+                None
+              } else {
+                decodeIdentifier(protoRecord.getRecordId)
+                  .fold(err => throw Err(err.errorMessage), Some(_))
               }
             ValueRecord(
               id,
@@ -435,7 +425,7 @@ object ValueCoder {
             })
             builder.setList(listBuilder).build()
 
-          case ValueRecord(id, fields) =>
+          case ValueRecord(mbId, fields) =>
             val protoFields = fields
               .map(f => {
                 val b = proto.RecordField
@@ -449,26 +439,32 @@ object ValueCoder {
               .asJava
             val recordBuilder = proto.Record.newBuilder().addAllFields(protoFields)
             if (valueVersion < TransactionVersion.minTypeErasure)
-              id.foreach(i => recordBuilder.setRecordId(encodeIdentifier(i)))
+              mbId.foreach(id => recordBuilder.setRecordId(encodeIdentifier(id)))
             builder
               .setRecord(recordBuilder)
               .build()
 
-          case ValueVariant(id, con, _, arg) =>
+          case ValueVariant(mbId, con, mbRank, arg) =>
             val protoVar = proto.Variant
               .newBuilder()
               .setConstructor(con)
               .setValue(go(newNesting, arg))
-            if (valueVersion < TransactionVersion.minTypeErasure)
-              id.foreach(i => protoVar.setVariantId(encodeIdentifier(i)))
+            if (valueVersion < TransactionVersion.minTypeErasure) {
+              mbId.foreach(id => protoVar.setVariantId(encodeIdentifier(id)))
+            } else {
+              mbRank.foreach(protoVar.setRank)
+            }
             builder.setVariant(protoVar).build()
 
-          case ValueEnum(id, value, _) =>
+          case ValueEnum(mbId, value, mbRank) =>
             val protoEnum = proto.Enum
               .newBuilder()
               .setValue(value)
-            if (valueVersion < TransactionVersion.minTypeErasure)
-              id.foreach(i => protoEnum.setEnumId(encodeIdentifier(i)))
+            if (valueVersion < TransactionVersion.minTypeErasure) {
+              mbId.foreach(id => protoEnum.setEnumId(encodeIdentifier(id)))
+            } else {
+              mbRank.foreach(protoEnum.setRank)
+            }
             builder.setEnum(protoEnum).build()
 
           case ValueOptional(mbV) =>
