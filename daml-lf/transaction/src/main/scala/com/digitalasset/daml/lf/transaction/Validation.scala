@@ -5,7 +5,6 @@ package com.daml.lf
 package transaction
 
 import com.daml.lf.data.ImmArray
-import com.daml.lf.data.Ref.Identifier
 import com.daml.lf.transaction.Node.KeyWithMaintainers
 import com.daml.lf.value.Value
 import scalaz.Equal
@@ -18,15 +17,6 @@ private final class Validation[Nid, Cid](implicit ECid: Equal[Cid]) {
 
   import scalaz.std.option._
   import scalaz.syntax.equal._
-
-  private[this] def tyConIsReplayedBy(
-      recordedId: Option[Identifier],
-      replayedId: Option[Identifier],
-  ): Boolean =
-    recordedId match {
-      case None => true
-      case _ => recordedId == replayedId
-    }
 
   private[this] def keyIsReplayedBy(
       recorded: Option[KeyWithMaintainers[Value[Cid]]],
@@ -65,8 +55,12 @@ private final class Validation[Nid, Cid](implicit ECid: Equal[Cid]) {
       tuples match {
         case LazyList.cons(tuple, rest) =>
           tuple match {
-            case (ValueEnum(recordedTyCon, recordedName), ValueEnum(replayedTyCon, replayedName)) =>
-              tyConIsReplayedBy(recordedTyCon, replayedTyCon) &&
+            case (
+                  ValueEnum(recordedTyCon, recordedName, recordedRank),
+                  ValueEnum(replayedTyCon, replayedName, replayedRank),
+                ) =>
+              (recordedTyCon.isEmpty || recordedTyCon == replayedTyCon) &&
+                (recordedRank.isEmpty || recordedRank == replayedRank) &&
                 recordedName == replayedName &&
                 loop(rest)
             case (recordedLeaf: ValueCidlessLeaf, replayedLeaf: ValueCidlessLeaf) =>
@@ -79,7 +73,7 @@ private final class Validation[Nid, Cid](implicit ECid: Equal[Cid]) {
                   ValueRecord(recordedTyCon, recordedFields),
                   ValueRecord(replayedTyCon, replayedFields),
                 ) =>
-              tyConIsReplayedBy(recordedTyCon, replayedTyCon) &&
+              (recordedTyCon.isEmpty || recordedTyCon == replayedTyCon) &&
                 recordedFields.length == replayedFields.length &&
                 (keys(recordedFields) zip keys(replayedFields)).forall {
                   case (None, _) => true
@@ -87,12 +81,13 @@ private final class Validation[Nid, Cid](implicit ECid: Equal[Cid]) {
                 } &&
                 loop((values(recordedFields) zip values(recordedFields)) ++: rest)
             case (
-                  ValueVariant(recordedTyCon, recordedVariant, recordedValue),
-                  ValueVariant(replayedTyCon, replayedVariant, replayedValue),
+                  ValueVariant(recordedTyCon, recordedVariant, recordedRank, recordedValue),
+                  ValueVariant(replayedTyCon, replayedVariant, replayedRank, replayedValue),
                 ) =>
-              tyConIsReplayedBy(recordedTyCon, replayedTyCon) &&
-              recordedVariant == replayedVariant
-              loop((recordedValue, replayedValue) +: rest)
+              (recordedTyCon.isEmpty || recordedTyCon == replayedTyCon) &&
+                (recordedRank.isEmpty || recordedRank == replayedRank) &&
+                recordedVariant == replayedVariant &&
+                loop((recordedValue, replayedValue) +: rest)
             case (ValueList(recordedValues), ValueList(replayedValues)) =>
               loop((recordedValues.iterator zip replayedValues.iterator) ++: rest)
             case (ValueOptional(recordedValue), ValueOptional(replayedValue)) =>
