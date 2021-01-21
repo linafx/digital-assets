@@ -738,20 +738,20 @@ private[lf] object Speedy {
                     SValue.SRecord(tyCon, fieldsDef.map(_._1), values)
                   case Left(err) => crash(err)
                 }
-              case V.ValueVariant(_, constructor, value) =>
+              case V.ValueVariant(_, constructor, mbRank, value) =>
                 signature.lookupVariant(tyCon.qualifiedName) match {
                   case Right((params, variantDef)) =>
-                    val rank = variantDef.constructorRank(constructor)
+                    val rank = mbRank.getOrElse(variantDef.constructorRank(constructor))
                     val typDef = variantDef.variants(rank)._2
                     val valType =
                       AstUtil.substitute(typDef, params.toSeq.view.map(_._1) zip argTypes)
                     SValue.SVariant(tyCon, constructor, rank, go(valType, value))
                   case Left(err) => crash(err)
                 }
-              case V.ValueEnum(_, constructor) =>
+              case V.ValueEnum(_, constructor, mbRank) =>
                 signature.lookupEnum(tyCon.qualifiedName) match {
                   case Right(enumDef) =>
-                    val rank = enumDef.constructorRank(constructor)
+                    val rank = mbRank.getOrElse(enumDef.constructorRank(constructor))
                     SValue.SEnum(tyCon, constructor, rank)
                   case Left(err) => crash(err)
                 }

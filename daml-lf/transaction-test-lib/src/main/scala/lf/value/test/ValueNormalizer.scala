@@ -16,12 +16,12 @@ object ValueNormalizer {
 
     def stripTypes(value: Value[ContractId]): Value[ContractId] =
       value match {
-        case ValueEnum(_, cons) =>
-          ValueEnum(None, cons)
+        case ValueEnum(_, cons, rank) =>
+          ValueEnum(None, cons, rank)
         case ValueRecord(_, fields) =>
           ValueRecord(None, fields.map { case (_, value) => None -> stripTypes(value) })
-        case ValueVariant(_, variant, value) =>
-          ValueVariant(None, variant, stripTypes(value))
+        case ValueVariant(_, variant, rank, value) =>
+          ValueVariant(None, variant, rank, stripTypes(value))
         case _: ValueCidlessLeaf | _: ValueContractId[_] => value
         case ValueList(values) =>
           ValueList(values.map(stripTypes))

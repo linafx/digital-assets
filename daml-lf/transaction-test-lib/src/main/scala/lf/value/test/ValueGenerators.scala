@@ -118,7 +118,7 @@ object ValueGenerators {
           else (variantId: Identifier) => Some(variantId)
         )
       value <- Gen.lzy(valueGen(nesting))
-    } yield ValueVariant(toOption(id), variantName, value)
+    } yield ValueVariant(toOption(id), variantName, None, value)
 
   def variantGen: Gen[ValueVariant[ContractId]] = variantGen(0)
 

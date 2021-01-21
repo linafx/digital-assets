@@ -253,7 +253,12 @@ object ValueCoder {
                   },
                 )
               }
-            ValueVariant(id, identifier(variant.getConstructor), go(newNesting, variant.getValue))
+            ValueVariant(
+              id,
+              identifier(variant.getConstructor),
+              None,
+              go(newNesting, variant.getValue),
+            )
 
           case proto.Value.SumCase.ENUM =>
             val enum = protoValue.getEnum
@@ -270,7 +275,7 @@ object ValueCoder {
                   },
                 )
               }
-            ValueEnum(id, identifier(enum.getValue))
+            ValueEnum(id, identifier(enum.getValue), None)
 
           case proto.Value.SumCase.RECORD =>
             val record = protoValue.getRecord
@@ -445,7 +450,7 @@ object ValueCoder {
               .setRecord(recordBuilder)
               .build()
 
-          case ValueVariant(id, con, arg) =>
+          case ValueVariant(id, con, _, arg) =>
             val protoVar = proto.Variant
               .newBuilder()
               .setConstructor(con)
@@ -454,7 +459,7 @@ object ValueCoder {
               id.foreach(i => protoVar.setVariantId(encodeIdentifier(i)))
             builder.setVariant(protoVar).build()
 
-          case ValueEnum(id, value) =>
+          case ValueEnum(id, value, _) =>
             val protoEnum = proto.Enum
               .newBuilder()
               .setValue(value)
