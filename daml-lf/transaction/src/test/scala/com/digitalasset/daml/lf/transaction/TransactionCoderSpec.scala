@@ -137,9 +137,7 @@ class TransactionCoderSpec
       forAll(noDanglingRefGenVersionedTransaction, minSuccessful(50)) { tx =>
         val tx2 = VersionedTransaction(
           tx.version,
-          tx.nodes.transform((_, node) =>
-            minimalistNode(node.version)(node.updateVersion(node.version))
-          ),
+          tx.nodes.transform((_, node) => normalizeNode(node)),
           tx.roots,
         )
         inside(
@@ -495,10 +493,9 @@ class TransactionCoderSpec
   "decodeVersionedNode" should {
 
     """ignore field version if enclosing Transaction message is of version 10""" in {
-      val normalize = minimalistNode(V10)
 
       forAll(danglingRefGenNode, Gen.asciiStr, minSuccessful(10)) { case ((nodeId, node), str) =>
-        val normalizedNode = normalize(node.updateVersion(V10))
+        val normalizedNode = normalizeNode(node.updateVersion(V10))
 
         val Right(encoded) = for {
           encoded <- TransactionCoder
@@ -517,6 +514,7 @@ class TransactionCoderSpec
           V10,
           encoded,
         ) shouldBe Right(nodeId -> normalizedNode)
+
       }
     }
 
@@ -547,8 +545,6 @@ class TransactionCoderSpec
     }
 
     "ignore field observers in version < 11" in {
-      val normalize = minimalistNode(V10)
-
       forAll(
         Arbitrary.arbInt.arbitrary,
         danglingRefExerciseNodeGen,
@@ -556,7 +552,7 @@ class TransactionCoderSpec
         minSuccessful(50),
       ) { (nodeIdx, node, strings) =>
         val nodeId = NodeId(nodeIdx)
-        val normalizedNode = normalize(node).updateVersion(V10)
+        val normalizedNode = normalizeNode(node.updateVersion(V10))
 
         val Right(encoded) =
           for {
@@ -580,22 +576,7 @@ class TransactionCoderSpec
             encoded,
           )
 
-          val e = Right(nodeId -> normalizedNode)
-          if (e != result) {
-            val x = TransactionCoder
-              .encodeNode(
-                TransactionCoder.NidEncoder,
-                ValueCoder.CidEncoder,
-                V10,
-                nodeId,
-                normalizedNode,
-              )
-            remy.log(x)
-            remy.log(scala.util.Try {
-              result shouldBe e
-            })
-            result shouldBe e
-          }
+          result shouldBe Right(nodeId -> normalizedNode)
         }
       }
     }
@@ -720,6 +701,18 @@ class TransactionCoderSpec
       v2 <- Gen.oneOf(versions.filter(_ > v1))
     } yield (v1, v2)
 
+  private def normalizeNode[Nid](node: Node.GenNode[Nid, ContractId]) =
+    node match {
+      case create: NodeCreate[ContractId] =>
+        normalizeCreate(create)
+      case exe: NodeExercises[Nid, ContractId] =>
+        normalizeExe(exe)
+      case fetch: NodeFetch[ContractId] =>
+        normalizeFetch(fetch)
+      case lookup: NodeLookupByKey[ContractId] =>
+        normalizeLookup(lookup)
+    }
+
   private def normalizeCreate(create: Node.NodeCreate[ContractId]): Node.NodeCreate[ContractId] = {
     create.copy(
       arg = normalize(create.arg, create.version),
@@ -741,6 +734,11 @@ class TransactionCoderSpec
         exe.choiceObservers.filter(_ => exe.version >= TransactionVersion.minChoiceObservers),
       key = exe.key.map(normalizeKey(_, exe.version)),
       byKey = false,
+    )
+
+  private def normalizeLookup(lookup: NodeLookupByKey[ContractId]) =
+    lookup.copy(
+      key = normalizeKey(lookup.key, lookup.version)
     )
 
   private def normalizeKey(
