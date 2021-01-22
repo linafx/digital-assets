@@ -264,10 +264,6 @@ object KeyValueCommitting {
     // contract ids from kvutils submissions we will be able to up-front compute the outputs without having
     // to allocate a log entry id and we can directly place the output keys into the submission and do not need
     // to compute outputs from serialized transaction.
-    val contractKey =
-      GlobalKey
-        .build(decodeIdentifier(templateId), decodeVersionedValue(key).value)
-        .getOrElse(throw Err.DecodeError("ContractKey", "Contract key contained contract id"))
     DamlStateKey.newBuilder
       .setContractKey(
         DamlContractKey.newBuilder
