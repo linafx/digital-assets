@@ -41,12 +41,12 @@ object TransactionVersion {
   val minVersion: TransactionVersion = All.min
   def maxVersion: TransactionVersion = VDev
 
-  private[lf] val minGenMap = V11
-  private[lf] val minChoiceObservers = V11
-  private[lf] val minNodeVersion = V11
+  private[lf] val minGenMap = V10
+  private[lf] val minChoiceObservers = V10
+  private[lf] val minNodeVersion = V10
   // TODO https://github.com/digital-asset/daml/issues/8504
   //  put back the following line to VDEv before merging
-  private[lf] val minNoVersionValue = VDev
+  private[lf] val minNoVersionValue = V10
   private[lf] val minTypeErasure = V10
 
   private[lf] val assignNodeVersion: LanguageVersion => TransactionVersion = {
