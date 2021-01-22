@@ -41,10 +41,10 @@ object TransactionVersion {
   val minVersion: TransactionVersion = All.min
   def maxVersion: TransactionVersion = VDev
 
-  private[lf] val minGenMap = V11
-  private[lf] val minChoiceObservers = V11
-  private[lf] val minNodeVersion = V11
-  private[lf] val minTypeErasure = VDev
+  private[lf] val minGenMap = V10
+  private[lf] val minChoiceObservers = V10
+  private[lf] val minNodeVersion = V10
+  private[lf] val minTypeErasure = V10
 
   private[lf] val assignNodeVersion: LanguageVersion => TransactionVersion = {
     import LanguageVersion._
