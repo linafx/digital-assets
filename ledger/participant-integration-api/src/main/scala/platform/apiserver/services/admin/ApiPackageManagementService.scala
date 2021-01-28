@@ -23,6 +23,8 @@ import com.daml.ledger.participant.state.v1.{SubmissionId, SubmissionResult, Wri
 import com.daml.lf.archive.{Dar, DarReader, Decode}
 import com.daml.lf.engine.Engine
 import com.daml.logging.{ContextualizedLogger, LoggingContext}
+import com.daml.platform.apiserver.services.logging
+import com.daml.logging.LoggingContext.withEnrichedLoggingContext
 import com.daml.platform.api.grpc.GrpcApiService
 import com.daml.platform.apiserver.services.admin.ApiPackageManagementService._
 import com.daml.platform.server.api.validation.ErrorFactories
@@ -65,6 +67,7 @@ private[apiserver] final class ApiPackageManagementService private (
   override def listKnownPackages(
       request: ListKnownPackagesRequest
   ): Future[ListKnownPackagesResponse] = {
+    logger.info("Listing known packages")
     packagesIndex
       .listLfPackages()
       .map { pkgs =>
@@ -82,7 +85,7 @@ private[apiserver] final class ApiPackageManagementService private (
 
   private[this] val darReader = DarReader[Archive] { case (_, x) => Try(Archive.parseFrom(x)) }
 
-  def decodeAndValidate(stream: ZipInputStream): Try[Dar[Archive]] =
+  private def decodeAndValidate(stream: ZipInputStream): Try[Dar[Archive]] =
     for {
       dar <- darReader.readArchive("package-upload", stream)
       packages <- Try(dar.all.iterator.map(Decode.decodeArchive).toMap)
@@ -93,30 +96,33 @@ private[apiserver] final class ApiPackageManagementService private (
         .toTry
     } yield dar
 
-  override def uploadDarFile(request: UploadDarFileRequest): Future[UploadDarFileResponse] = {
-    val submissionId =
-      if (request.submissionId.isEmpty)
-        SubmissionId.assertFromString(UUID.randomUUID().toString)
-      else
-        SubmissionId.assertFromString(request.submissionId)
+  override def uploadDarFile(request: UploadDarFileRequest): Future[UploadDarFileResponse] =
+    withEnrichedLoggingContext(logging.submissionId(request.submissionId)) {
+      implicit loggingContext =>
+        logger.info("Uploading DAR file")
+        val submissionId =
+          if (request.submissionId.isEmpty)
+            SubmissionId.assertFromString(UUID.randomUUID().toString)
+          else
+            SubmissionId.assertFromString(request.submissionId)
 
-    val stream = new ZipInputStream(new ByteArrayInputStream(request.darFile.toByteArray))
+        val stream = new ZipInputStream(new ByteArrayInputStream(request.darFile.toByteArray))
 
-    val response = for {
-      dar <- decodeAndValidate(stream).fold(
-        err => Future.failed(ErrorFactories.invalidArgument(err.getMessage)),
-        Future.successful,
-      )
-      _ <- synchronousResponse.submitAndWait(submissionId, dar)(executionContext, materializer)
-    } yield {
-      for (archive <- dar.all) {
-        logger.info(s"Package ${archive.getHash} successfully uploaded")
-      }
-      UploadDarFileResponse()
+        val response = for {
+          dar <- decodeAndValidate(stream).fold(
+            err => Future.failed(ErrorFactories.invalidArgument(err.getMessage)),
+            Future.successful,
+          )
+          _ <- synchronousResponse.submitAndWait(submissionId, dar)(executionContext, materializer)
+        } yield {
+          for (archive <- dar.all) {
+            logger.info(s"Package ${archive.getHash} successfully uploaded")
+          }
+          UploadDarFileResponse()
+        }
+
+        response.andThen(logger.logErrorsOnCall[UploadDarFileResponse])
     }
-
-    response.andThen(logger.logErrorsOnCall[UploadDarFileResponse])
-  }
 
 }
 
