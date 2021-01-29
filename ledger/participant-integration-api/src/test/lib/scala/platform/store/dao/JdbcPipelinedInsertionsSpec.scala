@@ -61,6 +61,15 @@ trait JdbcPipelinedInsertionsSpec extends Inside with OptionValues with Matchers
     }
   }
 
+  it should "fail" in {
+    val key = "some-key"
+    val create = txCreateContractWithKey(alice, key, Some("1337"))
+    for {
+      _ <- store(create)
+      _ <- store(create)
+    } yield succeed
+  }
+
   it should "not retrieve a transaction with an offset past the ledger end (when requested by single party)" in {
     assertNoResponseFor(singleCreate)
   }
