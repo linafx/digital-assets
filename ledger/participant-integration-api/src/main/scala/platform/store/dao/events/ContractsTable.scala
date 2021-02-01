@@ -7,7 +7,7 @@ import java.sql.Connection
 import java.time.Instant
 
 import anorm.SqlParser.int
-import anorm.{BatchSql, NamedParameter, SqlStringInterpolation, ~}
+import anorm.{BatchSql, NamedParameter, Row, SimpleSql, SqlStringInterpolation, ~}
 import com.daml.ledger.api.domain.PartyDetails
 import com.daml.platform.store.Conversions._
 import com.daml.platform.store.DbType
@@ -16,18 +16,16 @@ import com.daml.platform.store.dao.JdbcLedgerDao
 import scala.util.{Failure, Success, Try}
 
 private[events] abstract class ContractsTable extends PostCommitValidationData {
+  protected val TableName = "participant_contract_witnesses"
+  protected val IdColumn = "contract_id"
 
-  private val deleteContractQuery =
+  protected val deleteContractQuery =
     s"delete from participant_contracts where contract_id = {contract_id}"
 
-  private def deleteContract(contractId: ContractId): Vector[NamedParameter] =
+  protected def deleteContract(contractId: ContractId): Vector[NamedParameter] =
     Vector[NamedParameter]("contract_id" -> contractId)
 
-  def toExecutables(
-      info: TransactionIndexing.ContractsInfo,
-      tx: TransactionIndexing.TransactionInfo,
-      serialized: TransactionIndexing.Compressed.Contracts,
-  ): ContractsTable.Executables
+  def toExecutables(preparedRawEntries: Seq[PreparedRawEntry]): ContractsTable.Executables
 
   protected def buildDeletes(info: TransactionIndexing.ContractsInfo): Option[BatchSql] = {
     val deletes = info.netArchives.iterator.map(deleteContract).toSeq
@@ -68,7 +66,7 @@ private[events] object ContractsTable {
     def execute()(implicit connection: Connection): Unit
   }
 
-  final case class Executables(deleteContracts: Option[BatchSql], insertContracts: Executable)
+  final case class Executables(deleteContracts: Option[BatchSql], insertContracts: Option[SimpleSql[Row]])
 
   def apply(dbType: DbType): ContractsTable =
     dbType match {

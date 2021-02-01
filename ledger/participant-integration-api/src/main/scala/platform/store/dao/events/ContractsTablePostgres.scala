@@ -3,11 +3,11 @@
 
 package com.daml.platform.store.dao.events
 
-import java.sql.{Connection, Timestamp}
+import java.sql.Timestamp
 
-import anorm.{Row, SimpleSql, SqlQuery}
+import anorm.SqlQuery
 import com.daml.ledger.participant.state.v1.DivulgedContract
-import com.daml.platform.store.dao.events.ContractsTable.Executable
+import com.daml.platform.store.Conversions._
 
 object ContractsTablePostgres extends ContractsTable {
 
@@ -23,7 +23,8 @@ object ContractsTablePostgres extends ContractsTable {
 
   private val insertContractQuery: SqlQuery = {
     import Params._
-    anorm.SQL(s"""insert into participant_contracts(
+    anorm.SQL(
+      s"""insert into participant_contracts(
        contract_id, template_id, create_argument, create_argument_compression, create_ledger_effective_time, create_key_hash, create_stakeholders
      )
      select
@@ -34,77 +35,67 @@ object ContractsTablePostgres extends ContractsTable {
             on conflict do nothing;""")
   }
 
-  override def toExecutables(
-      info: TransactionIndexing.ContractsInfo,
-      tx: TransactionIndexing.TransactionInfo,
-      serialized: TransactionIndexing.Compressed.Contracts,
-  ): ContractsTable.Executables = {
+  override def toExecutables(preparedRawEntries: Seq[PreparedRawEntry]): ContractsTable.Executables =
     ContractsTable.Executables(
-      deleteContracts = buildDeletes(info),
-      insertContracts = buildInserts(tx, info, serialized),
+      deleteContracts = batch(deleteContractQuery, preparedRawEntries.flatMap {
+        case PreparedRawEntry(_, _, _, contracts, _) =>
+          contracts.netArchives.iterator.map(deleteContract)
+      }),
+      insertContracts = {
+        val allNetArchives = preparedRawEntries.flatMap(_.contracts.netArchives).toSet
+
+        val allNetCreates =
+          preparedRawEntries.flatMap {
+            pre =>
+              pre.contracts.netCreates.map(create => create -> java.sql.Timestamp.from(pre.tx.ledgerEffectiveTime))
+          }.filterNot(create => allNetArchives(create._1.coid))
+        val allDivulged = preparedRawEntries.flatMap {
+          pre =>
+            pre.contracts.divulgedContracts.map {
+              dc => dc -> java.sql.Timestamp.from(pre.tx.ledgerEffectiveTime)
+            }
+        }.filterNot(dc => allNetArchives(dc._1.contractId))
+
+        val netCreatesSize = allNetCreates.size
+        val divulgedSize = allDivulged.size
+        val batchSize = netCreatesSize + divulgedSize
+
+        val timestamps = allNetCreates.map(_._2).toArray ++ Array.fill[Timestamp](divulgedSize)(null)
+
+        val contractIds, templateIds, stakeholders = Array.ofDim[String](batchSize)
+        val createArgs, hashes = Array.ofDim[Array[Byte]](batchSize)
+
+        val argsBySerialized = preparedRawEntries.flatMap { pre =>
+          pre.contracts.netCreates.map(c => c.coid -> pre.compressed.contracts) ++
+            pre.contracts.divulgedContracts.map(dc => dc.contractId -> pre.compressed.contracts)
+        }.toMap
+
+        allNetCreates.iterator.zipWithIndex.foreach { case ((create, _), idx) =>
+          contractIds(idx) = create.coid.coid
+          templateIds(idx) = create.templateId.toString
+          stakeholders(idx) = create.stakeholders.mkString("|")
+          createArgs(idx) = argsBySerialized(create.coid).createArguments(create.coid)
+          hashes(idx) = create.versionedKey.map(convert(create.templateId, _)).map(_.hash.bytes.toByteArray).orNull
+        }
+
+        allDivulged.iterator.zipWithIndex.foreach {
+          case ((DivulgedContract(contractId, contractInst), _), idx) =>
+            contractIds(idx + netCreatesSize) = contractId.coid
+            templateIds(idx + netCreatesSize) = contractInst.template.toString
+            stakeholders(idx + netCreatesSize) = ""
+            createArgs(idx + netCreatesSize) = argsBySerialized(contractId).createArguments(contractId)
+            hashes(idx + netCreatesSize) = null
+        }
+
+        if (batchSize == 0) None else Some(insertContractQuery.on(
+          Params.contractIds -> contractIds,
+          Params.templateIds -> templateIds,
+          Params.createArgs -> createArgs,
+          Params.timestamps -> timestamps,
+          Params.hashes -> hashes,
+          Params.stakeholders -> stakeholders,
+        )
+        )
+      }
     )
-  }
-
-  private def buildInserts(
-      tx: TransactionIndexing.TransactionInfo,
-      contractsInfo: TransactionIndexing.ContractsInfo,
-      serialized: TransactionIndexing.Compressed.Contracts,
-  ): Executable = {
-    import com.daml.platform.store.Conversions._
-    import com.daml.platform.store.Conversions.IntToSmallIntConversions._
-
-    val netCreatesSize = contractsInfo.netCreates.size
-    val divulgedSize = contractsInfo.divulgedContracts.size
-    val batchSize = netCreatesSize + divulgedSize
-
-    val timestamp = java.sql.Timestamp.from(tx.ledgerEffectiveTime)
-    val timestamps = Array.fill[Timestamp](netCreatesSize)(timestamp) ++ Array.fill[Timestamp](
-      divulgedSize
-    )(null)
-
-    val contractIds, templateIds, stakeholders = Array.ofDim[String](batchSize)
-    val createArgs, hashes = Array.ofDim[Array[Byte]](batchSize)
-
-    contractsInfo.netCreates.iterator.zipWithIndex.foreach { case (create, idx) =>
-      contractIds(idx) = create.coid.coid
-      templateIds(idx) = create.templateId.toString
-      stakeholders(idx) = create.stakeholders.mkString("|")
-      createArgs(idx) = serialized.createArguments(create.coid)
-      hashes(idx) = create.key
-        .map(convertLfValueKey(create.templateId, _))
-        .map(_.hash.bytes.toByteArray)
-        .orNull
-    }
-
-    contractsInfo.divulgedContracts.iterator.zipWithIndex.foreach {
-      case (DivulgedContract(contractId, contractInst), idx) =>
-        contractIds(idx + netCreatesSize) = contractId.coid
-        templateIds(idx + netCreatesSize) = contractInst.template.toString
-        stakeholders(idx + netCreatesSize) = ""
-        createArgs(idx + netCreatesSize) = serialized.createArguments(contractId)
-        hashes(idx + netCreatesSize) = null
-    }
-
-    val createArgCompressions =
-      Array.fill[Option[Int]](batchSize)(serialized.createArgumentsCompression.id)
-
-    val inserts = insertContractQuery.on(
-      Params.contractIds -> contractIds,
-      Params.templateIds -> templateIds,
-      Params.createArgs -> createArgs,
-      Params.timestamps -> timestamps,
-      Params.hashes -> hashes,
-      Params.stakeholders -> stakeholders,
-      Params.createArgCompression -> createArgCompressions,
-    )
-
-    new InsertExecutable(inserts)
-  }
-
-  private class InsertExecutable(insertQuery: SimpleSql[Row]) extends Executable {
-    override def execute()(implicit connection: Connection): Unit = {
-      insertQuery.executeUpdate()
-      ()
-    }
-  }
 }

@@ -5,7 +5,7 @@ package com.daml.platform.store.dao.events
 
 import java.sql.Connection
 
-import anorm.{BatchSql, NamedParameter}
+import anorm.{BatchSql, NamedParameter, Row, SimpleSql}
 import com.daml.platform.store.Conversions._
 import com.daml.platform.store.DbType
 
@@ -20,9 +20,7 @@ private[events] abstract class ContractWitnessesTable {
   protected def prepareBatchDelete(ids: Seq[ContractId]): Option[BatchSql] =
     batch(delete, ids.map(id => List[NamedParameter](IdColumn -> id)))
 
-  def toExecutables(
-      info: TransactionIndexing.ContractWitnessesInfo
-  ): ContractWitnessesTable.Executables
+  def toExecutables(preparedRawEntries: Seq[PreparedRawEntry]): ContractWitnessesTable.Executables
 }
 
 private[events] object ContractWitnessesTable {
@@ -31,7 +29,7 @@ private[events] object ContractWitnessesTable {
     def execute()(implicit connection: Connection): Unit
   }
 
-  final case class Executables(deleteWitnesses: Option[BatchSql], insertWitnesses: Executable)
+  final case class Executables(deleteWitnesses: Option[BatchSql], insertWitnesses: SimpleSql[Row])
 
   def apply(dbType: DbType): ContractWitnessesTable =
     dbType match {

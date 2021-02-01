@@ -21,14 +21,10 @@ import com.daml.lf.value.Value.{ContractId, ContractInst}
 import com.daml.logging.LoggingContext
 import com.daml.metrics.{Metrics, Timed}
 import com.daml.platform.indexer.OffsetStep
-import com.daml.platform.store.dao.events.{TransactionsReader, TransactionsWriter}
+import com.daml.platform.indexer.OffsetUpdate.PreparedBatch
+import com.daml.platform.store.dao.events.{PreparedRawEntry, TransactionsReader, TransactionsWriter}
 import com.daml.platform.store.dao.events.TransactionsWriter.PreparedInsert
-import com.daml.platform.store.entries.{
-  ConfigurationEntry,
-  LedgerEntry,
-  PackageLedgerEntry,
-  PartyLedgerEntry,
-}
+import com.daml.platform.store.entries.{ConfigurationEntry, LedgerEntry, PackageLedgerEntry, PartyLedgerEntry}
 
 import scala.concurrent.Future
 
@@ -194,26 +190,12 @@ private[platform] class MeteredLedgerDao(ledgerDao: LedgerDao, metrics: Metrics)
       ),
     )
 
+  def prepareEntry(submitterInfo: Option[SubmitterInfo], workflowId: Option[WorkflowId], transactionId: TransactionId, ledgerEffectiveTime: Instant, offset: Offset, transaction: CommittedTransaction, divulgedContracts: Iterable[DivulgedContract], blindingInfo: Option[BlindingInfo]): PreparedRawEntry =
+    ledgerDao.prepareEntry(submitterInfo, workflowId, transactionId, ledgerEffectiveTime, offset, transaction, divulgedContracts, blindingInfo)
+
   def prepareTransactionInsert(
-      submitterInfo: Option[SubmitterInfo],
-      workflowId: Option[WorkflowId],
-      transactionId: TransactionId,
-      ledgerEffectiveTime: Instant,
-      offset: Offset,
-      transaction: CommittedTransaction,
-      divulgedContracts: Iterable[DivulgedContract],
-      blindingInfo: Option[BlindingInfo],
-  ): TransactionsWriter.PreparedInsert =
-    ledgerDao.prepareTransactionInsert(
-      submitterInfo,
-      workflowId,
-      transactionId,
-      ledgerEffectiveTime,
-      offset,
-      transaction,
-      divulgedContracts,
-      blindingInfo,
-    )
+                                preparedBatch: PreparedBatch
+                              ): TransactionsWriter.PreparedInsert = ledgerDao.prepareTransactionInsert(preparedBatch)
 
   override def storeRejection(
       submitterInfo: Option[SubmitterInfo],
@@ -296,10 +278,7 @@ private[platform] class MeteredLedgerDao(ledgerDao: LedgerDao, metrics: Metrics)
     ledgerDao.storeTransactionEvents(preparedInsert)
 
   override def completeTransaction(
-      submitterInfo: Option[SubmitterInfo],
-      transactionId: TransactionId,
-      recordTime: Instant,
-      offsetStep: OffsetStep,
+      preparedInsert: PreparedInsert
   )(implicit loggingContext: LoggingContext): Future[PersistenceResponse] =
-    ledgerDao.completeTransaction(submitterInfo, transactionId, recordTime, offsetStep)
+    ledgerDao.completeTransaction(preparedInsert)
 }

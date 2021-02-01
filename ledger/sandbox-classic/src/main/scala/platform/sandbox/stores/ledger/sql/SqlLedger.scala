@@ -29,6 +29,7 @@ import com.daml.platform.akkastreams.dispatcher.Dispatcher
 import com.daml.platform.common.{LedgerIdMode, MismatchException}
 import com.daml.platform.configuration.ServerRole
 import com.daml.platform.indexer.CurrentOffset
+import com.daml.platform.indexer.OffsetUpdate.PreparedBatch
 import com.daml.platform.packages.InMemoryPackageStore
 import com.daml.platform.sandbox.LedgerIdGenerator
 import com.daml.platform.sandbox.config.LedgerName
@@ -378,8 +379,7 @@ private final class SqlLedger(
             // This indexer-ledger does not trim fetch and lookupByKey nodes in the transaction,
             // so it doesn't need to pre-compute blinding information.
             val blindingInfo = None
-
-            val preparedInsert = ledgerDao.prepareTransactionInsert(
+            val preparedRawEntry = ledgerDao.prepareEntry(
               submitterInfo = Some(submitterInfo),
               workflowId = transactionMeta.workflowId,
               transactionId = transactionId,
@@ -389,6 +389,8 @@ private final class SqlLedger(
               divulgedContracts = divulgedContracts,
               blindingInfo = blindingInfo,
             )
+            val preparedInsert = ledgerDao.prepareTransactionInsert(PreparedBatch(null, null, Seq(preparedRawEntry)))
+
             ledgerDao.storeTransaction(
               preparedInsert,
               Some(submitterInfo),

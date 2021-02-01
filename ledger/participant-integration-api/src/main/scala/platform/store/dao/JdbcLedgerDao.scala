@@ -12,16 +12,11 @@ import anorm.SqlParser._
 import anorm.ToStatement.optionToStatement
 import anorm.{BatchSql, Macro, NamedParameter, RowParser, SQL, SqlParser}
 import com.daml.daml_lf_dev.DamlLf.Archive
-import com.daml.ledger.{TransactionId, WorkflowId}
+import com.daml.ledger.TransactionId
 import com.daml.ledger.api.domain
 import com.daml.ledger.api.domain.{LedgerId, ParticipantId, PartyDetails}
 import com.daml.ledger.api.health.HealthStatus
-import com.daml.ledger.participant.state.index.v2.{
-  CommandDeduplicationDuplicate,
-  CommandDeduplicationNew,
-  CommandDeduplicationResult,
-  PackageDetails,
-}
+import com.daml.ledger.participant.state.index.v2.{CommandDeduplicationDuplicate, CommandDeduplicationNew, CommandDeduplicationResult, PackageDetails}
 import com.daml.ledger.participant.state.v1._
 import com.daml.ledger.resources.ResourceOwner
 import com.daml.lf.archive.Decode
@@ -33,30 +28,22 @@ import com.daml.logging.LoggingContext.withEnrichedLoggingContext
 import com.daml.logging.{ContextualizedLogger, LoggingContext}
 import com.daml.metrics.{Metrics, Timed}
 import com.daml.platform.configuration.ServerRole
+import com.daml.platform.indexer.OffsetUpdate.PreparedBatch
 import com.daml.platform.indexer.{CurrentOffset, OffsetStep}
 import com.daml.platform.store.Conversions._
 import com.daml.platform.store.SimpleSqlAsVectorOf.SimpleSqlAsVectorOf
 import com.daml.platform.store._
-import com.daml.platform.store.dao.CommandCompletionsTable.{
-  prepareCompletionInsert,
-  prepareCompletionsDelete,
-  prepareRejectionInsert,
-}
+import com.daml.platform.store.dao.CommandCompletionsTable.{prepareCompletionInsert, prepareCompletionsDelete, prepareRejectionInsert}
 import com.daml.platform.store.dao.PersistenceResponse.Ok
 import com.daml.platform.store.dao.events.TransactionsWriter.PreparedInsert
 import com.daml.platform.store.dao.events._
-import com.daml.platform.store.entries.{
-  ConfigurationEntry,
-  LedgerEntry,
-  PackageLedgerEntry,
-  PartyLedgerEntry,
-}
-import scalaz.syntax.tag._
+import com.daml.platform.store.entries.{ConfigurationEntry, LedgerEntry, PackageLedgerEntry, PartyLedgerEntry}
 
-import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration._
+import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Try
 import scala.util.control.NonFatal
+import scalaz.syntax.tag._
 
 private final case class ParsedPartyData(
     party: String,
@@ -394,6 +381,18 @@ private class JdbcLedgerDao(
           sys.error(s"getPartyEntries: invalid party entry row: $invalidRow")
       }
 
+  override def prepareEntry(submitterInfo: Option[SubmitterInfo], workflowId: Option[WorkflowId], transactionId: TransactionId, ledgerEffectiveTime: Instant, offset: Offset, transaction: CommittedTransaction, divulgedContracts: Iterable[DivulgedContract], blindingInfo: Option[BlindingInfo]): PreparedRawEntry =
+    transactionsWriter.prepareEntry(
+      submitterInfo,
+      workflowId,
+      transactionId,
+      ledgerEffectiveTime,
+      offset,
+      transaction,
+      divulgedContracts,
+      blindingInfo
+    )
+
   override def getPartyEntries(
       startExclusive: Offset,
       endInclusive: Offset,
@@ -419,26 +418,8 @@ private class JdbcLedgerDao(
   ): Future[Option[ContractId]] =
     contractsReader.lookupContractKey(forParties, key)
 
-  override def prepareTransactionInsert(
-      submitterInfo: Option[SubmitterInfo],
-      workflowId: Option[WorkflowId],
-      transactionId: TransactionId,
-      ledgerEffectiveTime: Instant,
-      offset: Offset,
-      transaction: CommittedTransaction,
-      divulgedContracts: Iterable[DivulgedContract],
-      blindingInfo: Option[BlindingInfo],
-  ): PreparedInsert =
-    transactionsWriter.prepare(
-      submitterInfo,
-      workflowId,
-      transactionId,
-      ledgerEffectiveTime,
-      offset,
-      transaction,
-      divulgedContracts,
-      blindingInfo,
-    )
+  override def prepareTransactionInsert(preparedBatch: PreparedBatch): PreparedInsert =
+    transactionsWriter.prepareInsert(preparedBatch.batch)
 
   private def handleError(
       offset: Offset,
@@ -474,15 +455,11 @@ private class JdbcLedgerDao(
   }
 
   override def completeTransaction(
-      submitterInfo: Option[SubmitterInfo],
-      transactionId: TransactionId,
-      recordTime: Instant,
-      offsetStep: OffsetStep,
+                                  preparedInsert: PreparedInsert,
   )(implicit loggingContext: LoggingContext): Future[PersistenceResponse] =
     dbDispatcher
       .executeSql(metrics.daml.index.db.storeTransactionDbMetrics) { implicit conn =>
-        insertCompletions(submitterInfo, transactionId, recordTime, offsetStep)
-        updateLedgerEnd(offsetStep)
+        preparedInsert.completeTransaction(metrics)
         Ok
       }
 
@@ -580,16 +557,6 @@ private class JdbcLedgerDao(
                   actAs <- if (tx.actAs.isEmpty) None else Some(tx.actAs); cmdId <- tx.commandId
                 )
                   yield SubmitterInfo(actAs, appId, cmdId, Instant.EPOCH)
-              prepareTransactionInsert(
-                submitterInfo = submitterInfo,
-                workflowId = tx.workflowId,
-                transactionId = tx.transactionId,
-                ledgerEffectiveTime = tx.ledgerEffectiveTime,
-                offset = offset,
-                transaction = tx.transaction,
-                divulgedContracts = Nil,
-                blindingInfo = None,
-              ).write(metrics)
               submitterInfo
                 .map(prepareCompletionInsert(_, offset, tx.transactionId, tx.recordedAt))
                 .foreach(_.execute())
