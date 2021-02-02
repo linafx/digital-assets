@@ -8,6 +8,7 @@ import java.sql.Timestamp
 import anorm.SqlQuery
 import com.daml.ledger.participant.state.v1.DivulgedContract
 import com.daml.platform.store.Conversions._
+import com.daml.platform.store.Conversions.IntToSmallIntConversions._
 
 object ContractsTablePostgres extends ContractsTable {
 
@@ -87,6 +88,9 @@ object ContractsTablePostgres extends ContractsTable {
             hashes(idx + netCreatesSize) = null
         }
 
+        val createArgCompressions =
+          Array.fill[Option[Int]](batchSize)(argsBySerialized.headOption.flatMap(_._2.createArgumentsCompression.id)) // NOT CORRECT
+
         if (batchSize == 0) None else Some(insertContractQuery.on(
           Params.contractIds -> contractIds,
           Params.templateIds -> templateIds,
@@ -94,6 +98,7 @@ object ContractsTablePostgres extends ContractsTable {
           Params.timestamps -> timestamps,
           Params.hashes -> hashes,
           Params.stakeholders -> stakeholders,
+          Params.createArgCompression -> createArgCompressions,
         )
         )
       }

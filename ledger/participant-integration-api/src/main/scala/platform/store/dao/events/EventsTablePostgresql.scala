@@ -180,9 +180,9 @@ case class EventsTablePostgresql(idempotentEventInsertions: Boolean) extends Eve
     val exerciseActors = "exerciseActors"
     val exerciseChildEventIds = "exerciseChildEventIds"
     val createArgumentsCompression = "createArgumentsCompression"
-    val createKeyValueCompression = "create_key_value_compression"
-    val exerciseArgumentCompression = "exercise_argument_compression"
-    val exerciseResultCompression = "exercise_result_compression"
+    val createKeyValueCompression = "createKeyValuesCompression"
+    val exerciseArgumentCompression = "exerciseArgumentsCompression"
+    val exerciseResultCompression = "exerciseResultsCompression"
   }
 
   /** Allows idempotent event insertions (i.e. discards new rows on `event_id` conflicts).
@@ -254,7 +254,9 @@ case class EventsTablePostgresql(idempotentEventInsertions: Boolean) extends Eve
                                   createKeyValueCompression: Array[Option[Int]],
                                   exerciseArgumentCompression: Array[Option[Int]],
                                   exerciseResultCompression: Array[Option[Int]],
-                                ): Vector[NamedParameter] =
+                                ): Vector[NamedParameter] = {
+    import com.daml.platform.store.Conversions.IntToSmallIntConversions._
+
     Vector[NamedParameter](
       Params.eventIds -> eventIds,
       Params.eventOffsets -> eventOffsets,
@@ -285,4 +287,6 @@ case class EventsTablePostgresql(idempotentEventInsertions: Boolean) extends Eve
       Params.exerciseArgumentCompression -> exerciseArgumentCompression,
       Params.createArgumentsCompression -> createArgumentsCompression,
       Params.createKeyValueCompression -> createKeyValueCompression,
-    )}
+    )
+  }
+}
