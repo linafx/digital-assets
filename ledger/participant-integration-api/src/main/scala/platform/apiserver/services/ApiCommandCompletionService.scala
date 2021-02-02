@@ -49,6 +49,8 @@ private[apiserver] final class ApiCommandCompletionService private (
 
         completionsService
           .getCompletions(offset, request.applicationId, request.parties)
+          .via(logger.debugStream(_.completions.map(c => s"(cmdId: ${c.commandId}, txId: ${c.transactionId}, status: ${c.status})")
+              .mkString(s"Completions for ${request.applicationId} at offset ${offset.toString}: [", ", ", "]")))
           .via(logger.logErrorsOnStream)
     }
 
