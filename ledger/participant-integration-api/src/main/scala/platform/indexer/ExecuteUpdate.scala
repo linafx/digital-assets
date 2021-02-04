@@ -426,7 +426,7 @@ class PipelinedExecuteUpdate(
   private[indexer] val flow: ExecuteUpdateFlow =
     Flow[OffsetUpdate]
       .mapAsync(4)(offsetUpdate => Future(prepareRawEntry(offsetUpdate))(executionContext))
-      .groupedWithin(100, 100.millis)
+      .groupedWithin(25, 25.millis)
       .buffer(4, OverflowStrategy.backpressure) // Remove if necessary
       .mapAsync(4)(offsetUpdate => Future(prepareBatches(offsetUpdate))(executionContext))
       .flatMapConcat(batches => Source.fromIterator(() => batches.iterator))
