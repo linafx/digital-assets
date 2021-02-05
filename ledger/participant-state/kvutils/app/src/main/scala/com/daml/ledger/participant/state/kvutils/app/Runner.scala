@@ -9,6 +9,7 @@ import java.util.concurrent.{Executors, TimeUnit}
 
 import akka.actor.ActorSystem
 import akka.stream.Materializer
+import com.codahale.metrics.InstrumentedExecutorService
 import com.daml.daml_lf_dev.DamlLf.Archive
 import com.daml.ledger.api.health.HealthChecks
 import com.daml.ledger.participant.state.v1.metrics.{TimedReadService, TimedWriteService}
@@ -29,9 +30,9 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
 
 final class Runner[T <: ReadWriteService, Extra](
-    name: String,
-    factory: LedgerFactory[ReadWriteService, Extra],
-) {
+                                                  name: String,
+                                                  factory: LedgerFactory[ReadWriteService, Extra],
+                                                ) {
   def owner(args: collection.Seq[String]): ResourceOwner[Unit] =
     Config
       .owner(name, factory.extraConfigParser, factory.defaultExtraConfig, args)
@@ -52,8 +53,8 @@ final class Runner[T <: ReadWriteService, Extra](
   }
 
   private def dumpIndexMetadata(
-      jdbcUrls: Seq[String]
-  )(implicit resourceContext: ResourceContext): Resource[Unit] = {
+                                 jdbcUrls: Seq[String]
+                               )(implicit resourceContext: ResourceContext): Resource[Unit] = {
     val logger = ContextualizedLogger.get(this.getClass)
     import ExecutionContext.Implicits.global
     Resource.sequenceIgnoringValues(for (jdbcUrl <- jdbcUrls) yield {
@@ -72,8 +73,8 @@ final class Runner[T <: ReadWriteService, Extra](
   }
 
   private def run(
-      config: Config[Extra]
-  )(implicit resourceContext: ResourceContext): Resource[Unit] = {
+                   config: Config[Extra]
+                 )(implicit resourceContext: ResourceContext): Resource[Unit] = {
     implicit val actorSystem: ActorSystem = ActorSystem(
       "[^A-Za-z0-9_\\-]".r.replaceAllIn(name.toLowerCase, "-")
     )
@@ -120,7 +121,7 @@ final class Runner[T <: ReadWriteService, Extra](
               )
             )
             servicesExecutionContext <- ResourceOwner
-              .forExecutorService(() => Executors.newWorkStealingPool())
+              .forExecutorService(() => new InstrumentedExecutorService(Executors.newWorkStealingPool(), metrics.registry, "daml_services"))
               .map(ExecutionContext.fromExecutorService)
               .acquire()
             _ <- participantConfig.mode match {
@@ -163,7 +164,7 @@ final class Runner[T <: ReadWriteService, Extra](
   }
 
   private def uploadDar(from: Path, to: WritePackagesService)(implicit
-      executionContext: ExecutionContext
+                                                              executionContext: ExecutionContext
   ): Future[Unit] = {
     val submissionId = SubmissionId.assertFromString(UUID.randomUUID().toString)
     for {

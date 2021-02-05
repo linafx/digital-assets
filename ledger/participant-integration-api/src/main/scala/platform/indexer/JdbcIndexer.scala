@@ -98,7 +98,7 @@ object JdbcIndexer {
           metrics,
           config.participantId,
           config.updatePreparationParallelism,
-          materializer.executionContext,
+          servicesExecutionContext,
           loggingContext,
         )
       } yield new JdbcIndexer(initialLedgerEnd, metrics, updateFlow))
