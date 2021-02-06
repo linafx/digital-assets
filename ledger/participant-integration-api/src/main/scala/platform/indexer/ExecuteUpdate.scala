@@ -20,13 +20,14 @@ import com.daml.logging.LoggingContext.withEnrichedLoggingContext
 import com.daml.logging.{ContextualizedLogger, LoggingContext}
 import com.daml.metrics.{Metrics, Timed}
 import com.daml.platform.indexer.ExecuteUpdate.ExecuteUpdateFlow
-import com.daml.platform.indexer.OffsetUpdate.{PreparedBatch, PreparedRawEntryStep, PreparedTransactionInsert}
+import com.daml.platform.indexer.OffsetUpdate.{BatchedTransactions, PreparedBatch, PreparedRawEntryStep, PreparedTransactionInsert}
 import com.daml.platform.indexer.PipelinedExecuteUpdate.PipelinedUpdateWithTimer
 import com.daml.platform.store.DbType
 import com.daml.platform.store.dao.events.TransactionsWriter.PreparedInsert
 import com.daml.platform.store.dao.{LedgerDao, PersistenceResponse}
 import com.daml.platform.store.entries.{PackageLedgerEntry, PartyLedgerEntry}
 import PipelinedExecuteUpdate.`enriched flow`
+
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -96,18 +97,7 @@ trait ExecuteUpdate {
         Timed.future(
           metrics.daml.index.db.storeTransactionDbMetrics.prepareBatches,
           Future {
-            val preparedRawEntry = ledgerDao.prepareEntry(
-              submitterInfo = tx.optSubmitterInfo,
-              workflowId = tx.transactionMeta.workflowId,
-              transactionId = tx.transactionId,
-              ledgerEffectiveTime = tx.transactionMeta.ledgerEffectiveTime.toInstant,
-              offset = offsetStepPair.offsetStep.offset,
-              transaction = tx.transaction,
-              divulgedContracts = tx.divulgedContracts,
-              blindingInfo = tx.blindingInfo,
-            )
-            val preparedBatch = PreparedBatch(offsetStepPair.offsetStep, tx, Seq(preparedRawEntry))
-            val preparedInsert = ledgerDao.prepareTransactionInsert(preparedBatch)
+            val preparedInsert = ledgerDao.prepareTransactionInsert(Seq((offsetStepPair.offsetStep.offset, tx)))
             OffsetUpdate.PreparedTransactionInsert(
               offsetStep = offsetStepPair.offsetStep,
               update = tx,
@@ -200,18 +190,7 @@ trait ExecuteUpdate {
           """For performance considerations, TransactionAccepted should be handled in the prepare insert stage.
             |Recomputing PreparedInsert..""".stripMargin
         )
-        val preparedRawEntry = ledgerDao.prepareEntry(
-          submitterInfo = tx.optSubmitterInfo,
-          workflowId = tx.transactionMeta.workflowId,
-          transactionId = tx.transactionId,
-          ledgerEffectiveTime = tx.transactionMeta.ledgerEffectiveTime.toInstant,
-          offset = offsetStep.offset,
-          transaction = tx.transaction,
-          divulgedContracts = tx.divulgedContracts,
-          blindingInfo = tx.blindingInfo,
-        )
-        val preparedBatch = PreparedBatch(offsetStep, tx, Seq(preparedRawEntry))
-        val preparedInsert = ledgerDao.prepareTransactionInsert(preparedBatch)
+        val preparedInsert = ledgerDao.prepareTransactionInsert(Seq((offsetStep.offset, tx)))
         ledgerDao.storeTransaction(
           preparedInsert = preparedInsert,
           submitterInfo = optSubmitterInfo,
@@ -317,26 +296,6 @@ class PipelinedExecuteUpdate(
                             )(implicit val executionContext: ExecutionContext, val loggingContext: LoggingContext)
   extends ExecuteUpdate {
 
-  def prepareRawEntry(offsetUpdate: OffsetUpdate): OffsetUpdate =
-    offsetUpdate match {
-      case OffsetUpdate(offsetStep, tx: TransactionAccepted) =>
-        PreparedRawEntryStep(
-          offsetStep,
-          tx,
-          ledgerDao.prepareEntry(
-            submitterInfo = tx.optSubmitterInfo,
-            workflowId = tx.transactionMeta.workflowId,
-            transactionId = tx.transactionId,
-            ledgerEffectiveTime = tx.transactionMeta.ledgerEffectiveTime.toInstant,
-            offset = offsetStep.offset,
-            transaction = tx.transaction,
-            divulgedContracts = tx.divulgedContracts,
-            blindingInfo = tx.blindingInfo,
-          ),
-        )
-      case offsetUpdate => offsetUpdate
-    }
-
   private def delimitBatches(seq: Seq[OffsetUpdate]): Seq[OffsetUpdate] =
     seq
       .foldLeft(List.empty[OffsetUpdate]) {
@@ -422,12 +381,11 @@ class PipelinedExecuteUpdate(
   private[indexer] val flow: ExecuteUpdateFlow = {
     import metrics.daml.index.db.storeTransactionDbMetrics
     Flow[OffsetUpdate]
-    .mapAsyncTimed(4, storeTransactionDbMetrics.prepareBatches)(prepareRawEntry)
       .groupedWithin(50, 50.millis)
       .mapAsyncTimed(4, storeTransactionDbMetrics.delimitBatches)(delimitBatches)
       .flatMapConcat(batches => Source.fromIterator(() => batches.iterator))
       .mapAsync(4) {
-        case pb@PreparedBatch(offsetStep, update, _) =>
+        case pb@BatchedTransactions(offsetStep, update, _) =>
           Future {
             metrics.daml.index.db.storeTransactionBatchSize.inc(pb.batch.size.toLong)
             ledgerDao.prepareTransactionInsert(pb)
@@ -440,7 +398,6 @@ class PipelinedExecuteUpdate(
             )
         case offsetUpdate => Future.successful(PipelinedUpdateWithTimer(offsetUpdate, 0))
       }
-      .buffer(4, OverflowStrategy.backpressure)
       .mapAsync(1)(insertTransactionState)
       .backPressuredInstrumentedBuffer(4, storeTransactionDbMetrics.transactionEventsBuffer) // Remove if necessary
       .mapAsync(1)(insertTransactionEvents)
@@ -450,17 +407,18 @@ class PipelinedExecuteUpdate(
 }
 
 object PipelinedExecuteUpdate {
-  implicit class `enriched flow`[I, O, M](flow: Flow[I, O, M]){
+
+  implicit class `enriched flow`[I, O, M](flow: Flow[I, O, M]) {
     def backPressuredInstrumentedBuffer(size: Int, counter: Counter): Flow[I, O, M] =
-      flow.map{
+      flow.map {
         el =>
           counter.inc()
           el
       }.buffer(size, OverflowStrategy.backpressure)
-      .map{el =>
-        counter.dec()
-        el
-      }
+        .map { el =>
+          counter.dec()
+          el
+        }
 
     def mapAsyncTimed[U](parallelism: Int, timer: Timer)(f: O => U)(implicit ec: ExecutionContext): Flow[I, U, M] =
       flow.mapAsync(parallelism)(o => Timed.future(timer, Future(f(o))))

@@ -12,7 +12,8 @@ import com.daml.ledger.WorkflowId
 import com.daml.ledger.api.domain.{CommandId, LedgerId, ParticipantId, PartyDetails}
 import com.daml.ledger.api.health.ReportsHealth
 import com.daml.ledger.participant.state.index.v2.{CommandDeduplicationResult, PackageDetails}
-import com.daml.ledger.participant.state.v1.{CommittedTransaction, Configuration, DivulgedContract, Offset, RejectionReason, SubmitterInfo, TransactionId}
+import com.daml.ledger.participant.state.v1.Update.TransactionAccepted
+import com.daml.ledger.participant.state.v1._
 import com.daml.lf.data.Ref
 import com.daml.lf.data.Ref.{PackageId, Party}
 import com.daml.lf.transaction.{BlindingInfo, GlobalKey}
@@ -20,9 +21,8 @@ import com.daml.lf.value.Value
 import com.daml.lf.value.Value.{ContractId, ContractInst}
 import com.daml.logging.LoggingContext
 import com.daml.platform.indexer.OffsetStep
-import com.daml.platform.indexer.OffsetUpdate.PreparedBatch
-import com.daml.platform.store.dao.events.{PreparedRawEntry, TransactionsReader, TransactionsWriter}
 import com.daml.platform.store.dao.events.TransactionsWriter.PreparedInsert
+import com.daml.platform.store.dao.events.{PreparedRawEntry, TransactionsReader, TransactionsWriter}
 import com.daml.platform.store.entries.{ConfigurationEntry, LedgerEntry, PackageLedgerEntry, PartyLedgerEntry}
 
 import scala.concurrent.Future
@@ -174,24 +174,11 @@ private[platform] trait LedgerWriteDao extends ReportsHealth {
                                                             loggingContext: LoggingContext
   ): Future[Unit]
 
-  def prepareEntry(
-                    submitterInfo: Option[SubmitterInfo],
-                    workflowId: Option[WorkflowId],
-                    transactionId: TransactionId,
-                    ledgerEffectiveTime: Instant,
-                    offset: Offset,
-                    transaction: CommittedTransaction,
-                    divulgedContracts: Iterable[DivulgedContract],
-                    blindingInfo: Option[BlindingInfo],
-                  ): PreparedRawEntry
-
   def completeTransaction(
                            preparedInsert: PreparedInsert,
                          )(implicit loggingContext: LoggingContext): Future[PersistenceResponse]
 
-  def prepareTransactionInsert(
-                                preparedBatch: PreparedBatch
-                              ): TransactionsWriter.PreparedInsert
+  def prepareTransactionInsert(transactionBatch: Seq[(Offset, TransactionAccepted)]): TransactionsWriter.PreparedInsert
 
   def storeTransaction(
                         preparedInsert: PreparedInsert,

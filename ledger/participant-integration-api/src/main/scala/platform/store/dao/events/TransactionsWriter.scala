@@ -7,12 +7,8 @@ import java.sql.Connection
 import java.time.Instant
 
 import anorm.{Row, SimpleSql}
-import com.daml.ledger.participant.state.v1.{
-  CommittedTransaction,
-  DivulgedContract,
-  Offset,
-  SubmitterInfo,
-}
+import com.daml.ledger.participant.state.v1.Update.TransactionAccepted
+import com.daml.ledger.participant.state.v1.{CommittedTransaction, DivulgedContract, Offset, SubmitterInfo}
 import com.daml.ledger.{TransactionId, WorkflowId}
 import com.daml.lf.engine.Blinding
 import com.daml.lf.transaction.BlindingInfo
@@ -86,7 +82,32 @@ private[platform] final class TransactionsWriter(
   private val contractsTable = ContractsTable(dbType)
   private val contractWitnessesTable = ContractWitnessesTable(dbType)
 
-  def prepareEntry(
+  def prepareInsert(transactionBatch: Seq[(Offset, TransactionAccepted)]): TransactionsWriter.PreparedInsert = {
+    val preparedRawEntries = transactionBatch.map{
+      case (offset, tx) =>
+        prepareEntry(
+          submitterInfo = tx.optSubmitterInfo,
+          workflowId = tx.transactionMeta.workflowId,
+          transactionId = tx.transactionId,
+          ledgerEffectiveTime = tx.transactionMeta.ledgerEffectiveTime.toInstant,
+          offset = offset,
+          transaction = tx.transaction,
+          divulgedContracts = tx.divulgedContracts,
+          blindingInfo = tx.blindingInfo,
+        )
+    }
+    new TransactionsWriter.PreparedInsert(
+      eventsTable.toExecutables(preparedRawEntries),
+      contractsTable.toExecutables(preparedRawEntries),
+      contractWitnessesTable.toExecutables(preparedRawEntries),
+      TransactionCompletionTables.toExecutables(preparedRawEntries)
+    )
+  }
+
+  def prepareEventsDelete(endInclusive: Offset): SimpleSql[Row] =
+    EventsTableDelete.prepareEventsDelete(endInclusive)
+
+  private def prepareEntry(
                     submitterInfo: Option[SubmitterInfo],
                     workflowId: Option[WorkflowId],
                     transactionId: TransactionId,
@@ -139,16 +160,4 @@ private[platform] final class TransactionsWriter(
       contractWitnesses = indexing.contractWitnesses
     )
   }
-
-  def prepareInsert(preparedRawEntries: Seq[PreparedRawEntry]): TransactionsWriter.PreparedInsert =
-    new TransactionsWriter.PreparedInsert(
-      eventsTable.toExecutables(preparedRawEntries),
-      contractsTable.toExecutables(preparedRawEntries),
-      contractWitnessesTable.toExecutables(preparedRawEntries),
-      TransactionCompletionTables.toExecutables(preparedRawEntries)
-    )
-
-  def prepareEventsDelete(endInclusive: Offset): SimpleSql[Row] =
-    EventsTableDelete.prepareEventsDelete(endInclusive)
-
 }

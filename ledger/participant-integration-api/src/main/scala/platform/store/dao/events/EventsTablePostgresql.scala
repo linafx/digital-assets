@@ -36,7 +36,12 @@ case class EventsTablePostgresql(idempotentEventInsertions: Boolean) extends Eve
       "contract_id" -> contractId.coid,
     )
 
-  override def toExecutables(preparedRawEntries: Seq[PreparedRawEntry]): EventsTable.Batches =
+  override def toExecutables(preparedRawEntries: Seq[PreparedRawEntry]): EventsTable.Batches = {
+    val allArchives = preparedRawEntries.flatMap(_.events.archives).toSet
+    val creates = preparedRawEntries.iterator.flatMap(_.events.events).collect{
+      case (_, create: Create) => create.coid
+    }.toSet
+    val _ = allArchives diff creates // TBC
     new Batches(
       insertEvents = {
         val preparedBatches = preparedRawEntries.map {
@@ -50,6 +55,7 @@ case class EventsTablePostgresql(idempotentEventInsertions: Boolean) extends Eve
           events.archives.iterator.map(archive(tx.offset))
       })
     )
+  }
 
   private def prepareBatch(tx: TransactionIndexing.TransactionInfo, info: TransactionIndexing.EventsInfo, compressed: TransactionIndexing.Compressed.Events): Seq[NamedParameter] = {
     val batchSize = info.events.size

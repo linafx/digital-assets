@@ -12,6 +12,7 @@ import com.daml.ledger.{TransactionId, WorkflowId}
 import com.daml.ledger.api.domain.{CommandId, LedgerId, ParticipantId, PartyDetails}
 import com.daml.ledger.api.health.HealthStatus
 import com.daml.ledger.participant.state.index.v2.{CommandDeduplicationResult, PackageDetails}
+import com.daml.ledger.participant.state.v1.Update.TransactionAccepted
 import com.daml.ledger.participant.state.v1._
 import com.daml.lf.data.Ref
 import com.daml.lf.data.Ref.{PackageId, Party}
@@ -190,12 +191,8 @@ private[platform] class MeteredLedgerDao(ledgerDao: LedgerDao, metrics: Metrics)
       ),
     )
 
-  def prepareEntry(submitterInfo: Option[SubmitterInfo], workflowId: Option[WorkflowId], transactionId: TransactionId, ledgerEffectiveTime: Instant, offset: Offset, transaction: CommittedTransaction, divulgedContracts: Iterable[DivulgedContract], blindingInfo: Option[BlindingInfo]): PreparedRawEntry =
-    ledgerDao.prepareEntry(submitterInfo, workflowId, transactionId, ledgerEffectiveTime, offset, transaction, divulgedContracts, blindingInfo)
-
-  def prepareTransactionInsert(
-                                preparedBatch: PreparedBatch
-                              ): TransactionsWriter.PreparedInsert = ledgerDao.prepareTransactionInsert(preparedBatch)
+  def prepareTransactionInsert(transactionBatch: Seq[(Offset, TransactionAccepted)]): TransactionsWriter.PreparedInsert =
+    ledgerDao.prepareTransactionInsert(transactionBatch)
 
   override def storeRejection(
       submitterInfo: Option[SubmitterInfo],

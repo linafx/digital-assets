@@ -17,6 +17,7 @@ import com.daml.ledger.api.domain
 import com.daml.ledger.api.domain.{LedgerId, ParticipantId, PartyDetails}
 import com.daml.ledger.api.health.HealthStatus
 import com.daml.ledger.participant.state.index.v2.{CommandDeduplicationDuplicate, CommandDeduplicationNew, CommandDeduplicationResult, PackageDetails}
+import com.daml.ledger.participant.state.v1.Update.TransactionAccepted
 import com.daml.ledger.participant.state.v1._
 import com.daml.ledger.resources.ResourceOwner
 import com.daml.lf.archive.Decode
@@ -381,18 +382,6 @@ private class JdbcLedgerDao(
           sys.error(s"getPartyEntries: invalid party entry row: $invalidRow")
       }
 
-  override def prepareEntry(submitterInfo: Option[SubmitterInfo], workflowId: Option[WorkflowId], transactionId: TransactionId, ledgerEffectiveTime: Instant, offset: Offset, transaction: CommittedTransaction, divulgedContracts: Iterable[DivulgedContract], blindingInfo: Option[BlindingInfo]): PreparedRawEntry =
-    transactionsWriter.prepareEntry(
-      submitterInfo,
-      workflowId,
-      transactionId,
-      ledgerEffectiveTime,
-      offset,
-      transaction,
-      divulgedContracts,
-      blindingInfo
-    )
-
   override def getPartyEntries(
       startExclusive: Offset,
       endInclusive: Offset,
@@ -418,8 +407,8 @@ private class JdbcLedgerDao(
   ): Future[Option[ContractId]] =
     contractsReader.lookupContractKey(forParties, key)
 
-  override def prepareTransactionInsert(preparedBatch: PreparedBatch): PreparedInsert =
-    transactionsWriter.prepareInsert(preparedBatch.batch)
+  override def prepareTransactionInsert(transactionBatch: Seq[(Offset, TransactionAccepted)]): PreparedInsert =
+    transactionsWriter.prepareInsert(transactionBatch)
 
   private def handleError(
       offset: Offset,
