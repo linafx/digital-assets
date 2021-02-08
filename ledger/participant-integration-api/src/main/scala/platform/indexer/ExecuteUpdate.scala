@@ -20,13 +20,12 @@ import com.daml.logging.LoggingContext.withEnrichedLoggingContext
 import com.daml.logging.{ContextualizedLogger, LoggingContext}
 import com.daml.metrics.{Metrics, Timed}
 import com.daml.platform.indexer.ExecuteUpdate.ExecuteUpdateFlow
-import com.daml.platform.indexer.OffsetUpdate.{BatchedTransactions, PreparedBatch, PreparedRawEntryStep, PreparedTransactionInsert}
-import com.daml.platform.indexer.PipelinedExecuteUpdate.PipelinedUpdateWithTimer
+import com.daml.platform.indexer.OffsetUpdate.{BatchedTransactions, PreparedTransactionInsert}
+import com.daml.platform.indexer.PipelinedExecuteUpdate.{PipelinedUpdateWithTimer, `enriched flow`}
 import com.daml.platform.store.DbType
 import com.daml.platform.store.dao.events.TransactionsWriter.PreparedInsert
 import com.daml.platform.store.dao.{LedgerDao, PersistenceResponse}
 import com.daml.platform.store.entries.{PackageLedgerEntry, PartyLedgerEntry}
-import PipelinedExecuteUpdate.`enriched flow`
 
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
@@ -297,22 +296,16 @@ class PipelinedExecuteUpdate(
   extends ExecuteUpdate {
 
   private def delimitBatches(seq: Seq[OffsetUpdate]): Seq[OffsetUpdate] =
-    seq
-      .foldLeft(List.empty[OffsetUpdate]) {
-        case (Nil, PreparedRawEntryStep(offsetStep, update, preparedRawEntry)) =>
-          PreparedBatch(offsetStep, update, Seq(preparedRawEntry)) :: Nil
-        case (Nil, offsetUpdate) => offsetUpdate :: Nil
-        case (
-          PreparedBatch(_, _, batch) :: tl,
-          PreparedRawEntryStep(offsetStep, update, preparedRawEntry),
-          ) =>
-          PreparedBatch(offsetStep, update, batch :+ preparedRawEntry) :: tl
-        case (batches, PreparedRawEntryStep(offsetStep, update, preparedRawEntry)) =>
-          PreparedBatch(offsetStep, update, Seq(preparedRawEntry)) :: batches
-        case (batches, offsetStep) => offsetStep :: batches
-      }
-      .reverse
-      .toVector
+    seq.foldLeft(List.empty[OffsetUpdate]){
+      case (Nil, OffsetUpdate(offset, tx: TransactionAccepted)) =>
+        BatchedTransactions(offset, tx, Vector((offset.offset, tx)))::Nil
+      case (Nil, offsetUpdate) => offsetUpdate :: Nil
+      case (BatchedTransactions(_, _, batch) :: tl, OffsetUpdate(offset, tx: TransactionAccepted)) =>
+        BatchedTransactions(offset, tx, batch :+ (offset.offset -> tx))::tl
+      case (batches, OffsetUpdate(offset, tx: TransactionAccepted)) =>
+        BatchedTransactions(offset, tx, Vector((offset.offset, tx)))::batches
+      case (batches, offsetUpdate) => offsetUpdate :: batches
+    }.reverse.toVector
 
   private def insertTransactionState(
                                       timedPipelinedUpdate: PipelinedUpdateWithTimer
@@ -381,22 +374,23 @@ class PipelinedExecuteUpdate(
   private[indexer] val flow: ExecuteUpdateFlow = {
     import metrics.daml.index.db.storeTransactionDbMetrics
     Flow[OffsetUpdate]
-      .groupedWithin(50, 50.millis)
+      .groupedWithin(25, 25.millis)
       .mapAsyncTimed(4, storeTransactionDbMetrics.delimitBatches)(delimitBatches)
       .flatMapConcat(batches => Source.fromIterator(() => batches.iterator))
       .mapAsync(4) {
         case pb@BatchedTransactions(offsetStep, update, _) =>
           Future {
             metrics.daml.index.db.storeTransactionBatchSize.inc(pb.batch.size.toLong)
-            ledgerDao.prepareTransactionInsert(pb)
+            ledgerDao.prepareTransactionInsert(pb.batch)
           }
-            .map(preparedUpdate =>
+            .map(preparedInsert =>
               PipelinedUpdateWithTimer(
-                PreparedTransactionInsert(offsetStep, update, preparedUpdate),
+                PreparedTransactionInsert(offsetStep, update, preparedInsert),
                 pb.batch.size,
               )
             )
-        case offsetUpdate => Future.successful(PipelinedUpdateWithTimer(offsetUpdate, 0))
+        case offsetUpdate =>
+          Future.successful(PipelinedUpdateWithTimer(offsetUpdate, 0))
       }
       .mapAsync(1)(insertTransactionState)
       .backPressuredInstrumentedBuffer(4, storeTransactionDbMetrics.transactionEventsBuffer) // Remove if necessary

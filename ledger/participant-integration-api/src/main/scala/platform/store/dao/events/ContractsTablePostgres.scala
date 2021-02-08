@@ -66,9 +66,10 @@ object ContractsTablePostgres extends ContractsTable {
         val contractIds, templateIds, stakeholders = Array.ofDim[String](batchSize)
         val createArgs, hashes = Array.ofDim[Array[Byte]](batchSize)
 
-        val argsByContractId = preparedRawEntries.flatMap { pre =>
-          netCreates.map { case (c, _) => c.coid.coid -> pre.compressed.contracts } ++
-            netDivulged.map(dc => dc.contractId.coid -> pre.compressed.contracts)
+        val argsByContractId = preparedRawEntries.flatMap{
+          pre =>
+            pre.contracts.netCreates.map{c => c.coid.coid -> pre.compressed.contracts} ++
+            pre.contracts.divulgedContracts.map{c => c.contractId.coid -> pre.compressed.contracts}
         }.toMap
 
         netCreates.iterator.zipWithIndex.foreach { case ((create, _), idx) =>

@@ -30,34 +30,35 @@ case class EventsTablePostgresql(idempotentEventInsertions: Boolean) extends Eve
   private val updateArchived =
     """update participant_events set create_consumed_at={consumed_at} where contract_id={contract_id} and create_argument is not null"""
 
-  private def archive(consumedAt: Offset)(contractId: ContractId): Vector[NamedParameter] =
+  private def archive(consumedAt: Offset, contractId: ContractId): Vector[NamedParameter] =
     Vector[NamedParameter](
       "consumed_at" -> consumedAt,
       "contract_id" -> contractId.coid,
     )
 
   override def toExecutables(preparedRawEntries: Seq[PreparedRawEntry]): EventsTable.Batches = {
-    val allArchives = preparedRawEntries.flatMap(_.events.archives).toSet
+    val allArchives = preparedRawEntries.flatMap(pre =>  pre.events.archives.map(cId => cId -> pre.tx.offset)).toMap
     val creates = preparedRawEntries.iterator.flatMap(_.events.events).collect{
       case (_, create: Create) => create.coid
     }.toSet
-    val _ = allArchives diff creates // TBC
+    val (transient, netArchives): (Map[ContractId, Offset], Map[ContractId, Offset]) =
+      allArchives.partition{
+      case (cId, _) if creates(cId) => true
+      case _ => false
+    }
     new Batches(
       insertEvents = {
         val preparedBatches = preparedRawEntries.map {
           case PreparedRawEntry(tx, events, compressed, _, _) =>
-            prepareBatch(tx, events, compressed.events)
+            prepareBatch(tx, events, compressed.events, transient)
         }
         BatchSql(insertStmt, preparedBatches.head, preparedBatches.tail: _*)
       },
-      updateArchives = batch(updateArchived, preparedRawEntries.flatMap {
-        case PreparedRawEntry(tx, events, _, _, _) =>
-          events.archives.iterator.map(archive(tx.offset))
-      })
+      updateArchives = batch(updateArchived, netArchives.map{ case (id, offset) => archive(offset, id)}.toVector)
     )
   }
 
-  private def prepareBatch(tx: TransactionIndexing.TransactionInfo, info: TransactionIndexing.EventsInfo, compressed: TransactionIndexing.Compressed.Events): Seq[NamedParameter] = {
+  private def prepareBatch(tx: TransactionIndexing.TransactionInfo, info: TransactionIndexing.EventsInfo, compressed: TransactionIndexing.Compressed.Events, transientConsumed: Map[ContractId, Offset]): Seq[NamedParameter] = {
     val batchSize = info.events.size
     val eventIds = Array.ofDim[String](batchSize)
     val eventOffsets = Array.fill(batchSize)(tx.offset.toByteArray)
@@ -92,8 +93,9 @@ case class EventsTablePostgresql(idempotentEventInsertions: Boolean) extends Eve
     for (((nodeId, node), i) <- info.events.zipWithIndex) {
       node match {
         case create: Create =>
+          val contractId = create.coid
           submitters(i) = submittersValue
-          contractIds(i) = create.coid.coid
+          contractIds(i) = contractId.coid
           templateIds(i) = create.coinst.template.toString
           eventIds(i) = EventId(tx.transactionId, nodeId).toLedgerString
           nodeIndexes(i) = nodeId.index
@@ -106,9 +108,11 @@ case class EventsTablePostgresql(idempotentEventInsertions: Boolean) extends Eve
             createAgreementTexts(i) = create.coinst.agreementText
           }
           createKeyValues(i) = compressed.createKeyValues.get(nodeId).orNull
+          transientConsumed.get(contractId).foreach(offset => createConsumedAt(i) = offset.toByteArray) // No archives for creates, right?
         case exercise: Exercise =>
           submitters(i) = submittersValue
-          contractIds(i) = exercise.targetCoid.coid
+          val contractId = exercise.targetCoid
+          contractIds(i) = contractId.coid
           templateIds(i) = exercise.templateId.toString
           eventIds(i) = EventId(tx.transactionId, nodeId).toLedgerString
           nodeIndexes(i) = nodeId.index
@@ -123,6 +127,7 @@ case class EventsTablePostgresql(idempotentEventInsertions: Boolean) extends Eve
             .map(EventId(tx.transactionId, _).toLedgerString)
             .iterator
             .mkString("|")
+          transientConsumed.get(contractId).foreach(offset => createConsumedAt(i) = offset.toByteArray)
         case _ => throw new UnexpectedNodeException(nodeId, tx.transactionId)
       }
     }
