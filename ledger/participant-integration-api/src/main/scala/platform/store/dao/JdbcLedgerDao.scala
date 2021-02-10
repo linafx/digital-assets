@@ -1006,7 +1006,7 @@ private[platform] object JdbcLedgerDao {
 
   }
 
-  private val DefaultNumberOfShortLivedConnections = 16
+  private val DefaultNumberOfShortLivedConnections = 50
 
   def readOwner(
       serverRole: ServerRole,
