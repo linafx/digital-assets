@@ -30,6 +30,7 @@ import io.opentelemetry.trace.Span
 
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success}
+import com.daml.platform.utils._
 
 /** @param dispatcher Executes the queries prepared by this object
   * @param executionContext Runs transformations on data fetched from the database, including DAML-LF value deserialization
@@ -122,6 +123,7 @@ private[dao] final class TransactionsReader(
         val response = EventsTable.Entry.toGetTransactionsResponse(events)
         response.map(r => offsetFor(r) -> r)
       }
+      .backPressuredInstrumentedBuffer(outputStreamBufferSize, dbMetrics.flatTransactionsBuffer)
       .buffer(outputStreamBufferSize, OverflowStrategy.backpressure)
       .wireTap(_ match {
         case (_, response) =>

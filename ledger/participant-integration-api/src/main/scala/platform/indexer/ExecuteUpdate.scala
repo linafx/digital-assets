@@ -24,6 +24,8 @@ import com.daml.platform.store.DbType
 import com.daml.platform.store.dao.{LedgerDao, PersistenceResponse}
 import com.daml.platform.store.entries.{PackageLedgerEntry, PartyLedgerEntry}
 
+import com.daml.platform.utils._
+
 import scala.concurrent.{ExecutionContext, Future}
 
 object ExecuteUpdate {
@@ -384,6 +386,7 @@ class PipelinedExecuteUpdate(
       .buffer(16, OverflowStrategy.backpressure)
       .map(PipelinedUpdateWithTimer(_, metrics.daml.index.db.storeTransaction.time()))
       .mapAsync(1)(insertTransactionState)
+      .backPressuredInstrumentedBuffer(4, metrics.daml.index.db.storeTransactionDbMetrics.transactionEventsBuffer)
       .mapAsync(1)(insertTransactionEvents)
       .mapAsync(1)(completeInsertion)
       .map(_ => ())

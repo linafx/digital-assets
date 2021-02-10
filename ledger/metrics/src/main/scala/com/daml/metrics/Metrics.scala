@@ -338,6 +338,8 @@ final class Metrics(val registry: MetricRegistry) {
       object db {
         private val Prefix: MetricName = index.Prefix :+ "db"
 
+        val flatTransactionsBuffer: Counter = registry.counter(Prefix :+ "get_flat_transactions_buffer")
+
         val storePartyEntry: Timer = registry.timer(Prefix :+ "store_party_entry")
         val storeInitialState: Timer = registry.timer(Prefix :+ "store_initial_state")
         val storePackageEntry: Timer = registry.timer(Prefix :+ "store_package_entry")
@@ -401,6 +403,8 @@ final class Metrics(val registry: MetricRegistry) {
 
         object storeTransactionDbMetrics
             extends DatabaseMetrics(registry, Prefix, "store_ledger_entry") {
+          val transactionEventsBuffer: Counter = registry.counter(dbPrefix :+ "buffer")
+
           // outside of SQL transaction
           val prepareBatches: Timer = registry.timer(dbPrefix :+ "prepare_batches")
 
