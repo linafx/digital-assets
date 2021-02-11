@@ -357,17 +357,6 @@ class PipelinedExecuteUpdate(
 )(implicit val executionContext: ExecutionContext, val loggingContext: LoggingContext)
     extends ExecuteUpdate {
 
-  private def insertTransactionState(
-      timedPipelinedUpdate: PipelinedUpdateWithTimer
-  ): Future[PipelinedUpdateWithTimer] = timedPipelinedUpdate.preparedUpdate match {
-    case PreparedTransactionInsert(_, _, preparedInsert) =>
-      Timed.future(
-        metrics.daml.index.db.storeTransactionState,
-        ledgerDao.storeTransactionState(preparedInsert).map(_ => timedPipelinedUpdate),
-      )
-    case _ => Future.successful(timedPipelinedUpdate)
-  }
-
   private def insertTransactionEvents(
       timedPipelinedUpdate: PipelinedUpdateWithTimer
   ): Future[PipelinedUpdateWithTimer] = timedPipelinedUpdate.preparedUpdate match {
@@ -430,8 +419,6 @@ class PipelinedExecuteUpdate(
       .mapAsync(updatePreparationParallelism)(prepareUpdate)
       .async
       .map(PipelinedUpdateWithTimer(_, metrics.daml.index.db.storeTransaction.time()))
-      .mapAsync(1)(insertTransactionState)
-      .async
       .mapAsync(1)(insertTransactionEvents)
       .async
       .mapAsync(1)(completeInsertion)
