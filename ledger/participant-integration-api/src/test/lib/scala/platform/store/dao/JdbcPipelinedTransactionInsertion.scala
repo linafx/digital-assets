@@ -21,17 +21,13 @@ trait JdbcPipelinedTransactionInsertion {
       divulgedContracts: List[DivulgedContract],
       blindingInfo: Option[BlindingInfo],
   ): Future[(Offset, LedgerEntry.Transaction)] = {
+    val _ = submitterInfo
     val preparedTransactionInsert =
-      prepareInsert(submitterInfo, tx, offsetStep, divulgedContracts, blindingInfo)
+      prepareInsert(tx, offsetStep, divulgedContracts, blindingInfo)
     for {
       _ <- ledgerDao.storeTransactionState(preparedTransactionInsert)
       _ <- ledgerDao.storeTransactionEvents(preparedTransactionInsert)
-      _ <- ledgerDao.completeTransaction(
-        submitterInfo = submitterInfo,
-        transactionId = tx.transactionId,
-        recordTime = tx.recordedAt,
-        offsetStep = offsetStep,
-      )
+      _ <- ledgerDao.completeTransaction(preparedTransactionInsert)
     } yield offsetStep.offset -> tx
   }
 }

@@ -6,7 +6,7 @@ package com.daml.platform.store.dao.events
 import java.sql.Connection
 import java.time.Instant
 
-import anorm.{BatchSql, NamedParameter, Row, SimpleSql}
+import anorm.{BatchSql, NamedParameter}
 import com.daml.ledger.participant.state.v1.Offset
 import com.daml.lf.ledger.EventId
 import com.daml.platform.store.Conversions._
@@ -14,34 +14,51 @@ import com.daml.platform.store.Conversions._
 case class EventsTablePostgresql(idempotentEventInsertions: Boolean) extends EventsTable {
 
   /** Insertions are represented by a single statement made of nested arrays, one per column, instead of JDBC batches.
-    * This leverages a PostgreSQL-specific feature known as "array unnesting", which has shown to be considerable
-    * faster than using JDBC batches.
-    */
+   * This leverages a PostgreSQL-specific feature known as "array unnesting", which has shown to be considerable
+   * faster than using JDBC batches.
+   */
   final class Batches(
-      eventsInsertion: SimpleSql[Row],
-      archivesUpdate: Option[BatchSql],
-  ) extends EventsTable.Batches {
-    override def execute()(implicit connection: Connection): Unit = {
-      eventsInsertion.execute()
-      archivesUpdate.foreach(_.execute())
+                       insertEvents: BatchSql,
+                       updateArchives: Option[BatchSql],
+                     ) extends EventsTable.Batches {
+    override def executeEventsInsert()(implicit connection: Connection): Unit = {
+      insertEvents.execute()
+      updateArchives.foreach(_.execute())
     }
   }
 
   private val updateArchived =
     """update participant_events set create_consumed_at={consumed_at} where contract_id={contract_id} and create_argument is not null"""
 
-  private def archive(consumedAt: Offset)(contractId: ContractId): Vector[NamedParameter] =
+  private def archive(consumedAt: Offset, contractId: ContractId): Vector[NamedParameter] =
     Vector[NamedParameter](
       "consumed_at" -> consumedAt,
       "contract_id" -> contractId.coid,
     )
 
-  override def toExecutables(
-      tx: TransactionIndexing.TransactionInfo,
-      info: TransactionIndexing.EventsInfo,
-      compressed: TransactionIndexing.Compressed.Events,
-  ): EventsTable.Batches = {
+  override def toExecutables(preparedRawEntries: Seq[PreparedRawEntry]): EventsTable.Batches = {
+    val allArchives = preparedRawEntries.flatMap(pre =>  pre.events.archives.map(cId => cId -> pre.tx.offset)).toMap
+    val creates = preparedRawEntries.iterator.flatMap(_.events.events).collect{
+      case (_, create: Create) => create.coid
+    }.toSet
+    val (transient, netArchives): (Map[ContractId, Offset], Map[ContractId, Offset]) =
+      allArchives.partition{
+      case (cId, _) if creates(cId) => true
+      case _ => false
+    }
+    new Batches(
+      insertEvents = {
+        val preparedBatches = preparedRawEntries.map {
+          case PreparedRawEntry(tx, events, compressed, _, _) =>
+            prepareBatch(tx, events, compressed.events, transient)
+        }
+        BatchSql(insertStmt, preparedBatches.head, preparedBatches.tail: _*)
+      },
+      updateArchives = batch(updateArchived, netArchives.map{ case (id, offset) => archive(offset, id)}.toVector)
+    )
+  }
 
+  private def prepareBatch(tx: TransactionIndexing.TransactionInfo, info: TransactionIndexing.EventsInfo, compressed: TransactionIndexing.Compressed.Events, transientConsumed: Map[ContractId, Offset]): Seq[NamedParameter] = {
     val batchSize = info.events.size
     val eventIds = Array.ofDim[String](batchSize)
     val eventOffsets = Array.fill(batchSize)(tx.offset.toByteArray)
@@ -76,8 +93,9 @@ case class EventsTablePostgresql(idempotentEventInsertions: Boolean) extends Eve
     for (((nodeId, node), i) <- info.events.zipWithIndex) {
       node match {
         case create: Create =>
+          val contractId = create.coid
           submitters(i) = submittersValue
-          contractIds(i) = create.coid.coid
+          contractIds(i) = contractId.coid
           templateIds(i) = create.coinst.template.toString
           eventIds(i) = EventId(tx.transactionId, nodeId).toLedgerString
           nodeIndexes(i) = nodeId.index
@@ -90,9 +108,11 @@ case class EventsTablePostgresql(idempotentEventInsertions: Boolean) extends Eve
             createAgreementTexts(i) = create.coinst.agreementText
           }
           createKeyValues(i) = compressed.createKeyValues.get(nodeId).orNull
+          transientConsumed.get(contractId).foreach(offset => createConsumedAt(i) = offset.toByteArray) // No archives for creates, right?
         case exercise: Exercise =>
           submitters(i) = submittersValue
-          contractIds(i) = exercise.targetCoid.coid
+          val contractId = exercise.targetCoid
+          contractIds(i) = contractId.coid
           templateIds(i) = exercise.templateId.toString
           eventIds(i) = EventId(tx.transactionId, nodeId).toLedgerString
           nodeIndexes(i) = nodeId.index
@@ -107,11 +127,11 @@ case class EventsTablePostgresql(idempotentEventInsertions: Boolean) extends Eve
             .map(EventId(tx.transactionId, _).toLedgerString)
             .iterator
             .mkString("|")
+          transientConsumed.get(contractId).foreach(offset => createConsumedAt(i) = offset.toByteArray)
         case _ => throw new UnexpectedNodeException(nodeId, tx.transactionId)
       }
     }
-
-    val inserts = insertEvents(
+    prepareEventsBatch(
       eventIds,
       eventOffsets,
       contractIds,
@@ -142,14 +162,6 @@ case class EventsTablePostgresql(idempotentEventInsertions: Boolean) extends Eve
       exerciseArgumentCompression = eventIds.map(_ => compressed.exerciseArgumentsCompression.id),
       exerciseResultCompression = eventIds.map(_ => compressed.exerciseResultsCompression.id),
     )
-
-    val archivals =
-      info.archives.iterator.map(archive(tx.offset)).toList
-
-    new Batches(
-      eventsInsertion = inserts,
-      archivesUpdate = batch(updateArchived, archivals),
-    )
   }
 
   private object Params {
@@ -179,20 +191,20 @@ case class EventsTablePostgresql(idempotentEventInsertions: Boolean) extends Eve
     val exerciseActors = "exerciseActors"
     val exerciseChildEventIds = "exerciseChildEventIds"
     val createArgumentsCompression = "createArgumentsCompression"
-    val createKeyValueCompression = "create_key_value_compression"
-    val exerciseArgumentCompression = "exercise_argument_compression"
-    val exerciseResultCompression = "exercise_result_compression"
+    val createKeyValueCompression = "createKeyValuesCompression"
+    val exerciseArgumentCompression = "exerciseArgumentsCompression"
+    val exerciseResultCompression = "exerciseResultsCompression"
   }
 
   /** Allows idempotent event insertions (i.e. discards new rows on `event_id` conflicts).
-    *
-    * Idempotent insertions are necessary for seamless restarts of the [[com.daml.platform.indexer.JdbcIndexer]]
-    * after partially persisted transactions.
-    * (e.g. a transaction's events are persisted but the corresponding ledger end not).
-    *
-    * Partially-persisted ledger entries are possible when performing transaction updates in a pipelined fashion.
-    * For more details on pipelined transaction updates, see [[com.daml.platform.indexer.PipelinedExecuteUpdate]].
-    */
+   *
+   * Idempotent insertions are necessary for seamless restarts of the [[com.daml.platform.indexer.JdbcIndexer]]
+   * after partially persisted transactions.
+   * (e.g. a transaction's events are persisted but the corresponding ledger end not).
+   *
+   * Partially-persisted ledger entries are possible when performing transaction updates in a pipelined fashion.
+   * For more details on pipelined transaction updates, see [[com.daml.platform.indexer.PipelinedExecuteUpdate]].
+   */
   private val conflictActionClause =
     if (idempotentEventInsertions) "on conflict do nothing" else ""
 
@@ -223,70 +235,69 @@ case class EventsTablePostgresql(idempotentEventInsertions: Boolean) extends Eve
        """
   }
 
-  private def insertEvents(
-      eventIds: Array[String],
-      eventOffsets: Array[Array[Byte]],
-      contractIds: Array[String],
-      transactionIds: Array[String],
-      workflowIds: Array[String],
-      ledgerEffectiveTimes: Array[Instant],
-      templateIds: Array[String],
-      nodeIndexes: Array[java.lang.Integer],
-      commandIds: Array[String],
-      applicationIds: Array[String],
-      submitters: Array[String],
-      flatEventWitnesses: Array[String],
-      treeEventWitnesses: Array[String],
-      createArguments: Array[Array[Byte]],
-      createSignatories: Array[String],
-      createObservers: Array[String],
-      createAgreementTexts: Array[String],
-      createConsumedAt: Array[Array[Byte]],
-      createKeyValues: Array[Array[Byte]],
-      exerciseConsuming: Array[java.lang.Boolean],
-      exerciseChoices: Array[String],
-      exerciseArguments: Array[Array[Byte]],
-      exerciseResults: Array[Array[Byte]],
-      exerciseActors: Array[String],
-      exerciseChildEventIds: Array[String],
-      createArgumentsCompression: Array[Option[Int]],
-      createKeyValueCompression: Array[Option[Int]],
-      exerciseArgumentCompression: Array[Option[Int]],
-      exerciseResultCompression: Array[Option[Int]],
-  ): SimpleSql[Row] = {
+  private def prepareEventsBatch(
+                                  eventIds: Array[String],
+                                  eventOffsets: Array[Array[Byte]],
+                                  contractIds: Array[String],
+                                  transactionIds: Array[String],
+                                  workflowIds: Array[String],
+                                  ledgerEffectiveTimes: Array[Instant],
+                                  templateIds: Array[String],
+                                  nodeIndexes: Array[java.lang.Integer],
+                                  commandIds: Array[String],
+                                  applicationIds: Array[String],
+                                  submitters: Array[String],
+                                  flatEventWitnesses: Array[String],
+                                  treeEventWitnesses: Array[String],
+                                  createArguments: Array[Array[Byte]],
+                                  createSignatories: Array[String],
+                                  createObservers: Array[String],
+                                  createAgreementTexts: Array[String],
+                                  createConsumedAt: Array[Array[Byte]],
+                                  createKeyValues: Array[Array[Byte]],
+                                  exerciseConsuming: Array[java.lang.Boolean],
+                                  exerciseChoices: Array[String],
+                                  exerciseArguments: Array[Array[Byte]],
+                                  exerciseResults: Array[Array[Byte]],
+                                  exerciseActors: Array[String],
+                                  exerciseChildEventIds: Array[String],
+                                  createArgumentsCompression: Array[Option[Int]],
+                                  createKeyValueCompression: Array[Option[Int]],
+                                  exerciseArgumentCompression: Array[Option[Int]],
+                                  exerciseResultCompression: Array[Option[Int]],
+                                ): Vector[NamedParameter] = {
     import com.daml.platform.store.Conversions.IntToSmallIntConversions._
-    anorm
-      .SQL(insertStmt)
-      .on(
-        Params.eventIds -> eventIds,
-        Params.eventOffsets -> eventOffsets,
-        Params.contractIds -> contractIds,
-        Params.transactionIds -> transactionIds,
-        Params.workflowIds -> workflowIds,
-        Params.ledgerEffectiveTimes -> ledgerEffectiveTimes,
-        Params.templateIds -> templateIds,
-        Params.nodeIndexes -> nodeIndexes,
-        Params.commandIds -> commandIds,
-        Params.applicationIds -> applicationIds,
-        Params.submitters -> submitters,
-        Params.flatEventWitnesses -> flatEventWitnesses,
-        Params.treeEventWitnesses -> treeEventWitnesses,
-        Params.createArguments -> createArguments,
-        Params.createSignatories -> createSignatories,
-        Params.createObservers -> createObservers,
-        Params.createAgreementTexts -> createAgreementTexts,
-        Params.createConsumedAt -> createConsumedAt,
-        Params.createKeyValues -> createKeyValues,
-        Params.exerciseConsuming -> exerciseConsuming,
-        Params.exerciseChoices -> exerciseChoices,
-        Params.exerciseArguments -> exerciseArguments,
-        Params.exerciseResults -> exerciseResults,
-        Params.exerciseActors -> exerciseActors,
-        Params.exerciseChildEventIds -> exerciseChildEventIds,
-        Params.exerciseResultCompression -> exerciseResultCompression,
-        Params.exerciseArgumentCompression -> exerciseArgumentCompression,
-        Params.createArgumentsCompression -> createArgumentsCompression,
-        Params.createKeyValueCompression -> createKeyValueCompression,
-      )
+
+    Vector[NamedParameter](
+      Params.eventIds -> eventIds,
+      Params.eventOffsets -> eventOffsets,
+      Params.contractIds -> contractIds,
+      Params.transactionIds -> transactionIds,
+      Params.workflowIds -> workflowIds,
+      Params.ledgerEffectiveTimes -> ledgerEffectiveTimes,
+      Params.templateIds -> templateIds,
+      Params.nodeIndexes -> nodeIndexes,
+      Params.commandIds -> commandIds,
+      Params.applicationIds -> applicationIds,
+      Params.submitters -> submitters,
+      Params.flatEventWitnesses -> flatEventWitnesses,
+      Params.treeEventWitnesses -> treeEventWitnesses,
+      Params.createArguments -> createArguments,
+      Params.createSignatories -> createSignatories,
+      Params.createObservers -> createObservers,
+      Params.createAgreementTexts -> createAgreementTexts,
+      Params.createConsumedAt -> createConsumedAt,
+      Params.createKeyValues -> createKeyValues,
+      Params.exerciseConsuming -> exerciseConsuming,
+      Params.exerciseChoices -> exerciseChoices,
+      Params.exerciseArguments -> exerciseArguments,
+      Params.exerciseResults -> exerciseResults,
+      Params.exerciseActors -> exerciseActors,
+      Params.exerciseChildEventIds -> exerciseChildEventIds,
+      Params.exerciseResultCompression -> exerciseResultCompression,
+      Params.exerciseArgumentCompression -> exerciseArgumentCompression,
+      Params.createArgumentsCompression -> createArgumentsCompression,
+      Params.createKeyValueCompression -> createKeyValueCompression,
+    )
   }
 }

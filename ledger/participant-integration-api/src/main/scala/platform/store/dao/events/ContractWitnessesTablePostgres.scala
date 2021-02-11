@@ -3,55 +3,36 @@
 
 package com.daml.platform.store.dao.events
 
-import java.sql.Connection
-
-import anorm.{Row, SimpleSql, SqlQuery}
-import com.daml.platform.store.dao.events.ContractWitnessesTable.Executable
+import anorm.SqlQuery
 
 object ContractWitnessesTablePostgres extends ContractWitnessesTable {
-
   val witnessesContractIdsParam = "witnessesContractIds"
   val partiesParam = "parties"
 
   private val insertWitnessesQuery: SqlQuery =
-    anorm.SQL(s"""insert into $TableName($IdColumn, $WitnessColumn)
-       |            select $IdColumn, $WitnessColumn
-       |            from unnest({$witnessesContractIdsParam}, {$partiesParam}) as t($IdColumn, $WitnessColumn)
-       |            on conflict do nothing;""".stripMargin)
+    anorm.SQL(
+      s"""insert into $TableName($IdColumn, $WitnessColumn)
+         |            select $IdColumn, $WitnessColumn
+         |            from unnest({$witnessesContractIdsParam}, {$partiesParam}) as t($IdColumn, $WitnessColumn)
+         |            on conflict do nothing;""".stripMargin)
 
-  override def toExecutables(
-      info: TransactionIndexing.ContractWitnessesInfo
-  ): ContractWitnessesTable.Executables =
+  override def toExecutables(preparedRawEntries: Seq[PreparedRawEntry]): ContractWitnessesTable.Executables = {
+    val witnessArchivals = preparedRawEntries.flatMap(_.contractWitnesses.netArchives).toSet
+
     ContractWitnessesTable.Executables(
-      deleteWitnesses = prepareBatchDelete(info.netArchives.toList),
-      insertWitnesses = buildInsertExecutable(info),
-    )
+      deleteWitnesses = prepareBatchDelete(witnessArchivals.toList),
+      insertWitnesses = {
+        val netWitnesses: Seq[(ContractId, String)] = preparedRawEntries.flatMap(pre => Relation.flatten(pre.contractWitnesses.netVisibility))
+          .filterNot { case (coid, _) => witnessArchivals(coid) }
+        val (witnessesContractIds, parties) = netWitnesses.map {
+          case (id, party) => id.coid -> party
+        }.toArray.unzip
 
-  private def buildInsertExecutable(
-      witnesses: TransactionIndexing.ContractWitnessesInfo
-  ): Executable = {
-    import com.daml.platform.store.Conversions._
-
-    val flattened: Iterator[(ContractId, String)] = Relation.flatten(witnesses.netVisibility)
-    val (witnessesContractIds, parties) = flattened
-      .map { case (id, party) =>
-        id.coid -> party
+        insertWitnessesQuery.on(
+          witnessesContractIdsParam -> witnessesContractIds,
+          partiesParam -> parties,
+        )
       }
-      .toArray
-      .unzip
-
-    val inserts = insertWitnessesQuery.on(
-      witnessesContractIdsParam -> witnessesContractIds,
-      partiesParam -> parties,
     )
-
-    new InsertExecutable(inserts)
-  }
-
-  private class InsertExecutable(insertQuery: SimpleSql[Row]) extends Executable {
-    override def execute()(implicit connection: Connection): Unit = {
-      insertQuery.executeUpdate()
-      ()
-    }
   }
 }

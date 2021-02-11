@@ -31,13 +31,7 @@ import com.daml.platform.store.DbType
 import com.google.protobuf.timestamp.Timestamp
 
 private[events] abstract class EventsTable {
-
-  def toExecutables(
-      tx: TransactionIndexing.TransactionInfo,
-      info: TransactionIndexing.EventsInfo,
-      compressed: TransactionIndexing.Compressed.Events,
-  ): EventsTable.Batches
-
+  def toExecutables(preparedRawEntries: Seq[PreparedRawEntry]): EventsTable.Batches
 }
 
 private[events] object EventsTable {
@@ -93,7 +87,7 @@ private[events] object EventsTable {
   val archivedEventRow: RowParser[ArchiveEventRow] = sharedRow
 
   trait Batches {
-    def execute()(implicit connection: Connection): Unit
+    def executeEventsInsert()(implicit connection: Connection): Unit
   }
 
   def apply(dbType: DbType, idempotentInserts: Boolean): EventsTable =
