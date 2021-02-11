@@ -21,19 +21,12 @@ trait JdbcAtomicTransactionInsertion {
       divulgedContracts: List[DivulgedContract],
       blindingInfo: Option[BlindingInfo],
   ): Future[(Offset, LedgerEntry.Transaction)] = {
-    val preparedTransactionInsert = ledgerDao.prepareTransactionInsert(
-      submitterInfo,
-      tx.workflowId,
-      tx.transactionId,
-      tx.ledgerEffectiveTime,
-      offsetStep.offset,
-      tx.transaction,
-      divulgedContracts,
-      blindingInfo,
-    )
+    val batch = prepareBatch(divulgedContracts, blindingInfo, offsetStep.offset -> tx)
+    val preparedInsert = ledgerDao.prepareTransactionInsert(batch)
+
     for {
       _ <- ledgerDao.storeTransaction(
-        preparedTransactionInsert,
+        preparedInsert,
         submitterInfo = submitterInfo,
         transactionId = tx.transactionId,
         transaction = tx.transaction,

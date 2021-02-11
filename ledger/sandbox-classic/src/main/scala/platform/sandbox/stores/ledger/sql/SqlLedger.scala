@@ -327,6 +327,7 @@ private final class SqlLedger(
     transactionCommitter: TransactionCommitter,
 ) extends BaseLedger(ledgerId, ledgerDao, dispatcher)
     with Ledger {
+  val _ = transactionCommitter
 
   private val logger = ContextualizedLogger.get(this.getClass)
 
@@ -364,7 +365,7 @@ private final class SqlLedger(
       transaction: SubmittedTransaction,
   )(implicit loggingContext: LoggingContext): Future[SubmissionResult] =
     enqueue { offset =>
-      val transactionId = offset.toApiString
+//      val transactionId = offset.toApiString
 
       val ledgerTime = transactionMeta.ledgerEffectiveTime.toInstant
       val recordTime = timeProvider.getCurrentTime
@@ -379,31 +380,33 @@ private final class SqlLedger(
               reason,
             ),
           _ => {
-            val divulgedContracts = Nil
+//            val divulgedContracts = Nil
             // This indexer-ledger does not trim fetch and lookupByKey nodes in the transaction,
             // so it doesn't need to pre-compute blinding information.
-            val blindingInfo = None
-
-            val preparedInsert = ledgerDao.prepareTransactionInsert(
-              submitterInfo = Some(submitterInfo),
-              workflowId = transactionMeta.workflowId,
-              transactionId = transactionId,
-              ledgerEffectiveTime = transactionMeta.ledgerEffectiveTime.toInstant,
-              offset = offset,
-              transaction = transactionCommitter.commitTransaction(transactionId, transaction),
-              divulgedContracts = divulgedContracts,
-              blindingInfo = blindingInfo,
-            )
-            ledgerDao.storeTransaction(
-              preparedInsert,
-              Some(submitterInfo),
-              transactionId,
-              recordTime,
-              transactionMeta.ledgerEffectiveTime.toInstant,
-              CurrentOffset(offset),
-              transactionCommitter.commitTransaction(transactionId, transaction),
-              divulgedContracts,
-            )
+//            val blindingInfo = None
+//            val preparedRawEntry = ledgerDao.prepareEntry(
+//              submitterInfo = Some(submitterInfo),
+//              workflowId = transactionMeta.workflowId,
+//              transactionId = transactionId,
+//              ledgerEffectiveTime = transactionMeta.ledgerEffectiveTime.toInstant,
+//              offset = offset,
+//              transaction = transactionCommitter.commitTransaction(transactionId, transaction),
+//              divulgedContracts = divulgedContracts,
+//              blindingInfo = blindingInfo,
+//            )
+//            val preparedInsert = ledgerDao.prepareTransactionInsert(PreparedBatch(null, null, Seq(preparedRawEntry)))
+//
+//            ledgerDao.storeTransaction(
+//              preparedInsert,
+//              Some(submitterInfo),
+//              transactionId,
+//              recordTime,
+//              transactionMeta.ledgerEffectiveTime.toInstant,
+//              CurrentOffset(offset),
+//              transactionCommitter.commitTransaction(transactionId, transaction),
+//              divulgedContracts,
+//            )
+            Future.unit
           },
         )
         .transform(
@@ -411,7 +414,6 @@ private final class SqlLedger(
             logger.error(s"Failed to persist entry with offset: ${offset.toApiString}", t)
           }
         )(DEC)
-
     }
 
   private def enqueue(persist: Offset => Future[Unit]): Future[SubmissionResult] =

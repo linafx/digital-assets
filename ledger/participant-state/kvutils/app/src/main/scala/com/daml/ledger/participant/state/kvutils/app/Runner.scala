@@ -32,9 +32,9 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
 
 final class Runner[T <: ReadWriteService, Extra](
-    name: String,
-    factory: LedgerFactory[ReadWriteService, Extra],
-) {
+                                                  name: String,
+                                                  factory: LedgerFactory[ReadWriteService, Extra],
+                                                ) {
   def owner(args: collection.Seq[String]): ResourceOwner[Unit] =
     Config
       .owner(name, factory.extraConfigParser, factory.defaultExtraConfig, args)
@@ -55,8 +55,8 @@ final class Runner[T <: ReadWriteService, Extra](
   }
 
   private def dumpIndexMetadata(
-      jdbcUrls: Seq[String]
-  )(implicit resourceContext: ResourceContext): Resource[Unit] = {
+                                 jdbcUrls: Seq[String]
+                               )(implicit resourceContext: ResourceContext): Resource[Unit] = {
     val logger = ContextualizedLogger.get(this.getClass)
     import ExecutionContext.Implicits.global
     Resource.sequenceIgnoringValues(for (jdbcUrl <- jdbcUrls) yield {
@@ -75,8 +75,8 @@ final class Runner[T <: ReadWriteService, Extra](
   }
 
   private def run(
-      config: Config[Extra]
-  )(implicit resourceContext: ResourceContext): Resource[Unit] = {
+                   config: Config[Extra]
+                 )(implicit resourceContext: ResourceContext): Resource[Unit] = {
     implicit val actorSystem: ActorSystem = ActorSystem(
       "[^A-Za-z0-9_\\-]".r.replaceAllIn(name.toLowerCase, "-")
     )
@@ -178,7 +178,7 @@ final class Runner[T <: ReadWriteService, Extra](
   }
 
   private def uploadDar(from: Path, to: WritePackagesService)(implicit
-      executionContext: ExecutionContext
+                                                              executionContext: ExecutionContext
   ): Future[Unit] = {
     val submissionId = SubmissionId.assertFromString(UUID.randomUUID().toString)
     for {

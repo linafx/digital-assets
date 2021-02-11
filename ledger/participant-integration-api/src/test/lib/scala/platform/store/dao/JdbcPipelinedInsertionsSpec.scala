@@ -24,8 +24,7 @@ trait JdbcPipelinedInsertionsSpec extends Inside with OptionValues with Matchers
   it should "allow idempotent transaction insertions" in {
     val key = "some-key"
     val create @ (offset, tx) = txCreateContractWithKey(alice, key, Some("1337"))
-    val maybeSubmitterInfo = submitterInfo(tx)
-    val preparedInsert = prepareInsert(maybeSubmitterInfo, tx, CurrentOffset(offset))
+    val preparedInsert = prepareInsert(tx, CurrentOffset(offset))
     for {
       _ <- ledgerDao.storeTransactionEvents(preparedInsert)
       // Assume the indexer restarts after events insertion
@@ -73,8 +72,7 @@ trait JdbcPipelinedInsertionsSpec extends Inside with OptionValues with Matchers
       offsetTx: (Offset, LedgerEntry.Transaction)
   ): Future[Assertion] = {
     val (offset, tx) = offsetTx
-    val maybeSubmitterInfo = submitterInfo(tx)
-    val preparedInsert = prepareInsert(maybeSubmitterInfo, tx, CurrentOffset(offset))
+    val preparedInsert = prepareInsert(tx, CurrentOffset(offset))
     for {
       _ <- ledgerDao.storeTransactionEvents(preparedInsert)
       _ <- ledgerDao.storeTransactionState(preparedInsert)
