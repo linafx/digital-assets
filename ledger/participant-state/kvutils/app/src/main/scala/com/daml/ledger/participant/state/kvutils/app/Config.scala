@@ -67,7 +67,7 @@ object Config {
       metricsReporter = None,
       metricsReportingInterval = Duration.ofSeconds(10),
       trackerRetentionPeriod = DefaultTrackerRetentionPeriod,
-      engineMode = EngineMode.Stable,
+      engineMode = EngineMode.EarlyAccess,
       extra = extra,
     )
 
