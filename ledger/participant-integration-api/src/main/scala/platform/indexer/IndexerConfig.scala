@@ -20,6 +20,11 @@ case class IndexerConfig(
     updatePreparationParallelism: Int = DefaultUpdatePreparationParallelism,
     allowExistingSchema: Boolean = false,
     asyncCommitMode: DbType.AsyncCommitMode = DefaultAsyncCommitMode,
+    inputMappingParallelism: Int = 1,
+    ingestionParallelism: Int = 1,
+    submissionBatchSize: Long = 1L,
+    tailingRateLimitPerSecond: Int = 100,
+    batchWithinMillis: Long = 10,
 )
 
 object IndexerConfig {
