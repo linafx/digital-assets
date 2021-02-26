@@ -919,10 +919,7 @@ private class JdbcLedgerDao(
     )
 
   private val compressionStrategy: CompressionStrategy =
-    CompressionStrategy.AllGZIP
-
-  private val compressionMetrics: CompressionMetrics =
-    CompressionMetrics(metrics)
+    CompressionStrategy.allGZIP(metrics)
 
   private val transactionsWriter: TransactionsWriter =
     new TransactionsWriter(
@@ -930,7 +927,6 @@ private class JdbcLedgerDao(
       metrics,
       translation,
       compressionStrategy,
-      compressionMetrics,
       idempotentEntryInserts,
     )
 
