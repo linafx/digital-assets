@@ -28,7 +28,7 @@ import com.daml.ledger.api.v1.transaction_service.{
 }
 import com.daml.ledger.participant.state.index.v2
 import com.daml.ledger.participant.state.index.v2.IndexService
-import com.daml.ledger.participant.state.v1.{Configuration, Offset, PackageId, ParticipantId, Party}
+import com.daml.ledger.participant.state.v1._
 import com.daml.lf.data.Ref
 import com.daml.lf.language.Ast
 import com.daml.lf.transaction.GlobalKey
@@ -230,4 +230,12 @@ private[daml] final class TimedIndexService(delegate: IndexService, metrics: Met
 
   override def currentHealth(): HealthStatus =
     delegate.currentHealth()
+
+  override def lookupContractKey(key: GlobalKey)(implicit
+      loggingContext: LoggingContext
+  ): Future[(Option[(Offset, ContractId, Set[Party])], Option[(Offset, ContractId)])] =
+    Timed.future(
+      metrics.daml.services.index.lookupContractKey,
+      delegate.lookupContractKey(key),
+    )
 }

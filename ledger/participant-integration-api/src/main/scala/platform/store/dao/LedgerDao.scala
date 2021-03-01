@@ -28,7 +28,7 @@ import com.daml.lf.value.Value
 import com.daml.lf.value.Value.{ContractId, ContractInst}
 import com.daml.logging.LoggingContext
 import com.daml.platform.indexer.OffsetStep
-import com.daml.platform.store.dao.events.{TransactionsReader, TransactionsWriter}
+import com.daml.platform.store.dao.events.{ContractsReader, TransactionsReader, TransactionsWriter}
 import com.daml.platform.store.dao.events.TransactionsWriter.PreparedInsert
 import com.daml.platform.store.entries.{
   ConfigurationEntry,
@@ -40,7 +40,7 @@ import com.daml.platform.store.entries.{
 import scala.concurrent.Future
 
 private[platform] trait LedgerReadDao extends ReportsHealth {
-
+  def contractsReader: ContractsReader
   def maxConcurrentConnections: Int
 
   /** Looks up the ledger id */

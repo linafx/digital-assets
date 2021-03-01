@@ -35,7 +35,6 @@ import com.daml.lf.transaction.GlobalKey
 import com.daml.lf.value.Value
 import com.daml.logging.LoggingContext
 import com.daml.metrics.{Event, Spans}
-
 import scala.concurrent.Future
 
 private[daml] final class SpannedIndexService(delegate: IndexService) extends IndexService {
@@ -200,4 +199,9 @@ private[daml] final class SpannedIndexService(delegate: IndexService) extends In
 
   override def currentHealth(): HealthStatus =
     delegate.currentHealth()
+
+  def lookupContractKey(key: GlobalKey)(implicit
+      loggingContext: LoggingContext
+  ): Future[(Option[(Offset, ContractId, Set[Party])], Option[(Offset, ContractId)])] =
+    delegate.lookupContractKey(key)
 }

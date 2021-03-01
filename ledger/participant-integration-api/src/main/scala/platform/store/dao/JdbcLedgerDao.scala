@@ -952,8 +952,8 @@ private class JdbcLedgerDao(
       servicesExecutionContext
     )
 
-  private val contractsReader: ContractsReader =
-    ContractsReader(dbDispatcher, dbType, metrics, lfValueTranslationCache)(
+  override val contractsReader: ContractsReader =
+    ContractsReader(dbDispatcher, dbType, metrics)(
       servicesExecutionContext
     )
 

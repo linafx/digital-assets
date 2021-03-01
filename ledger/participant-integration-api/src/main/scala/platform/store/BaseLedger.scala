@@ -35,6 +35,7 @@ import com.daml.logging.LoggingContext
 import com.daml.platform.akkastreams.dispatcher.Dispatcher
 import com.daml.platform.akkastreams.dispatcher.SubSource.RangeSource
 import com.daml.platform.store.dao.LedgerReadDao
+import com.daml.platform.store.dao.events.ContractsReader
 import com.daml.platform.store.entries.{ConfigurationEntry, PackageLedgerEntry, PartyLedgerEntry}
 import scalaz.syntax.tag.ToTagOps
 
@@ -48,6 +49,8 @@ private[platform] abstract class BaseLedger(
 ) extends ReadOnlyLedger {
 
   implicit private val DEC: ExecutionContext = DirectExecutionContext
+
+  override def contractsReader: ContractsReader = ledgerDao.contractsReader
 
   override def currentHealth(): HealthStatus = ledgerDao.currentHealth()
 
