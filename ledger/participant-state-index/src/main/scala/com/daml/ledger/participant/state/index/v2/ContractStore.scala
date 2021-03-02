@@ -38,5 +38,5 @@ trait ContractStore {
 
   def lookupContractKey(key: GlobalKey)(implicit
       loggingContext: LoggingContext
-  ): Future[(Option[(Offset, ContractId, Set[Party])], Option[(Offset, ContractId)])]
+  ): Future[Option[(Long, ContractId, Set[Party], Option[Long])]]
 }
