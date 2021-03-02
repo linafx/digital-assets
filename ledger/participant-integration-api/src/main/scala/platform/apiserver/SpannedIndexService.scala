@@ -35,6 +35,7 @@ import com.daml.lf.transaction.GlobalKey
 import com.daml.lf.value.Value
 import com.daml.logging.LoggingContext
 import com.daml.metrics.{Event, Spans}
+
 import scala.concurrent.Future
 
 private[daml] final class SpannedIndexService(delegate: IndexService) extends IndexService {
