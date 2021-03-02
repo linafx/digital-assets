@@ -11,7 +11,6 @@ import akka.stream.{KillSwitches, Materializer, UniqueKillSwitch}
 import com.codahale.metrics.Gauge
 import com.daml.ledger.participant.state.v1.{Offset, ParticipantId, ReadService, Update}
 import com.daml.ledger.resources.{Resource, ResourceOwner}
-import com.daml.logging.{ContextualizedLogger, LoggingContext}
 import com.daml.metrics.Metrics
 import com.daml.platform.indexer.poc.AsyncSupport._
 import com.daml.platform.indexer.poc.PerfSupport._
@@ -38,8 +37,7 @@ object PoCIndexerFactory {
       batchWithinMillis: Long,
       runStageUntil: Int,
       metrics: Metrics,
-  )(implicit loggingContext: LoggingContext): ResourceOwner[Indexer] = {
-    val logger = ContextualizedLogger.get(getClass)
+  ): ResourceOwner[Indexer] = {
     for {
       inputMapperExecutor <- asyncPool(
         inputMappingParallelism,
@@ -112,6 +110,8 @@ object PoCIndexerFactory {
               tailingRateLimitPerSecond = tailingRateLimitPerSecond,
               ingestTail = postgresDaoPool.execute[RunningDBBatch, RunningDBBatch](
                 (batch: RunningDBBatch, dao: PostgresDAO) => {
+                  metrics.daml.indexer.currentEventSequentialIdGauge
+                    .updateValue(batch.lastSeqEventId)
                   dao.updateParams(
                     ledgerEnd = batch.lastOffset,
                     eventSeqId = batch.lastSeqEventId,
