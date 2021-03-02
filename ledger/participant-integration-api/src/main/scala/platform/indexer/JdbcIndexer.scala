@@ -120,7 +120,7 @@ object JdbcIndexer {
               tailingRateLimitPerSecond = config.tailingRateLimitPerSecond,
               batchWithinMillis = config.batchWithinMillis,
               runStageUntil = config.runStageUntil,
-              metrics,
+              metrics = metrics,
             )
           } yield indexer
         )
