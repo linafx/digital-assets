@@ -200,9 +200,4 @@ private[daml] final class SpannedIndexService(delegate: IndexService) extends In
 
   override def currentHealth(): HealthStatus =
     delegate.currentHealth()
-
-  def lookupContractKey(key: GlobalKey)(implicit
-      loggingContext: LoggingContext
-  ): Future[Option[(Long, ContractId, Set[Party], Option[Long])]] =
-    delegate.lookupContractKey(key)
 }
