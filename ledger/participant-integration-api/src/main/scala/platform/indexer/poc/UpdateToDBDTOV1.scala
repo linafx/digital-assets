@@ -145,7 +145,7 @@ object UpdateToDBDTOV1 {
           }
           .reverse
 
-        val events = preorderTraversal.iterator.map {
+        val events = preorderTraversal.iterator.collect { // It is okay to collect: blinding info is already there, we are free at hand to filter out the fetch and lookup nodes here already
           case (nodeId, create: Create) =>
             val eventId = EventId(u.transactionId, nodeId)
             val (createArgument, createKeyValue) = translation.serialize(eventId, create)
@@ -231,8 +231,6 @@ object UpdateToDBDTOV1 {
               exercise_argument_compression = compressionStrategy.exerciseArgumentCompression.id,
               exercise_result_compression = compressionStrategy.exerciseResultCompression.id,
             )
-
-          case (nodeId, _) => throw new UnexpectedNodeException(nodeId, u.transactionId)
         }
 
         val divulgedContractIndex = u.divulgedContracts
