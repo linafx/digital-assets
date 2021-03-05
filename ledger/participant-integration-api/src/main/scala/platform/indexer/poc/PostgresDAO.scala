@@ -223,7 +223,8 @@ case class JDBCPostgresDAO(jdbcUrl: String) extends PostgresDAO with AutoCloseab
       |   known_since_in,
       |   ledger_offset_in,
       |   package_in
-      | );
+      | )
+      |  on conflict (package_id) do nothing;
       |
       |""".stripMargin
   )
