@@ -52,6 +52,7 @@ object PoCIndexerFactory {
       val batchCounterMetric = CountedCounter()
       val batchCounterGauge: Gauge[Int] = () =>
         batchCounterMetric.retrieveAverage.getOrElse(0L).toInt
+      metrics.registry.remove(metrics.daml.pocIndexer.batchSize) // to allow to run this code multiple times in one JVM
       metrics.registry.register(metrics.daml.pocIndexer.batchSize, batchCounterGauge)
       val ingest: Long => Source[(Offset, Update), NotUsed] => Source[Unit, NotUsed] =
         initialSeqId =>
