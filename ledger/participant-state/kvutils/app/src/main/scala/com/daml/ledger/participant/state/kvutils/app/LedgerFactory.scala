@@ -67,6 +67,8 @@ trait ConfigProvider[ExtraConfig] {
       portFile = participantConfig.portFile,
       seeding = config.seeding,
       managementServiceTimeout = participantConfig.managementServiceTimeout,
+      keyCacheSize = participantConfig.keyStateCacheSize,
+      stateCacheSize = participantConfig.contractStateCacheSize,
     )
 
   def commandConfig(
