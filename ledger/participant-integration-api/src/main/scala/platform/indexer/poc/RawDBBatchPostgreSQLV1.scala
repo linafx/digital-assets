@@ -120,108 +120,108 @@ class CommandDeduplicationBatch(val deduplication_key: Array[String])
 object RawDBBatchPostgreSQLV1 {
 
   case class EventsBatchBuilder(
-      event_kind: mutable.ArrayBuilder[Int] = mutable.ArrayBuilder.make(),
-      event_offset: mutable.ArrayBuilder[Array[Byte]] = mutable.ArrayBuilder.make(),
-      transaction_id: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make(),
+      event_kind: mutable.ArrayBuilder[Int] = mutable.ArrayBuilder.make[Int],
+      event_offset: mutable.ArrayBuilder[Array[Byte]] = mutable.ArrayBuilder.make[Array[Byte]],
+      transaction_id: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String],
       ledger_effective_time: mutable.ArrayBuilder[String] =
-        mutable.ArrayBuilder.make(), // timestamp
-      command_id: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make(),
-      workflow_id: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make(),
-      application_id: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make(),
-      submitters: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make(), // '|' separated list
-      node_index: mutable.ArrayBuilder[java.lang.Integer] = mutable.ArrayBuilder.make(),
-      event_id: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make(),
-      contract_id: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make(),
-      template_id: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make(),
+        mutable.ArrayBuilder.make[String], // timestamp
+      command_id: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String],
+      workflow_id: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String],
+      application_id: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String],
+      submitters: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String], // '|' separated list
+      node_index: mutable.ArrayBuilder[java.lang.Integer] = mutable.ArrayBuilder.make[java.lang.Integer],
+      event_id: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String],
+      contract_id: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String],
+      template_id: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String],
       flat_event_witnesses: mutable.ArrayBuilder[String] =
-        mutable.ArrayBuilder.make(), // '|' separated list
+        mutable.ArrayBuilder.make[String], // '|' separated list
       tree_event_witnesses: mutable.ArrayBuilder[String] =
-        mutable.ArrayBuilder.make(), // '|' separated list
-      create_argument: mutable.ArrayBuilder[Array[Byte]] = mutable.ArrayBuilder.make(),
+        mutable.ArrayBuilder.make[String], // '|' separated list
+      create_argument: mutable.ArrayBuilder[Array[Byte]] = mutable.ArrayBuilder.make[Array[Byte]],
       create_signatories: mutable.ArrayBuilder[String] =
-        mutable.ArrayBuilder.make(), // '|' separated list
+        mutable.ArrayBuilder.make[String], // '|' separated list
       create_observers: mutable.ArrayBuilder[String] =
-        mutable.ArrayBuilder.make(), // '|' separated list
-      create_agreement_text: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make(),
-      create_key_value: mutable.ArrayBuilder[Array[Byte]] = mutable.ArrayBuilder.make(),
-      create_key_hash: mutable.ArrayBuilder[Array[Byte]] = mutable.ArrayBuilder.make(),
-      exercise_choice: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make(),
-      exercise_argument: mutable.ArrayBuilder[Array[Byte]] = mutable.ArrayBuilder.make(),
-      exercise_result: mutable.ArrayBuilder[Array[Byte]] = mutable.ArrayBuilder.make(),
+        mutable.ArrayBuilder.make[String], // '|' separated list
+      create_agreement_text: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String],
+      create_key_value: mutable.ArrayBuilder[Array[Byte]] = mutable.ArrayBuilder.make[Array[Byte]],
+      create_key_hash: mutable.ArrayBuilder[Array[Byte]] = mutable.ArrayBuilder.make[Array[Byte]],
+      exercise_choice: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String],
+      exercise_argument: mutable.ArrayBuilder[Array[Byte]] = mutable.ArrayBuilder.make[Array[Byte]],
+      exercise_result: mutable.ArrayBuilder[Array[Byte]] = mutable.ArrayBuilder.make[Array[Byte]],
       exercise_actors: mutable.ArrayBuilder[String] =
-        mutable.ArrayBuilder.make(), // '|' separated list
+        mutable.ArrayBuilder.make[String], // '|' separated list
       exercise_child_event_ids: mutable.ArrayBuilder[String] =
-        mutable.ArrayBuilder.make(), // '|' separated list
-      event_sequential_id: mutable.ArrayBuilder[Long] = mutable.ArrayBuilder.make(),
+        mutable.ArrayBuilder.make[String], // '|' separated list
+      event_sequential_id: mutable.ArrayBuilder[Long] = mutable.ArrayBuilder.make[Long],
       create_argument_compression: mutable.ArrayBuilder[java.lang.Integer] =
-        mutable.ArrayBuilder.make(),
+        mutable.ArrayBuilder.make[java.lang.Integer],
       create_key_value_compression: mutable.ArrayBuilder[java.lang.Integer] =
-        mutable.ArrayBuilder.make(),
+        mutable.ArrayBuilder.make[java.lang.Integer],
       exercise_argument_compression: mutable.ArrayBuilder[java.lang.Integer] =
-        mutable.ArrayBuilder.make(),
+        mutable.ArrayBuilder.make[java.lang.Integer],
       exercise_result_compression: mutable.ArrayBuilder[java.lang.Integer] =
-        mutable.ArrayBuilder.make(),
+        mutable.ArrayBuilder.make[java.lang.Integer],
   )
 
   case class ConfigurationEntriesBatchBuilder(
-      ledger_offset: mutable.ArrayBuilder[Array[Byte]] = mutable.ArrayBuilder.make(),
-      recorded_at: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make(), // timestamp
-      submission_id: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make(),
-      typ: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make(),
-      configuration: mutable.ArrayBuilder[Array[Byte]] = mutable.ArrayBuilder.make(),
-      rejection_reason: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make(),
+      ledger_offset: mutable.ArrayBuilder[Array[Byte]] = mutable.ArrayBuilder.make[Array[Byte]],
+      recorded_at: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String], // timestamp
+      submission_id: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String],
+      typ: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String],
+      configuration: mutable.ArrayBuilder[Array[Byte]] = mutable.ArrayBuilder.make[Array[Byte]],
+      rejection_reason: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String],
   )
 
   case class PackageEntriesBatchBuilder(
-      ledger_offset: mutable.ArrayBuilder[Array[Byte]] = mutable.ArrayBuilder.make(),
-      recorded_at: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make(), // timestamp
-      submission_id: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make(),
-      typ: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make(),
-      rejection_reason: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make(),
+      ledger_offset: mutable.ArrayBuilder[Array[Byte]] = mutable.ArrayBuilder.make[Array[Byte]],
+      recorded_at: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String], // timestamp
+      submission_id: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String],
+      typ: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String],
+      rejection_reason: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String],
   )
 
   case class PackagesBatchBuilder(
-      package_id: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make(),
-      upload_id: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make(),
-      source_description: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make(),
-      size: mutable.ArrayBuilder[Long] = mutable.ArrayBuilder.make(),
-      known_since: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make(), // timestamp
-      ledger_offset: mutable.ArrayBuilder[Array[Byte]] = mutable.ArrayBuilder.make(),
-      _package: mutable.ArrayBuilder[Array[Byte]] = mutable.ArrayBuilder.make(),
+      package_id: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String],
+      upload_id: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String],
+      source_description: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String],
+      size: mutable.ArrayBuilder[Long] = mutable.ArrayBuilder.make[Long],
+      known_since: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String], // timestamp
+      ledger_offset: mutable.ArrayBuilder[Array[Byte]] = mutable.ArrayBuilder.make[Array[Byte]],
+      _package: mutable.ArrayBuilder[Array[Byte]] = mutable.ArrayBuilder.make[Array[Byte]],
   )
 
   case class PartiesBatchBuilder(
-      party: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make(),
-      display_name: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make(),
-      explicit: mutable.ArrayBuilder[Boolean] = mutable.ArrayBuilder.make(),
-      ledger_offset: mutable.ArrayBuilder[Array[Byte]] = mutable.ArrayBuilder.make(),
-      is_local: mutable.ArrayBuilder[Boolean] = mutable.ArrayBuilder.make(),
+      party: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String],
+      display_name: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String],
+      explicit: mutable.ArrayBuilder[Boolean] = mutable.ArrayBuilder.make[Boolean],
+      ledger_offset: mutable.ArrayBuilder[Array[Byte]] = mutable.ArrayBuilder.make[Array[Byte]],
+      is_local: mutable.ArrayBuilder[Boolean] = mutable.ArrayBuilder.make[Boolean],
   )
 
   case class PartyEntriesBatchBuilder(
-      ledger_offset: mutable.ArrayBuilder[Array[Byte]] = mutable.ArrayBuilder.make(),
-      recorded_at: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make(), // timestamp
-      submission_id: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make(),
-      party: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make(),
-      display_name: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make(),
-      typ: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make(),
-      rejection_reason: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make(),
-      is_local: mutable.ArrayBuilder[java.lang.Boolean] = mutable.ArrayBuilder.make(),
+      ledger_offset: mutable.ArrayBuilder[Array[Byte]] = mutable.ArrayBuilder.make[Array[Byte]],
+      recorded_at: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String], // timestamp
+      submission_id: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String],
+      party: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String],
+      display_name: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String],
+      typ: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String],
+      rejection_reason: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String],
+      is_local: mutable.ArrayBuilder[java.lang.Boolean] = mutable.ArrayBuilder.make[java.lang.Boolean],
   )
 
   case class CommandCompletionsBatchBuilder(
-      completion_offset: mutable.ArrayBuilder[Array[Byte]] = mutable.ArrayBuilder.make(),
-      record_time: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make(), // timestamp
-      application_id: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make(),
-      submitters: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make(), // '|' separated list
-      command_id: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make(),
-      transaction_id: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make(),
-      status_code: mutable.ArrayBuilder[java.lang.Integer] = mutable.ArrayBuilder.make(),
-      status_message: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make(),
+      completion_offset: mutable.ArrayBuilder[Array[Byte]] = mutable.ArrayBuilder.make[Array[Byte]],
+      record_time: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String], // timestamp
+      application_id: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String],
+      submitters: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String], // '|' separated list
+      command_id: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String],
+      transaction_id: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String],
+      status_code: mutable.ArrayBuilder[java.lang.Integer] = mutable.ArrayBuilder.make[java.lang.Integer],
+      status_message: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String],
   )
 
   case class CommandDeduplicationBatchBuilder(
-      deduplication_key: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make()
+      deduplication_key: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String]
   )
 
   // WARNING! MUTABLE! not thread safe
@@ -359,104 +359,104 @@ object RawDBBatchPostgreSQLV1 {
     def build(): RawDBBatchPostgreSQLV1 = RawDBBatchPostgreSQLV1(
       eventsBatch = Option(eventsBatchBuilder).map(b =>
         new EventsBatch(
-          event_kind = b.event_kind.result,
-          event_offset = b.event_offset.result,
-          transaction_id = b.transaction_id.result,
-          ledger_effective_time = b.ledger_effective_time.result,
-          command_id = b.command_id.result,
-          workflow_id = b.workflow_id.result,
-          application_id = b.application_id.result,
-          submitters = b.submitters.result,
-          node_index = b.node_index.result,
-          event_id = b.event_id.result,
-          contract_id = b.contract_id.result,
-          template_id = b.template_id.result,
-          flat_event_witnesses = b.flat_event_witnesses.result,
-          tree_event_witnesses = b.tree_event_witnesses.result,
-          create_argument = b.create_argument.result,
-          create_signatories = b.create_signatories.result,
-          create_observers = b.create_observers.result,
-          create_agreement_text = b.create_agreement_text.result,
-          create_key_value = b.create_key_value.result,
-          create_key_hash = b.create_key_hash.result,
-          exercise_choice = b.exercise_choice.result,
-          exercise_argument = b.exercise_argument.result,
-          exercise_result = b.exercise_result.result,
-          exercise_actors = b.exercise_actors.result,
-          exercise_child_event_ids = b.exercise_child_event_ids.result,
-          event_sequential_id = b.event_sequential_id.result, // will be populated later
-          create_argument_compression = b.create_argument_compression.result,
-          create_key_value_compression = b.create_key_value_compression.result,
-          exercise_argument_compression = b.exercise_argument_compression.result,
-          exercise_result_compression = b.exercise_result_compression.result,
+          event_kind = b.event_kind.result(),
+          event_offset = b.event_offset.result(),
+          transaction_id = b.transaction_id.result(),
+          ledger_effective_time = b.ledger_effective_time.result(),
+          command_id = b.command_id.result(),
+          workflow_id = b.workflow_id.result(),
+          application_id = b.application_id.result(),
+          submitters = b.submitters.result(),
+          node_index = b.node_index.result(),
+          event_id = b.event_id.result(),
+          contract_id = b.contract_id.result(),
+          template_id = b.template_id.result(),
+          flat_event_witnesses = b.flat_event_witnesses.result(),
+          tree_event_witnesses = b.tree_event_witnesses.result(),
+          create_argument = b.create_argument.result(),
+          create_signatories = b.create_signatories.result(),
+          create_observers = b.create_observers.result(),
+          create_agreement_text = b.create_agreement_text.result(),
+          create_key_value = b.create_key_value.result(),
+          create_key_hash = b.create_key_hash.result(),
+          exercise_choice = b.exercise_choice.result(),
+          exercise_argument = b.exercise_argument.result(),
+          exercise_result = b.exercise_result.result(),
+          exercise_actors = b.exercise_actors.result(),
+          exercise_child_event_ids = b.exercise_child_event_ids.result(),
+          event_sequential_id = b.event_sequential_id.result(), // will be populated later
+          create_argument_compression = b.create_argument_compression.result(),
+          create_key_value_compression = b.create_key_value_compression.result(),
+          exercise_argument_compression = b.exercise_argument_compression.result(),
+          exercise_result_compression = b.exercise_result_compression.result(),
         )
       ),
       configurationEntriesBatch = Option(configurationEntriesBatchBuilder).map(b =>
         new ConfigurationEntriesBatch(
-          ledger_offset = b.ledger_offset.result,
-          recorded_at = b.recorded_at.result,
-          submission_id = b.submission_id.result,
-          typ = b.typ.result,
-          configuration = b.configuration.result,
-          rejection_reason = b.rejection_reason.result,
+          ledger_offset = b.ledger_offset.result(),
+          recorded_at = b.recorded_at.result(),
+          submission_id = b.submission_id.result(),
+          typ = b.typ.result(),
+          configuration = b.configuration.result(),
+          rejection_reason = b.rejection_reason.result(),
         )
       ),
       packageEntriesBatch = Option(packageEntriesBatchBuilder).map(b =>
         new PackageEntriesBatch(
-          ledger_offset = b.ledger_offset.result,
-          recorded_at = b.recorded_at.result,
-          submission_id = b.submission_id.result,
-          typ = b.typ.result,
-          rejection_reason = b.rejection_reason.result,
+          ledger_offset = b.ledger_offset.result(),
+          recorded_at = b.recorded_at.result(),
+          submission_id = b.submission_id.result(),
+          typ = b.typ.result(),
+          rejection_reason = b.rejection_reason.result(),
         )
       ),
       packagesBatch = Option(packagesBatchBuilder).map(b =>
         new PackagesBatch(
-          package_id = b.package_id.result,
-          upload_id = b.upload_id.result,
-          source_description = b.source_description.result,
-          size = b.size.result,
-          known_since = b.known_since.result,
-          ledger_offset = b.ledger_offset.result,
-          _package = b._package.result,
+          package_id = b.package_id.result(),
+          upload_id = b.upload_id.result(),
+          source_description = b.source_description.result(),
+          size = b.size.result(),
+          known_since = b.known_since.result(),
+          ledger_offset = b.ledger_offset.result(),
+          _package = b._package.result(),
         )
       ),
       partiesBatch = Option(partiesBatchBuilder).map(b =>
         new PartiesBatch(
-          party = b.party.result,
-          display_name = b.display_name.result,
-          explicit = b.explicit.result,
-          ledger_offset = b.ledger_offset.result,
-          is_local = b.is_local.result,
+          party = b.party.result(),
+          display_name = b.display_name.result(),
+          explicit = b.explicit.result(),
+          ledger_offset = b.ledger_offset.result(),
+          is_local = b.is_local.result(),
         )
       ),
       partyEntriesBatch = Option(partyEntriesBatchBuilder).map(b =>
         new PartyEntriesBatch(
-          ledger_offset = b.ledger_offset.result,
-          recorded_at = b.recorded_at.result,
-          submission_id = b.submission_id.result,
-          party = b.party.result,
-          display_name = b.display_name.result,
-          typ = b.typ.result,
-          rejection_reason = b.rejection_reason.result,
-          is_local = b.is_local.result,
+          ledger_offset = b.ledger_offset.result(),
+          recorded_at = b.recorded_at.result(),
+          submission_id = b.submission_id.result(),
+          party = b.party.result(),
+          display_name = b.display_name.result(),
+          typ = b.typ.result(),
+          rejection_reason = b.rejection_reason.result(),
+          is_local = b.is_local.result(),
         )
       ),
       commandCompletionsBatch = Option(commandCompletionsBatchBuilder).map(b =>
         new CommandCompletionsBatch(
-          completion_offset = b.completion_offset.result,
-          record_time = b.record_time.result,
-          application_id = b.application_id.result,
-          submitters = b.submitters.result,
-          command_id = b.command_id.result,
-          transaction_id = b.transaction_id.result,
-          status_code = b.status_code.result,
-          status_message = b.status_message.result,
+          completion_offset = b.completion_offset.result(),
+          record_time = b.record_time.result(),
+          application_id = b.application_id.result(),
+          submitters = b.submitters.result(),
+          command_id = b.command_id.result(),
+          transaction_id = b.transaction_id.result(),
+          status_code = b.status_code.result(),
+          status_message = b.status_message.result(),
         )
       ),
       commandDeduplicationBatch = Option(commandDeduplicationBatchBuilder).map(b =>
         new CommandDeduplicationBatch(
-          deduplication_key = b.deduplication_key.result
+          deduplication_key = b.deduplication_key.result()
         )
       ),
     )
