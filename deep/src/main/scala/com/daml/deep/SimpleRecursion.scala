@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 package com.daml.deep
-//import scala.annotation.tailrec
+import scala.annotation.tailrec
 
 object SimpleRecursion {
 
@@ -17,7 +17,16 @@ object SimpleRecursion {
 
   // Solution: Introduce accumulator to gain tail calls. More specifically, self-tail-calls.
   def tripleB(a0: Long): Long = {
-    ???
+
+    @tailrec
+    def loop(a: Long, acc: Long): Long = {
+      if (a == 0) {
+        acc
+      } else {
+        loop(a - 1, acc + 3)
+      }
+    }
+    loop(a0, 0)
   }
 
 }

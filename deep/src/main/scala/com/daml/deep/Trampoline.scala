@@ -2,14 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0
 
 package com.daml.deep
-//import scala.annotation.tailrec
+import scala.annotation.tailrec
 
 object Trampoline {
 
   sealed trait Trampoline[A] {
-    //@tailrec
+    @tailrec
     def run(): A = {
-      ???
+      this match {
+        case Land(a) => a
+        case Bounce(func) => func(()).run
+      }
     }
   }
 

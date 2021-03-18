@@ -30,7 +30,27 @@ object TreeRecursion {
   // Transformation 1 (CPS) : Every call is now a tail call. But still *not* self-tail-calls.
   // Transformation 2 (CPS+Trampoline) : Every call (via the trampoline) is a self-tail-call.
   def evalB(e0: Exp): Long = {
-    ???
+
+    import com.daml.deep.Trampoline._
+
+    def eval[R](e: Exp)(k: Long => Trampoline[R]): Trampoline[R] = {
+      Bounce { _ =>
+        e match {
+          case Num(n) => k(n)
+          case Add(e1, e2) =>
+            eval(e1) { v1 =>
+              eval(e2) { v2 =>
+                Bounce { _ =>
+                  k(v1 + v2)
+                }
+              }
+            }
+        }
+      }
+    }
+    eval(e0) { v =>
+      Land(v)
+    }.run
   }
 
 }

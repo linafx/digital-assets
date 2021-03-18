@@ -27,8 +27,26 @@ object MutualRecursion {
 
   // Solution: Trampolines. Every call (made via the trampoline) is a self-tail-call.
   def offsetB(x: Long): Long = {
-    //import com.daml.deep.Trampoline._
-    ???
+
+    import com.daml.deep.Trampoline._
+
+    def isEven(x: Long): Trampoline[Boolean] = {
+      if (x == 0) {
+        Land(true)
+      } else {
+        Bounce { _ =>
+          isOdd(x - 1)
+        }
+      }
+    }
+    def isOdd(x: Long): Trampoline[Boolean] = {
+      if (x == 0) {
+        Land(false)
+      } else {
+        isEven(x - 1)
+      }
+    }
+    if (isEven(x).run) 4 else 5
   }
 
 }

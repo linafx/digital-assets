@@ -19,14 +19,14 @@ object Dive extends App {
   val G = M * K
 
   // Simple recursion...
-  test("tripleA", K)
+  test("tripleB", M)
 
   // Mutual recursion...
-  //test("offsetA", K)
+  test("offsetB", M)
 
   // Tree recursion...
-  //test("fibA", 20)
-  //test("leftA", K)
-  //test("rightA", K)
+  test("fibB", 20)
+  test("leftB", M)
+  test("rightB", M)
 
 }
