@@ -11,6 +11,7 @@ import akka.stream.{KillSwitches, Materializer, UniqueKillSwitch}
 import com.codahale.metrics.Gauge
 import com.daml.ledger.participant.state.v1.{Offset, ParticipantId, ReadService, Update}
 import com.daml.ledger.resources.{Resource, ResourceOwner}
+import com.daml.logging.{ContextualizedLogger, LoggingContext}
 import com.daml.metrics.Metrics
 import com.daml.platform.indexer.poc.AsyncSupport._
 import com.daml.platform.indexer.poc.PerfSupport._
@@ -37,7 +38,8 @@ object PoCIndexerFactory {
       batchWithinMillis: Long,
       runStageUntil: Int,
       metrics: Metrics,
-  ): ResourceOwner[Indexer] = {
+  )(implicit loggingContext: LoggingContext): ResourceOwner[Indexer] = {
+    val logger = ContextualizedLogger.get(getClass)
     for {
       inputMapperExecutor <- asyncPool(
         inputMappingParallelism,
@@ -52,7 +54,9 @@ object PoCIndexerFactory {
       val batchCounterMetric = CountedCounter()
       val batchCounterGauge: Gauge[Int] = () =>
         batchCounterMetric.retrieveAverage.getOrElse(0L).toInt
-      metrics.registry.remove(metrics.daml.pocIndexer.batchSize) // to allow to run this code multiple times in one JVM
+      metrics.registry.remove(
+        metrics.daml.pocIndexer.batchSize
+      ) // to allow to run this code multiple times in one JVM
       metrics.registry.register(metrics.daml.pocIndexer.batchSize, batchCounterGauge)
       val ingest: Long => Source[(Offset, Update), NotUsed] => Source[Unit, NotUsed] =
         initialSeqId =>
@@ -132,13 +136,14 @@ object PoCIndexerFactory {
             ingest(eventSeqId.getOrElse(0L))(readService.stateUpdates(beginAfter = offset))
           }(scala.concurrent.ExecutionContext.global)
 
-      indexerFluffAround(subscribe)(mat)
+      indexerFluffAround(logger, subscribe)(mat, loggingContext)
     }
   }
 
   def indexerFluffAround(
-      ingestionPipeOn: ReadService => Future[Source[Unit, NotUsed]]
-  )(implicit mat: Materializer): Indexer =
+      logger: ContextualizedLogger,
+      ingestionPipeOn: ReadService => Future[Source[Unit, NotUsed]],
+  )(implicit mat: Materializer, loggingContext: LoggingContext): Indexer =
     readService =>
       ResourceOwner { implicit context =>
         implicit val ec: ExecutionContext = context.executionContext
@@ -151,9 +156,10 @@ object PoCIndexerFactory {
             new SubscriptionIndexFeedHandle(killSwitch, completionFuture.map(_ => ()))
           }
         } { handle =>
+          logger.info("Shutting down feed handle")
           handle.killSwitch.shutdown()
-          handle.completed.recover { case NonFatal(_) =>
-            ()
+          handle.completed.recover { case NonFatal(e) =>
+            logger.warn("Feed handle stopped with error", e)
           }
         }
       }
