@@ -74,6 +74,7 @@ private[events] object ContractsTable {
     dbType match {
       case DbType.Postgres => ContractsTablePostgres
       case DbType.H2Database => ContractsTableH2
+      case DbType.Oracle => ContractsTableOracle
     }
 
   private def emptyContractIds: Throwable =

@@ -100,6 +100,7 @@ private[events] object EventsTable {
     dbType match {
       case DbType.Postgres => EventsTablePostgresql(idempotentInserts)
       case DbType.H2Database => EventsTableH2Database
+      case DbType.Oracle => EventsTableOracle
     }
 
   final case class Entry[+E](

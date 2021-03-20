@@ -22,6 +22,7 @@ private[dao] object SqlFunctions {
   def apply(dbType: DbType): SqlFunctions = dbType match {
     case DbType.Postgres => PostgresSqlFunctions
     case DbType.H2Database => H2SqlFunctions
+    case DbType.Oracle => OracleSqlFunctions
   }
 
   object PostgresSqlFunctions extends SqlFunctions {
@@ -42,4 +43,14 @@ private[dao] object SqlFunctions {
     def arrayIntersectionValues(arrayColumn: String, parties: Set[Party]): String =
       s"array_intersection($arrayColumn, array[${format(parties)}])"
   }
+
+  //TODO need to properly implement this for Oracle
+  object OracleSqlFunctions extends SqlFunctions {
+    override def arrayIntersectionWhereClause(arrayColumn: String, parties: Set[Party]): String =
+      s"SELECT * FROM TABLE($arrayColumn) && VARCHAR_ARRAY(${format(parties)})"
+
+    def arrayIntersectionValues(arrayColumn: String, parties: Set[Party]): String =
+      s"select * FROM TABLE($arrayColumn) intersect VARCHAR_ARRAY(${format(parties)})))"
+  }
+
 }

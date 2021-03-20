@@ -97,6 +97,7 @@ private class JdbcLedgerDao(
   private val queries = dbType match {
     case DbType.Postgres => PostgresQueries
     case DbType.H2Database => H2DatabaseQueries
+    case DbType.Oracle => OracleQueries
   }
 
   private val logger = ContextualizedLogger.get(this.getClass)
@@ -848,6 +849,40 @@ private[platform] object JdbcLedgerDao {
 
   // TODO H2 support
   object H2DatabaseQueries extends Queries {
+    override protected[JdbcLedgerDao] val SQL_INSERT_COMMAND: String =
+      """merge into participant_command_submissions pcs
+        |using dual on deduplication_key = {deduplicationKey}
+        |when not matched then
+        |  insert (deduplication_key, deduplicate_until)
+        |  values ({deduplicationKey}, {deduplicateUntil})
+        |when matched and pcs.deduplicate_until < {submittedAt} then
+        |  update set deduplicate_until={deduplicateUntil}""".stripMargin
+
+    override protected[JdbcLedgerDao] val DUPLICATE_KEY_ERROR: String =
+      "Unique index or primary key violation"
+
+    override protected[JdbcLedgerDao] val SQL_TRUNCATE_TABLES: String =
+      """set referential_integrity false;
+        |truncate table configuration_entries;
+        |truncate table package_entries;
+        |truncate table parameters;
+        |truncate table participant_command_completions;
+        |truncate table participant_command_submissions;
+        |truncate table participant_events;
+        |truncate table participant_contracts;
+        |truncate table participant_contract_witnesses;
+        |truncate table parties;
+        |truncate table party_entries;
+        |set referential_integrity true;
+      """.stripMargin
+
+    /** H2 does not support asynchronous commits */
+    override protected[JdbcLedgerDao] def enforceSynchronousCommit(implicit
+        conn: Connection
+    ): Unit = ()
+  }
+
+  object OracleQueries extends Queries {
     override protected[JdbcLedgerDao] val SQL_INSERT_COMMAND: String =
       """merge into participant_command_submissions pcs
         |using dual on deduplication_key = {deduplicationKey}
