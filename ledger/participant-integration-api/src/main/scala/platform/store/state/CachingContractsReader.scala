@@ -216,7 +216,7 @@ private[platform] class CachingContractsReader private[store] (
   }
 
   private def `intersection non-empty`[T](one: Set[T], other: Set[T]): Boolean =
-    one.toStream.intersect(other.toStream).nonEmpty
+    one.intersect(other).nonEmpty
 
   override def lookupMaximumLedgerTime(ids: Set[ContractId])(implicit
       loggingContext: LoggingContext
