@@ -12,6 +12,7 @@ import com.daml.ledger.EventId
 import com.daml.ledger.participant.state.v1.Offset
 import com.daml.lf.crypto.Hash
 import com.daml.lf.data.Ref
+import com.daml.lf.data.Ref.Party
 import com.daml.lf.value.Value
 
 private[platform] object Conversions {

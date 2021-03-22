@@ -11,6 +11,7 @@ import akka.stream.{KillSwitches, Materializer, UniqueKillSwitch}
 import com.codahale.metrics.Gauge
 import com.daml.ledger.participant.state.v1.{Offset, ParticipantId, ReadService, Update}
 import com.daml.ledger.resources.{Resource, ResourceOwner}
+import com.daml.logging.{ContextualizedLogger, LoggingContext}
 import com.daml.metrics.Metrics
 import com.daml.platform.indexer.poc.AsyncSupport._
 import com.daml.platform.indexer.poc.PerfSupport._
@@ -37,7 +38,8 @@ object PoCIndexerFactory {
       batchWithinMillis: Long,
       runStageUntil: Int,
       metrics: Metrics,
-  ): ResourceOwner[Indexer] = {
+  )(implicit loggingContext: LoggingContext): ResourceOwner[Indexer] = {
+    val logger = ContextualizedLogger.get(getClass)
     for {
       inputMapperExecutor <- asyncPool(
         inputMappingParallelism,

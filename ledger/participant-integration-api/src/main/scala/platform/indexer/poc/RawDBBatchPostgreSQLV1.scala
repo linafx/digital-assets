@@ -128,8 +128,10 @@ object RawDBBatchPostgreSQLV1 {
       command_id: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String],
       workflow_id: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String],
       application_id: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String],
-      submitters: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String], // '|' separated list
-      node_index: mutable.ArrayBuilder[java.lang.Integer] = mutable.ArrayBuilder.make[java.lang.Integer],
+      submitters: mutable.ArrayBuilder[String] =
+        mutable.ArrayBuilder.make[String], // '|' separated list
+      node_index: mutable.ArrayBuilder[java.lang.Integer] =
+        mutable.ArrayBuilder.make[java.lang.Integer],
       event_id: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String],
       contract_id: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String],
       template_id: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String],
@@ -206,17 +208,20 @@ object RawDBBatchPostgreSQLV1 {
       display_name: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String],
       typ: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String],
       rejection_reason: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String],
-      is_local: mutable.ArrayBuilder[java.lang.Boolean] = mutable.ArrayBuilder.make[java.lang.Boolean],
+      is_local: mutable.ArrayBuilder[java.lang.Boolean] =
+        mutable.ArrayBuilder.make[java.lang.Boolean],
   )
 
   case class CommandCompletionsBatchBuilder(
       completion_offset: mutable.ArrayBuilder[Array[Byte]] = mutable.ArrayBuilder.make[Array[Byte]],
       record_time: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String], // timestamp
       application_id: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String],
-      submitters: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String], // '|' separated list
+      submitters: mutable.ArrayBuilder[String] =
+        mutable.ArrayBuilder.make[String], // '|' separated list
       command_id: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String],
       transaction_id: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String],
-      status_code: mutable.ArrayBuilder[java.lang.Integer] = mutable.ArrayBuilder.make[java.lang.Integer],
+      status_code: mutable.ArrayBuilder[java.lang.Integer] =
+        mutable.ArrayBuilder.make[java.lang.Integer],
       status_message: mutable.ArrayBuilder[String] = mutable.ArrayBuilder.make[String],
   )
 

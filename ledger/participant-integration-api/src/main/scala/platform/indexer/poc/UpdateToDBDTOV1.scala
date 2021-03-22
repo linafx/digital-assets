@@ -145,93 +145,95 @@ object UpdateToDBDTOV1 {
           }
           .reverse
 
-        val events = preorderTraversal.iterator.collect { // It is okay to collect: blinding info is already there, we are free at hand to filter out the fetch and lookup nodes here already
-          case (nodeId, create: Create) =>
-            val eventId = EventId(u.transactionId, nodeId)
-            val (createArgument, createKeyValue) = translation.serialize(eventId, create)
-            new DBDTOV1.Event(
-              event_kind = 10,
-              event_offset = Some(offset.toByteArray),
-              transaction_id = Some(u.transactionId),
-              ledger_effective_time = Some(u.transactionMeta.ledgerEffectiveTime.toInstant),
-              command_id = u.optSubmitterInfo.map(_.commandId),
-              workflow_id = u.transactionMeta.workflowId,
-              application_id = u.optSubmitterInfo.map(_.applicationId),
-              submitters = u.optSubmitterInfo.map(_.actAs.toSet),
-              node_index = Some(nodeId.index),
-              event_id = Some(eventId.toLedgerString),
-              contract_id = create.coid.coid,
-              template_id = Some(create.coinst.template.toString),
-              flat_event_witnesses = create.stakeholders.map(_.toString),
-              tree_event_witnesses =
-                blinding.disclosure.getOrElse(nodeId, Set.empty).map(_.toString),
-              create_argument = Some(createArgument)
-                .map(compressionStrategy.createArgumentCompression.compress),
-              create_signatories = Some(create.signatories.map(_.toString)),
-              create_observers = Some(create.stakeholders.diff(create.signatories).map(_.toString)),
-              create_agreement_text = Some(create.coinst.agreementText).filter(_.nonEmpty),
-              create_key_value = createKeyValue
-                .map(compressionStrategy.createKeyValueCompression.compress),
-              create_key_hash = create.key
-                .map(convertLfValueKey(create.templateId, _))
-                .map(_.hash.bytes.toByteArray),
-              exercise_choice = None,
-              exercise_argument = None,
-              exercise_result = None,
-              exercise_actors = None,
-              exercise_child_event_ids = None,
-              create_argument_compression = compressionStrategy.createArgumentCompression.id,
-              create_key_value_compression =
-                compressionStrategy.createKeyValueCompression.id.filter(_ =>
-                  createKeyValue.isDefined
-                ),
-              exercise_argument_compression = None,
-              exercise_result_compression = None,
-            )
+        val events = preorderTraversal.iterator
+          .collect { // It is okay to collect: blinding info is already there, we are free at hand to filter out the fetch and lookup nodes here already
+            case (nodeId, create: Create) =>
+              val eventId = EventId(u.transactionId, nodeId)
+              val (createArgument, createKeyValue) = translation.serialize(eventId, create)
+              new DBDTOV1.Event(
+                event_kind = 10,
+                event_offset = Some(offset.toByteArray),
+                transaction_id = Some(u.transactionId),
+                ledger_effective_time = Some(u.transactionMeta.ledgerEffectiveTime.toInstant),
+                command_id = u.optSubmitterInfo.map(_.commandId),
+                workflow_id = u.transactionMeta.workflowId,
+                application_id = u.optSubmitterInfo.map(_.applicationId),
+                submitters = u.optSubmitterInfo.map(_.actAs.toSet),
+                node_index = Some(nodeId.index),
+                event_id = Some(eventId.toLedgerString),
+                contract_id = create.coid.coid,
+                template_id = Some(create.coinst.template.toString),
+                flat_event_witnesses = create.stakeholders.map(_.toString),
+                tree_event_witnesses =
+                  blinding.disclosure.getOrElse(nodeId, Set.empty).map(_.toString),
+                create_argument = Some(createArgument)
+                  .map(compressionStrategy.createArgumentCompression.compress),
+                create_signatories = Some(create.signatories.map(_.toString)),
+                create_observers =
+                  Some(create.stakeholders.diff(create.signatories).map(_.toString)),
+                create_agreement_text = Some(create.coinst.agreementText).filter(_.nonEmpty),
+                create_key_value = createKeyValue
+                  .map(compressionStrategy.createKeyValueCompression.compress),
+                create_key_hash = create.key
+                  .map(convertLfValueKey(create.templateId, _))
+                  .map(_.hash.bytes.toByteArray),
+                exercise_choice = None,
+                exercise_argument = None,
+                exercise_result = None,
+                exercise_actors = None,
+                exercise_child_event_ids = None,
+                create_argument_compression = compressionStrategy.createArgumentCompression.id,
+                create_key_value_compression =
+                  compressionStrategy.createKeyValueCompression.id.filter(_ =>
+                    createKeyValue.isDefined
+                  ),
+                exercise_argument_compression = None,
+                exercise_result_compression = None,
+              )
 
-          case (nodeId, exercise: Exercise) =>
-            val eventId = EventId(u.transactionId, nodeId)
-            val (exerciseArgument, exerciseResult) = translation.serialize(eventId, exercise)
-            new DBDTOV1.Event(
-              event_kind = if (exercise.consuming) 20 else 25,
-              event_offset = Some(offset.toByteArray),
-              transaction_id = Some(u.transactionId),
-              ledger_effective_time = Some(u.transactionMeta.ledgerEffectiveTime.toInstant),
-              command_id = u.optSubmitterInfo.map(_.commandId),
-              workflow_id = u.transactionMeta.workflowId,
-              application_id = u.optSubmitterInfo.map(_.applicationId),
-              submitters = u.optSubmitterInfo.map(_.actAs.toSet),
-              node_index = Some(nodeId.index),
-              event_id = Some(EventId(u.transactionId, nodeId).toLedgerString),
-              contract_id = exercise.targetCoid.coid,
-              template_id = Some(exercise.templateId.toString),
-              flat_event_witnesses =
-                if (exercise.consuming) exercise.stakeholders.map(_.toString) else Set.empty,
-              tree_event_witnesses =
-                blinding.disclosure.getOrElse(nodeId, Set.empty).map(_.toString),
-              create_argument = None,
-              create_signatories = None,
-              create_observers = None,
-              create_agreement_text = None,
-              create_key_value = None,
-              create_key_hash = None,
-              exercise_choice = Some(exercise.choiceId),
-              exercise_argument = Some(exerciseArgument)
-                .map(compressionStrategy.exerciseArgumentCompression.compress),
-              exercise_result = exerciseResult
-                .map(compressionStrategy.exerciseResultCompression.compress),
-              exercise_actors = Some(exercise.actingParties.map(_.toString)),
-              exercise_child_event_ids = Some(
-                exercise.children.iterator
-                  .map(EventId(u.transactionId, _).toLedgerString.toString)
-                  .toSet
-              ),
-              create_argument_compression = None,
-              create_key_value_compression = None,
-              exercise_argument_compression = compressionStrategy.exerciseArgumentCompression.id,
-              exercise_result_compression = compressionStrategy.exerciseResultCompression.id,
-            )
-        }
+            case (nodeId, exercise: Exercise) =>
+              val eventId = EventId(u.transactionId, nodeId)
+              val (exerciseArgument, exerciseResult) = translation.serialize(eventId, exercise)
+              new DBDTOV1.Event(
+                event_kind = if (exercise.consuming) 20 else 25,
+                event_offset = Some(offset.toByteArray),
+                transaction_id = Some(u.transactionId),
+                ledger_effective_time = Some(u.transactionMeta.ledgerEffectiveTime.toInstant),
+                command_id = u.optSubmitterInfo.map(_.commandId),
+                workflow_id = u.transactionMeta.workflowId,
+                application_id = u.optSubmitterInfo.map(_.applicationId),
+                submitters = u.optSubmitterInfo.map(_.actAs.toSet),
+                node_index = Some(nodeId.index),
+                event_id = Some(EventId(u.transactionId, nodeId).toLedgerString),
+                contract_id = exercise.targetCoid.coid,
+                template_id = Some(exercise.templateId.toString),
+                flat_event_witnesses =
+                  if (exercise.consuming) exercise.stakeholders.map(_.toString) else Set.empty,
+                tree_event_witnesses =
+                  blinding.disclosure.getOrElse(nodeId, Set.empty).map(_.toString),
+                create_argument = None,
+                create_signatories = None,
+                create_observers = None,
+                create_agreement_text = None,
+                create_key_value = None,
+                create_key_hash = None,
+                exercise_choice = Some(exercise.choiceId),
+                exercise_argument = Some(exerciseArgument)
+                  .map(compressionStrategy.exerciseArgumentCompression.compress),
+                exercise_result = exerciseResult
+                  .map(compressionStrategy.exerciseResultCompression.compress),
+                exercise_actors = Some(exercise.actingParties.map(_.toString)),
+                exercise_child_event_ids = Some(
+                  exercise.children.iterator
+                    .map(EventId(u.transactionId, _).toLedgerString.toString)
+                    .toSet
+                ),
+                create_argument_compression = None,
+                create_key_value_compression = None,
+                exercise_argument_compression = compressionStrategy.exerciseArgumentCompression.id,
+                exercise_result_compression = compressionStrategy.exerciseResultCompression.id,
+              )
+          }
 
         val divulgedContractIndex = u.divulgedContracts
           .map(divulgedContract => divulgedContract.contractId -> divulgedContract)

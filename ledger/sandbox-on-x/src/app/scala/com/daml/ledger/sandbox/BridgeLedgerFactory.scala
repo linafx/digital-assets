@@ -18,10 +18,12 @@ object BridgeLedgerFactory extends LedgerFactory[ReadWriteServiceBridge, Unit] {
       materializer: Materializer,
       loggingContext: LoggingContext,
   ): ResourceOwner[ReadWriteServiceBridge] =
-    ResourceOwner.forCloseable(() => ReadWriteServiceBridge(
-      participantId = participantConfig.participantId,
-      ledgerId = config.ledgerId,
-    ))
+    ResourceOwner.forCloseable(() =>
+      ReadWriteServiceBridge(
+        participantId = participantConfig.participantId,
+        ledgerId = config.ledgerId,
+      )
+    )
 
   override def ledgerConfig(config: Config[Unit]): LedgerConfiguration =
     LedgerConfiguration.defaultLocalLedger
