@@ -157,4 +157,55 @@ object PoCIndexerFactory {
           }
         }
       }
+
+  def simpleIndexer(
+             jdbcUrl: String,
+             participantId: ParticipantId,
+             translation: LfValueTranslation,
+             compressionStrategy: CompressionStrategy,
+             metrics: Metrics,
+           ): ResourceOwner[(Offset, Update) => Future[Unit]] =
+    for {
+      postgresDaoPool <- asyncResourcePool(
+        () => JDBCPostgresDAO(jdbcUrl),
+        size = 1,
+        Some(metrics.daml.pocIndexer.ingestionExecutor -> metrics.registry),
+      )
+    } yield {
+      val updateMapper = UpdateToDBDTOV1(
+        participantId = participantId,
+        translation = translation,
+        compressionStrategy = compressionStrategy,
+      )
+      var eventSeqId: Long = -1
+      (offset: Offset, update: Update) => postgresDaoPool.execute {
+        postgresDao => {
+          if (eventSeqId == -1) { // FIXME this is terrible, proper implementation would need to rewamp the initialisation logic in SqlLeder: currently because of a cyclic dependency we need to make this "lazy"
+            eventSeqId = postgresDao.initialize._2.getOrElse(0)
+          }
+          val mappedInput = updateMapper(offset)(update)
+          val batchBuilder = RawDBBatchPostgreSQLV1.Builder()
+          var lastConfig: Option[Array[Byte]] = None
+          mappedInput.foreach {
+            case config: DBDTOV1.ConfigurationEntry =>
+              lastConfig = Some(config.configuration)
+              batchBuilder.add(config)
+            case other =>
+              batchBuilder.add(other)
+          }
+          val batchedInput = batchBuilder.build()
+          var seqEventId = eventSeqId
+          batchedInput.eventsBatch.foreach { // FIXME DRY
+            eventsBatch =>
+              eventsBatch.event_sequential_id.indices.foreach { i =>
+                seqEventId += 1
+                eventsBatch.event_sequential_id(i) = seqEventId
+              }
+          }
+          postgresDao.insertBatch(batchedInput)
+          postgresDao.updateParams(offset, seqEventId, lastConfig)
+          eventSeqId = seqEventId
+        }
+      }
+    }
 }

@@ -13,7 +13,7 @@ import com.daml.platform.store.dao.JdbcLedgerDao
 
 import scala.util.{Failure, Success, Try}
 
-private[events] object ContractsTable extends PostCommitValidationData {
+private[platform] object ContractsTable extends PostCommitValidationData {
 
   override final def lookupContractKeyGlobally(
       key: Key

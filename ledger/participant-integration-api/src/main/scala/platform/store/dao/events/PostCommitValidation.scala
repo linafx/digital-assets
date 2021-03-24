@@ -23,7 +23,7 @@ import com.daml.ledger.participant.state.v1.{CommittedTransaction, RejectionReas
   * - the transaction's ledger effective time is determined after interpretation,
   *   meaning that causal monotonicity cannot be verified while interpreting a command
   */
-private[dao] sealed trait PostCommitValidation {
+private[platform] sealed trait PostCommitValidation {
 
   def validate(
       transaction: CommittedTransaction,
@@ -33,7 +33,7 @@ private[dao] sealed trait PostCommitValidation {
 
 }
 
-private[dao] object PostCommitValidation {
+private[platform] object PostCommitValidation {
 
   /** Accept unconditionally a transaction.
     *
