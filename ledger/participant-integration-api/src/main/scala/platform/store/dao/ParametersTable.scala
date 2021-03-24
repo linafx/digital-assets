@@ -9,8 +9,7 @@ import anorm.SqlParser.byteArray
 import anorm.{Row, RowParser, SimpleSql, SqlStringInterpolation, ~}
 import com.daml.ledger.api.domain.{LedgerId, ParticipantId}
 import com.daml.ledger.participant.state.v1.{Configuration, Offset}
-import com.daml.platform.indexer.{IncrementalOffsetStep, CurrentOffset, OffsetStep}
-import com.daml.platform.store.Conversions.{OffsetToStatement, ledgerString, offset, participantId}
+import com.daml.platform.store.Conversions.{ledgerString, offset, participantId}
 import com.daml.scalautil.Statement.discard
 
 private[dao] object ParametersTable {
@@ -71,34 +70,6 @@ private[dao] object ParametersTable {
 
   def getInitialLedgerEnd(connection: Connection): Option[Offset] =
     SelectLedgerEnd.as(LedgerEndParser.single)(connection)
-
-  /** Updates the ledger end.
-    *
-    * When provided with a (previous, current) ledger end tuple ([[IncrementalOffsetStep]],
-    * the update is performed conditioned by the match between the persisted ledger end and the
-    * provided previous ledger end.
-    *
-    * This mechanism is used to protect callers that cannot provide strong durability guarantees
-    * ([[JdbcLedgerDao]] when used with asynchronous commits on PostgreSQL).
-    *
-    * @param offsetStep The offset step.
-    * @param connection The SQL connection.
-    */
-  def updateLedgerEnd(offsetStep: OffsetStep)(implicit connection: Connection): Unit =
-    offsetStep match {
-      case CurrentOffset(ledgerEnd) =>
-        // TODO FIXME crude initial approach to track the ledger end for the sequential id as well. needs to be implemented properly later. @simon@ I would not place high emphasiz on this ATM since parallel ingestion implementation likely change this naturally.
-        discard(
-          SQL"update #$TableName set #$LedgerEndColumnName = $ledgerEnd, ledger_end_sequential_id = nextval('participant_events_event_sequential_id_seq') where (#$LedgerEndColumnName is null or #$LedgerEndColumnName < $ledgerEnd)"
-            .execute()
-        )
-      case IncrementalOffsetStep(previousOffset, ledgerEnd) =>
-        val sqlStatement =
-          SQL"update #$TableName set #$LedgerEndColumnName = $ledgerEnd, ledger_end_sequential_id = nextval('participant_events_event_sequential_id_seq') where #$LedgerEndColumnName = $previousOffset"
-        if (sqlStatement.executeUpdate() == 0) {
-          throw LedgerEndUpdateError(previousOffset)
-        }
-    }
 
   def updateConfiguration(configuration: Array[Byte])(implicit
       connection: Connection

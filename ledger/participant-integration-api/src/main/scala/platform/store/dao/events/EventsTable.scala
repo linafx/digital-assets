@@ -27,18 +27,7 @@ import com.daml.platform.ApiOffset
 import com.daml.platform.api.v1.event.EventOps.{EventOps, TreeEventOps}
 import com.daml.platform.index.TransactionConversion
 import com.daml.platform.store.Conversions.{identifier, instant, offset}
-import com.daml.platform.store.DbType
 import com.google.protobuf.timestamp.Timestamp
-
-private[events] abstract class EventsTable {
-
-  def toExecutables(
-      tx: TransactionIndexing.TransactionInfo,
-      info: TransactionIndexing.EventsInfo,
-      compressed: TransactionIndexing.Compressed,
-  ): EventsTable.Batches
-
-}
 
 private[events] object EventsTable {
 
@@ -95,12 +84,6 @@ private[events] object EventsTable {
   trait Batches {
     def execute()(implicit connection: Connection): Unit
   }
-
-  def apply(dbType: DbType, idempotentInserts: Boolean): EventsTable =
-    dbType match {
-      case DbType.Postgres => EventsTablePostgresql(idempotentInserts)
-      case DbType.H2Database => EventsTableH2Database
-    }
 
   final case class Entry[+E](
       eventOffset: Offset,

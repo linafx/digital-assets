@@ -6,7 +6,7 @@ package com.daml.platform.store.dao
 import java.time.Instant
 
 import anorm.{Row, RowParser, SimpleSql, SqlParser, SqlStringInterpolation, ~}
-import com.daml.ledger.participant.state.v1.{Offset, RejectionReason, SubmitterInfo, TransactionId}
+import com.daml.ledger.participant.state.v1.{Offset, RejectionReason}
 import com.daml.ledger.participant.state.v1.RejectionReason._
 import com.daml.lf.data.Ref
 import com.daml.ledger.ApplicationId
@@ -55,26 +55,6 @@ private[platform] object CommandCompletionsTable {
     val submittersInPartiesClause =
       sqlFunctions.arrayIntersectionWhereClause("submitters", parties)
     SQL"select completion_offset, record_time, command_id, transaction_id, status_code, status_message from participant_command_completions where completion_offset > $startExclusive and completion_offset <= $endInclusive and application_id = $applicationId and #$submittersInPartiesClause order by completion_offset asc"
-  }
-
-  def prepareCompletionInsert(
-      submitterInfo: SubmitterInfo,
-      offset: Offset,
-      transactionId: TransactionId,
-      recordTime: Instant,
-  ): SimpleSql[Row] =
-    SQL"insert into participant_command_completions(completion_offset, record_time, application_id, submitters, command_id, transaction_id) values ($offset, $recordTime, ${submitterInfo.applicationId}, ${submitterInfo.actAs
-      .toArray[String]}, ${submitterInfo.commandId}, $transactionId)"
-
-  def prepareRejectionInsert(
-      submitterInfo: SubmitterInfo,
-      offset: Offset,
-      recordTime: Instant,
-      reason: RejectionReason,
-  ): SimpleSql[Row] = {
-    val (code, message) = toStatus(reason)
-    SQL"insert into participant_command_completions(completion_offset, record_time, application_id, submitters, command_id, status_code, status_message) values ($offset, $recordTime, ${submitterInfo.applicationId}, ${submitterInfo.actAs
-      .toArray[String]}, ${submitterInfo.commandId}, $code, $message)"
   }
 
   def toStatus(rejection: RejectionReason): (Int, String) = {
