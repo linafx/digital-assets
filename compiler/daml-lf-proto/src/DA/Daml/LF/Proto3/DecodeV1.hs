@@ -492,16 +492,15 @@ decodeBuiltinFunction = pure . \case
   LF1.BuiltinFunctionTEXT_SPLIT_ON -> BETextSplitOn
   LF1.BuiltinFunctionTEXT_INTERCALATE -> BETextIntercalate
 
-  -- TODO https://github.com/digital-asset/daml/issues/8719
-  LF1.BuiltinFunctionSCALE_BIGNUMERIC -> error "BigNumeric builtins not supported"
-  LF1.BuiltinFunctionPRECISION_BIGNUMERIC -> error "BigNumeric builtins not supported"
-  LF1.BuiltinFunctionADD_BIGNUMERIC -> error "BigNumeric builtins not supported"
-  LF1.BuiltinFunctionSUB_BIGNUMERIC -> error "BigNumeric builtins not supported"
-  LF1.BuiltinFunctionMUL_BIGNUMERIC -> error "BigNumeric builtins not supported"
-  LF1.BuiltinFunctionDIV_BIGNUMERIC -> error "BigNumeric builtins not supported"
-  LF1.BuiltinFunctionSHIFT_BIGNUMERIC -> error "BigNumeric builtins not supported"
-  LF1.BuiltinFunctionTO_NUMERIC_BIGNUMERIC -> error "BigNumeric builtins not supported"
-  LF1.BuiltinFunctionTO_BIGNUMERIC_NUMERIC -> error "BigNumeric builtins not supported"
+  LF1.BuiltinFunctionSCALE_BIGNUMERIC -> BEScaleBigNumeric
+  LF1.BuiltinFunctionPRECISION_BIGNUMERIC -> BEPrecisionBigNumeric
+  LF1.BuiltinFunctionADD_BIGNUMERIC -> BEAddBigNumeric
+  LF1.BuiltinFunctionSUB_BIGNUMERIC -> BESubBigNumeric
+  LF1.BuiltinFunctionMUL_BIGNUMERIC -> BEMulBigNumeric
+  LF1.BuiltinFunctionDIV_BIGNUMERIC -> BEDivBigNumeric
+  LF1.BuiltinFunctionSHIFT_BIGNUMERIC -> BEShiftBigNumeric
+  LF1.BuiltinFunctionTO_NUMERIC_BIGNUMERIC -> BEToNumericBigNumeric
+  LF1.BuiltinFunctionTO_BIGNUMERIC_NUMERIC -> BEToBigNumericNumeric
 
 decodeLocation :: LF1.Location -> Decode SourceLoc
 decodeLocation (LF1.Location mbModRef mbRange) = do

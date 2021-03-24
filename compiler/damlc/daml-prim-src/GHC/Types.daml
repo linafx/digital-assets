@@ -28,6 +28,10 @@ module GHC.Types (
         Nat, Numeric,
 #endif
 
+#ifdef DAML_BIGNUMERIC
+        RoundingMode, BigNumeric,
+#endif
+
     ) where
 
 import GHC.Prim
@@ -196,5 +200,21 @@ data Decimal =
   -- | HIDE
   Decimal Opaque
 
+
+#endif
+
+#ifdef DAML_BIGNUMERIC
+
+data BigNumeric
+
+data RoundingMode =
+   RoundingUp
+ | RoundingDown
+ | RoundingCeiling
+ | RoundingFloor
+ | RoundingHalfUp
+ | RoundingHalfDown
+ | RoundingHalfEven
+ | RoundingUnnecessary
 
 #endif

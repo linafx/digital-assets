@@ -125,6 +125,15 @@ safetyStep = \case
       BERoundNumeric      -> Safe 1
       BECastNumeric       -> Safe 0
       BEShiftNumeric      -> Safe 1
+      BEScaleBigNumeric     -> Safe 1
+      BEPrecisionBigNumeric -> Safe 1
+      BEAddBigNumeric       -> Safe 1
+      BESubBigNumeric       -> Safe 1
+      BEMulBigNumeric       -> Safe 1
+      BEDivBigNumeric       -> Safe 1
+      BEShiftBigNumeric     -> Safe 1
+      BEToNumericBigNumeric -> Safe 0
+      BEToBigNumericNumeric -> Safe 0
       BEAddInt64          -> Safe 1
       BESubInt64          -> Safe 1
       BEMulInt64          -> Safe 1

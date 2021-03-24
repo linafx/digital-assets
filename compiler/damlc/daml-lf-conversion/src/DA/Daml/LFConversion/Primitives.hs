@@ -260,6 +260,25 @@ convertPrim _ "BEToTextNumeric" (TNumeric n :-> TText) =
 convertPrim _ "BENumericFromText" (TText :-> TOptional (TNumeric n)) =
     ETyApp (EBuiltin BENumericFromText) n
 
+convertPrim (V1 PointDev) "BEScaleBigNumeric" (TBigNumeric :-> TInt64)  =
+    EBuiltin BEScaleBigNumeric
+convertPrim (V1 PointDev) "BEPrecisionNumeric" (TBigNumeric :-> TInt64) =
+    EBuiltin BEPrecisionBigNumeric
+convertPrim (V1 PointDev) "BEAddBigNumeric" (TBigNumeric :-> TBigNumeric :-> TBigNumeric)  =
+    EBuiltin BEAddBigNumeric
+convertPrim (V1 PointDev) "BESubNumeric" (TBigNumeric :-> TBigNumeric :-> TBigNumeric) =
+    EBuiltin BESubBigNumeric
+convertPrim (V1 PointDev) "BEMulBigNumeric" (TBigNumeric :-> TBigNumeric :-> TBigNumeric) =
+    EBuiltin BEMulBigNumeric
+convertPrim (V1 PointDev) "BEDivBigNumeric" (TInt64 :-> TRoundingMode :-> TBigNumeric :-> TBigNumeric :-> TBigNumeric) =
+    EBuiltin BEDivBigNumeric
+convertPrim (V1 PointDev) "BEShiftBigNumeric" (TInt64 :-> TBigNumeric :-> TBigNumeric) =
+    EBuiltin BEShiftBigNumeric
+convertPrim (V1 PointDev) "BEToNumericBigNumeric" (TNumeric n :-> TBigNumeric) =
+    EBuiltin BEToNumericBigNumeric `ETyApp` n
+convertPrim (V1 PointDev) "BEToBigNumericNumeric" (TBigNumeric :-> TNumeric n) =
+    EBuiltin BEToBigNumericNumeric `ETyApp` n
+
 -- Experimental text primitives.
 convertPrim _ "BETextToUpper" (TText :-> TText) = EBuiltin BETextToUpper
 convertPrim _ "BETextToLower" (TText :-> TText) = EBuiltin BETextToLower
@@ -405,6 +424,23 @@ convertPrim _ "UTryCatch" ((TUnit :-> TUpdate t1) :-> (TBuiltin BTAnyException :
             (EVar (mkVar "t") `ETmApp` EUnit)
             (mkVar "x")
             (EVar (mkVar "c") `ETmApp` EVar (mkVar "x"))
+
+convertPrim (V1 PointDev) "BERoundingUp" (TRoundingMode) =
+    EBuiltin $ BERoundingMode LitRoundingUp
+convertPrim (V1 PointDev) "BERoundingDown" (TRoundingMode) =
+    EBuiltin $ BERoundingMode LitRoundingDown
+convertPrim (V1 PointDev) "BERoundingCeiling" (TRoundingMode) =
+    EBuiltin $ BERoundingMode LitRoundingCeiling
+convertPrim (V1 PointDev) "BERoundingFloor" (TRoundingMode) =
+    EBuiltin $ BERoundingMode LitRoundingFloor
+convertPrim (V1 PointDev) "BERoundingHalfUp" (TRoundingMode) =
+    EBuiltin $ BERoundingMode LitRoundingHalfUp
+convertPrim (V1 PointDev) "BERoundingHalfDown" (TRoundingMode) =
+    EBuiltin $ BERoundingMode LitRoundingHalfDown
+convertPrim (V1 PointDev) "BERoundingHalfEven" (TRoundingMode) =
+    EBuiltin $ BERoundingMode LitRoundingHalfEven
+convertPrim (V1 PointDev) "BERoundingUnnecessary" (TRoundingMode) =
+    EBuiltin $ BERoundingMode LitRoundingUnnecessary
 
 convertPrim (V1 PointDev) (L.stripPrefix "$" -> Just builtin) typ =
     EExperimental (T.pack builtin) typ

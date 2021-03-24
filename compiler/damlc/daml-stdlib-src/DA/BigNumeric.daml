@@ -1,0 +1,38 @@
+-- Copyright (c) 2021 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+{-# LANGUAGE CPP #-}
+
+module DA.BigNumeric where
+
+#ifdef DAML_BIGNUMERIC
+import GHC.Types (primitive)
+
+scale: BigNumeric -> Int
+scale = primitive @"BEScaleBigNumeric"
+
+precision: BigNumeric -> Int
+precision = primitive @"BEPrecisionBigNumeric"
+
+add : BigNumeric -> BigNumeric -> BigNumeric
+add = primitive @"BEAddBigNumeric"
+
+sub : BigNumeric -> BigNumeric -> BigNumeric
+sub = primitive @"ESubdBigNumeric"
+
+mul : BigNumeric -> BigNumeric -> BigNumeric
+mul = primitive @"BEMulBigNumeric"
+
+div : Int -> RoundingMode -> BigNumeric -> BigNumeric -> BigNumeric
+div = primitive @"BEDivBigNumeric"
+
+shift: Int -> BigNumeric -> BigNumeric
+shift = primitive @"BEShiftBigNumeric"
+
+fromNumeric:  forall n. NumericScale n => Numeric n -> BigNumeric
+fromNumeric = primitive @"BEToBigNumericNumeric"
+
+toNumeric: forall n. NumericScale n => BigNumeric -> Numeric n
+toNumeric = primitive @"BEToNumericBigNumeric"
+
+#endif
