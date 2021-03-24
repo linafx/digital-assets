@@ -262,11 +262,11 @@ convertPrim _ "BENumericFromText" (TText :-> TOptional (TNumeric n)) =
 
 convertPrim (V1 PointDev) "BEScaleBigNumeric" (TBigNumeric :-> TInt64)  =
     EBuiltin BEScaleBigNumeric
-convertPrim (V1 PointDev) "BEPrecisionNumeric" (TBigNumeric :-> TInt64) =
+convertPrim (V1 PointDev) "BEPrecisionBigNumeric" (TBigNumeric :-> TInt64) =
     EBuiltin BEPrecisionBigNumeric
 convertPrim (V1 PointDev) "BEAddBigNumeric" (TBigNumeric :-> TBigNumeric :-> TBigNumeric)  =
     EBuiltin BEAddBigNumeric
-convertPrim (V1 PointDev) "BESubNumeric" (TBigNumeric :-> TBigNumeric :-> TBigNumeric) =
+convertPrim (V1 PointDev) "BESubBigNumeric" (TBigNumeric :-> TBigNumeric :-> TBigNumeric) =
     EBuiltin BESubBigNumeric
 convertPrim (V1 PointDev) "BEMulBigNumeric" (TBigNumeric :-> TBigNumeric :-> TBigNumeric) =
     EBuiltin BEMulBigNumeric
@@ -274,10 +274,10 @@ convertPrim (V1 PointDev) "BEDivBigNumeric" (TInt64 :-> TRoundingMode :-> TBigNu
     EBuiltin BEDivBigNumeric
 convertPrim (V1 PointDev) "BEShiftBigNumeric" (TInt64 :-> TBigNumeric :-> TBigNumeric) =
     EBuiltin BEShiftBigNumeric
-convertPrim (V1 PointDev) "BEToNumericBigNumeric" (TNumeric n :-> TBigNumeric) =
-    EBuiltin BEToNumericBigNumeric `ETyApp` n
-convertPrim (V1 PointDev) "BEToBigNumericNumeric" (TBigNumeric :-> TNumeric n) =
+convertPrim (V1 PointDev) "BEToBigNumericNumeric" (TNumeric n :-> TBigNumeric) =
     EBuiltin BEToBigNumericNumeric `ETyApp` n
+convertPrim (V1 PointDev) "BEToNumericBigNumeric" (TBigNumeric :-> TNumeric n) =
+    EBuiltin BEToNumericBigNumeric `ETyApp` n
 
 -- Experimental text primitives.
 convertPrim _ "BETextToUpper" (TText :-> TText) = EBuiltin BETextToUpper

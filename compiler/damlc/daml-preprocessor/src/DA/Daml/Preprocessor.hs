@@ -51,6 +51,7 @@ preprocessorExceptions :: Set.Set GHC.ModuleName
 preprocessorExceptions = Set.fromList $ map GHC.mkModuleName
     -- These modules need to import internal modules.
     [ "Prelude"
+    , "DA.BigNumeric"
     , "DA.Time"
     , "DA.Date"
     , "DA.Record"
