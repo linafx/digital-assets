@@ -5,7 +5,6 @@ package com.daml.platform.sandboxnext
 
 import com.daml.ledger.api.testing.utils.{OwnedResource, Resource, SuiteResource}
 import com.daml.ledger.resources.ResourceContext
-import com.daml.platform.apiserver.services.GrpcClientResource
 import com.daml.platform.sandbox.{AbstractSandboxFixture, SandboxBackend}
 import com.daml.ports.Port
 import io.grpc.Channel
@@ -35,8 +34,8 @@ trait SandboxNextFixture extends AbstractSandboxFixture with SuiteResource[(Port
           .getOrElse(SandboxBackend.H2Database.owner)
           .map(info => Some(info.jdbcUrl))
         port <- new Runner(config.copy(jdbcUrl = jdbcUrl))
-        channel <- GrpcClientResource.owner(port, clientSslContext)
-      } yield (port, channel),
+        //channel <- GrpcClientResource.owner(port, clientSslContext)
+      } yield (port, null),
       acquisitionTimeout = 1.minute,
       releaseTimeout = 1.minute,
     )

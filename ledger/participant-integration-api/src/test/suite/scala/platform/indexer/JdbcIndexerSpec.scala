@@ -73,9 +73,7 @@ final class JdbcIndexerSpec
     readService
   }
 
-  private val noOpFlow = Flow[OffsetUpdate].map(_ => ())
-
-  behavior of classOf[JdbcIndexer].getSimpleName
+  behavior of "JdbcIndexer"
 
   it should "set the participant id correctly" in {
     val participantId = "the-participant"
@@ -124,37 +122,6 @@ final class JdbcIndexerSpec
     }
   }
 
-  /** This test is agnostic of the PostgreSQL LedgerDao and can be factored out */
-  it should "process updates with correct offset steps on subscription" in {
-    val participantId = "the-participant"
-    val captureBuffer = mutable.ArrayBuffer.empty[OffsetUpdate]
-    val flow =
-      Flow[OffsetUpdate]
-        .wireTap(captureBuffer += _)
-        .map(_ => ())
-
-    val mockedUpdates @ Seq(update1, update2, update3) =
-      (1 to 3).map(_ => mock[Update])
-
-    val offsets @ Seq(offset1, offset2, offset3) =
-      (1 to 3).map(idx => Offset(Bytes.fromByteArray(Array(idx.toByte))))
-
-    val expected = Seq(
-      OffsetUpdate(OffsetStep(None, offset1), update1),
-      OffsetUpdate(OffsetStep(Some(offset1), offset2), update2),
-      OffsetUpdate(OffsetStep(Some(offset2), offset3), update3),
-    )
-
-    initializeIndexer(participantId, flow)
-      .flatMap {
-        _.use {
-          _.subscription(mockedReadService(offsets zip mockedUpdates))
-            .use(_.completed())
-        }
-      }
-      .map(_ => captureBuffer should contain theSameElementsInOrderAs expected)
-  }
-
   private def runAndShutdown[A](owner: ResourceOwner[A]): Future[Unit] =
     owner.use(_ => Future.unit)
 
@@ -163,7 +130,6 @@ final class JdbcIndexerSpec
 
   private def initializeIndexer(
       participantId: String,
-      mockFlow: Flow[OffsetUpdate, Unit, NotUsed] = noOpFlow,
   ): Future[ResourceOwner[Indexer]] = {
     val config = IndexerConfig(
       participantId = v1.ParticipantId.assertFromString(participantId),
@@ -185,35 +151,11 @@ final class JdbcIndexerSpec
     new indexer.JdbcIndexer.Factory(
       config = config,
       readService = mockedReadService(),
-      servicesExecutionContext = materializer.executionContext,
       metrics = metrics,
-      updateFlowOwnerBuilder =
-        mockedUpdateFlowOwnerBuilder(metrics, config.participantId, mockFlow),
       ledgerDaoOwner = ledgerDaoOwner,
       flywayMigrations = new FlywayMigrations(config.jdbcUrl),
       lfValueTranslationCache = LfValueTranslation.Cache.none,
     ).migrateSchema(allowExistingSchema = true)
   }
 
-  private def mockedUpdateFlowOwnerBuilder(
-      metrics: Metrics,
-      participantId: v1.ParticipantId,
-      mockFlow: Flow[OffsetUpdate, Unit, NotUsed],
-  ): ExecuteUpdate.FlowOwnerBuilder = {
-    val mocked = mock[ExecuteUpdate.FlowOwnerBuilder]
-    val executeUpdateMock = mock[ExecuteUpdate]
-    when(executeUpdateMock.flow).thenReturn(mockFlow)
-    when(
-      mocked.apply(
-        eqTo(DbType.Postgres),
-        any[LedgerDao],
-        eqTo(metrics),
-        eqTo(participantId),
-        any[Int],
-        any[ExecutionContext],
-        any[LoggingContext],
-      )
-    ).thenReturn(ResourceOwner.successful(executeUpdateMock))
-    mocked
-  }
 }

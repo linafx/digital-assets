@@ -5,7 +5,6 @@ package com.daml.platform.sandbox.services
 
 import com.daml.ledger.api.testing.utils.{OwnedResource, Resource, SuiteResource}
 import com.daml.ledger.resources.{ResourceContext, ResourceOwner}
-import com.daml.platform.apiserver.services.GrpcClientResource
 import com.daml.platform.configuration.LedgerConfiguration
 import com.daml.platform.sandbox.config.SandboxConfig
 import com.daml.platform.sandbox.{AbstractSandboxFixture, SandboxServer}
@@ -38,8 +37,8 @@ trait SandboxFixture extends AbstractSandboxFixture with SuiteResource[(SandboxS
             _.map(info => Some(info.jdbcUrl))
           )
         server <- SandboxServer.owner(config.copy(jdbcUrl = jdbcUrl))
-        channel <- GrpcClientResource.owner(server.port)
-      } yield (server, channel),
+        //channel <- GrpcClientResource.owner(server.port)
+      } yield (server, null),
       acquisitionTimeout = 1.minute,
       releaseTimeout = 1.minute,
     )

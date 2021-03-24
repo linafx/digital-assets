@@ -125,65 +125,6 @@ da_scala_library(
     deps = compile_deps,
 )
 
-da_scala_library(
-    name = "participant-integration-api-tests-lib",
-    srcs = glob(["src/test/lib/**/*.scala"]),
-    plugins = [silencer_plugin],
-    scala_deps = [
-        "@maven//:com_typesafe_akka_akka_actor",
-        "@maven//:com_typesafe_akka_akka_stream",
-        "@maven//:org_scalacheck_scalacheck",
-        "@maven//:org_scalactic_scalactic",
-        "@maven//:org_scalatest_scalatest",
-    ],
-    scala_runtime_deps = [
-        "@maven//:com_typesafe_akka_akka_slf4j",
-    ],
-    scalacopts = [
-        "-P:silencer:lineContentFilters=import scala.collection.compat._",
-    ],
-    visibility = ["//visibility:public"],
-    runtime_deps = [
-        "@maven//:com_h2database_h2",
-        "@maven//:org_postgresql_postgresql",
-    ],
-    deps = [
-        ":participant-integration-api",
-        "//bazel_tools/runfiles:scala_runfiles",
-        "//daml-lf/archive:daml_lf_archive_reader",
-        "//daml-lf/archive:daml_lf_dev_archive_proto_java",
-        "//daml-lf/data",
-        "//daml-lf/engine",
-        "//daml-lf/language",
-        "//daml-lf/transaction",
-        "//daml-lf/transaction-test-lib",
-        "//language-support/scala/bindings",
-        "//ledger-api/rs-grpc-bridge",
-        "//ledger-api/sample-service",
-        "//ledger-api/testing-utils",
-        "//ledger/ledger-api-client",
-        "//ledger/ledger-api-common",
-        "//ledger/ledger-api-domain",
-        "//ledger/ledger-api-health",
-        "//ledger/ledger-resources",
-        "//ledger/metrics",
-        "//ledger/participant-state",
-        "//ledger/participant-state-index",
-        "//libs-scala/contextualized-logging",
-        "//libs-scala/ports",
-        "//libs-scala/postgresql-testing",
-        "//libs-scala/resources",
-        "//libs-scala/resources-akka",
-        "//libs-scala/resources-grpc",
-        "//libs-scala/timer-utils",
-        "@maven//:io_dropwizard_metrics_metrics_core",
-        "@maven//:io_grpc_grpc_netty",
-        "@maven//:io_netty_netty_common",
-        "@maven//:io_netty_netty_handler",
-        "@maven//:io_netty_netty_transport",
-    ],
-)
-
 test_deps = [
     ":participant-integration-api",
     ":participant-integration-api-tests-lib",
@@ -256,26 +197,6 @@ scala_test_deps = [
 ]
 
 openssl_executable = "@openssl_dev_env//:bin/openssl" if not is_windows else "@openssl_dev_env//:usr/bin/openssl.exe"
-
-da_scala_test_suite(
-    name = "participant-integration-api-tests",
-    size = "large",
-    srcs = glob(
-        ["src/test/suite/**/*.scala"],
-        exclude = ["src/test/suite/**/ResetService*IT.scala"],
-    ),
-    data = [
-        "//ledger/test-common:model-tests.dar",
-        "//ledger/test-common/test-certificates",
-        openssl_executable,
-    ],
-    jvm_flags = [
-        "-Djava.security.debug=\"certpath ocsp\"",  # This facilitates debugging of the OCSP checks mechanism
-    ],
-    resources = glob(["src/test/resources/**/*"]),
-    scala_deps = scala_test_deps,
-    deps = test_deps,
-)
 
 exports_files(["src/main/resources/logback.xml"])
 
