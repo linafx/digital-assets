@@ -29,7 +29,15 @@ module GHC.Types (
 #endif
 
 #ifdef DAML_BIGNUMERIC
-        LFRoundingMode, BigNumeric
+        RoundingMode, BigNumeric,
+        roundingUp,
+        roundingDown,
+        roundingCeiling,
+        roundingFloor,
+        roundingHalfUp,
+        roundingHalfDown,
+        roundingHalfEven,
+        roundingUnnecessary
 #endif
 
     ) where
@@ -207,6 +215,23 @@ data Decimal =
 
 data BigNumeric
 
-data LFRoundingMode
+data RoundingMode
+
+roundingUp : RoundingMode
+roundingUp = primitive @"BERoundingUp"
+roundingDown : RoundingMode
+roundingDown = primitive @"BERoundingDown"
+roundingCeiling : RoundingMode
+roundingCeiling = primitive @"BERoundingCeiling"
+roundingFloor : RoundingMode
+roundingFloor = primitive @"BERoundingFloor"
+roundingHalfUp : RoundingMode
+roundingHalfUp = primitive @"BERoundingHalfUp"
+roundingHalfDown : RoundingMode
+roundingHalfDown = primitive @"BERoundingHalfDown"
+roundingHalfEven : RoundingMode
+roundingHalfEven = primitive @"BERoundingHalfEven"
+roundingUnnecessary : RoundingMode
+roundingUnnecessary = primitive @"BERoundingUnnecessary"
 
 #endif

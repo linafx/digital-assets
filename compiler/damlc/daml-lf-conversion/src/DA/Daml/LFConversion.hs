@@ -1687,7 +1687,7 @@ convertTyCon env t
                     then pure TNumeric10
                     else pure TDecimal
             "BigNumeric" -> pure (TBigNumeric)
-            "LFRoundingMode" -> pure (TRoundingMode)
+            "RoundingMode" -> pure (TRoundingMode)
             _ -> defaultTyCon
     -- TODO(DEL-6953): We need to add a condition on the package name as well.
     | NameIn DA_Internal_LF n <- t =

@@ -6,7 +6,7 @@
 module DA.BigNumeric where
 
 #ifdef DAML_BIGNUMERIC
-import GHC.Types (BigNumeric, primitive, LFRoundingMode)
+import GHC.Types (BigNumeric, primitive, RoundingMode)
 
 scale: BigNumeric -> Int
 scale = primitive @"BEScaleBigNumeric"
@@ -24,7 +24,7 @@ mul : BigNumeric -> BigNumeric -> BigNumeric
 mul = primitive @"BEMulBigNumeric"
 
 div : Int -> RoundingMode -> BigNumeric -> BigNumeric -> BigNumeric
-div i r a b = primitive @"BEDivBigNumeric" i (toRoundingMode r) a b
+div = primitive @"BEDivBigNumeric"
 
 shift: Int -> BigNumeric -> BigNumeric
 shift = primitive @"BEShiftBigNumeric"
@@ -34,26 +34,4 @@ fromNumeric = primitive @"BEToBigNumericNumeric"
 
 toNumeric: forall n. NumericScale n => BigNumeric -> Numeric n
 toNumeric = primitive @"BEToNumericBigNumeric"
-
-toRoundingMode : RoundingMode -> LFRoundingMode
-toRoundingMode = \case
-  RoundingUp -> primitive @"BERoundingUp"
-  RoundingDown -> primitive @"BERoundingDown"
-  RoundingCeiling -> primitive @"BERoundingCeiling"
-  RoundingFloor -> primitive @"BERoundingFloor"
-  RoundingHalfUp -> primitive @"BERoundingHalfUp"
-  RoundingHalfDown -> primitive @"BERoundingHalfDown"
-  RoundingHalfEven -> primitive @"BERoundingHalfEven"
-  RoundingUnnecessary -> primitive @"BERoundingUnnecessary"
-
-data RoundingMode =
-   RoundingUp
- | RoundingDown
- | RoundingCeiling
- | RoundingFloor
- | RoundingHalfUp
- | RoundingHalfDown
- | RoundingHalfEven
- | RoundingUnnecessary
-
 #endif
