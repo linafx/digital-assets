@@ -9,8 +9,9 @@ import com.daml.ledger.api.domain
 import com.daml.ledger.participant.state.v1.{Configuration, Offset, ParticipantId, Update}
 import com.daml.lf.engine.Blinding
 import com.daml.lf.ledger.EventId
+import com.daml.platform.store.Conversions
 import com.daml.platform.store.dao.events._
-import com.daml.platform.store.dao.{CommandCompletionsTable, JdbcLedgerDao}
+import com.daml.platform.store.dao.JdbcLedgerDao
 
 // TODO target to separation per update-type to it's own function + unit tests
 object UpdateToDBDTOV1 {
@@ -23,7 +24,6 @@ object UpdateToDBDTOV1 {
     {
       case u: Update.CommandRejected =>
         // TODO we might want to tune up deduplications so it is also a temporal query @simon@?
-        val (statusCode, statusMessage) = CommandCompletionsTable.toStatus(u.reason)
         Iterator(
           new DBDTOV1.CommandCompletion(
             completion_offset = offset.toByteArray,
@@ -32,8 +32,8 @@ object UpdateToDBDTOV1 {
             submitters = u.submitterInfo.actAs.toSet,
             command_id = u.submitterInfo.commandId,
             transaction_id = None,
-            status_code = Some(statusCode),
-            status_message = Some(statusMessage),
+            status_code = Some(Conversions.participantRejectionReasonToErrorCode(u.reason).value()),
+            status_message = Some(u.reason.description),
           ),
           new DBDTOV1.CommandDeduplication(
             JdbcLedgerDao.deduplicationKey(
