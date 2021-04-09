@@ -26,6 +26,7 @@ object Tests {
       new ConfigManagementServiceIT,
       new ContractKeysIT,
       new DivulgenceIT,
+      new ExceptionsIT,
       new HealthServiceIT,
       new IdentityIT,
       new LedgerConfigurationServiceIT,
