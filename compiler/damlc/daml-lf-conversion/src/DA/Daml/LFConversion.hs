@@ -975,8 +975,8 @@ convertExpr env0 e = do
         | isSingleConType recordTyCon = do
             t_record <- convertType env record
             t_field <- convertType env field
-            withTmArg env (varV1, t_field :-> t_field) args $ \x_func args ->
-                withTmArg env (varV2, t_record) args $ \x_record args -> do
+            withTmArg env (t_field :-> t_field) args $ \x_func args ->
+                withTmArg env t_record args $ \x_record args -> do
                     let n_field = mkField (fsToText name)
                     let (x_write, (x_read, context)) = followRecUpds t_record n_field x_record
                     let c_record = fromTCon t_record
