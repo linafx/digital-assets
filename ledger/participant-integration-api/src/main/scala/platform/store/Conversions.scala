@@ -56,6 +56,8 @@ private[platform] object OracleArrayConversions {
     override def jdbcType: Int = java.sql.Types.ARRAY
   }
 
+  // Oracle does not support the boolean SQL type, so we need to treat it as integer
+  // when setting nulls
   implicit object BooleanParameterMetaData extends ParameterMetaData[Boolean] {
     val sqlType = "INTEGER"
     val jdbcType = Types.INTEGER

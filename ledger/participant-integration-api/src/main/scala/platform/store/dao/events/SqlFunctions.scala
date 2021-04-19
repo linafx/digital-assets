@@ -13,6 +13,8 @@ private[dao] trait SqlFunctions {
   def arrayIntersectionWhereClause(arrayColumn: String, parties: Set[Party]): String
 
   def arrayIntersectionValues(arrayColumn: String, parties: Set[Party]): String
+
+  def limitClause(numRows: Int): String
 }
 
 private[dao] object SqlFunctions {
@@ -31,6 +33,8 @@ private[dao] object SqlFunctions {
 
     def arrayIntersectionValues(arrayColumn: String, parties: Set[Party]): String =
       s"array(select unnest($arrayColumn) intersect select unnest(array[${format(parties)}]))"
+
+    def limitClause(numRows: Int) = s"limit $numRows"
   }
 
   object H2SqlFunctions extends SqlFunctions {
@@ -42,15 +46,19 @@ private[dao] object SqlFunctions {
 
     def arrayIntersectionValues(arrayColumn: String, parties: Set[Party]): String =
       s"array_intersection($arrayColumn, array[${format(parties)}])"
+
+    def limitClause(numRows: Int) = s"limit $numRows"
   }
 
   //TODO need to properly implement this for Oracle
   object OracleSqlFunctions extends SqlFunctions {
     override def arrayIntersectionWhereClause(arrayColumn: String, parties: Set[Party]): String =
-      s"SELECT * FROM TABLE($arrayColumn) && VARCHAR_ARRAY(${format(parties)})"
+      s"(${format(parties)}) IN (SELECT * FROM TABLE($arrayColumn))"
 
     def arrayIntersectionValues(arrayColumn: String, parties: Set[Party]): String =
       s"select * FROM TABLE($arrayColumn) intersect VARCHAR_ARRAY(${format(parties)})))"
+
+    def limitClause(numRows: Int) = s"fetch next $numRows rows only"
   }
 
 }

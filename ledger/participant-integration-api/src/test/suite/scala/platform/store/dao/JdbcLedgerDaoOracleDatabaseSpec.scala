@@ -20,5 +20,5 @@ class JdbcLedgerDaoOracleDatabaseSpec
 //    with JdbcLedgerDaoDivulgenceSpec
 //    with JdbcLedgerDaoTransactionsSpec
 //    with JdbcLedgerDaoTransactionTreesSpec
-//    with JdbcLedgerDaoTransactionsWriterSpec
+    with JdbcLedgerDaoTransactionsWriterSpec
     with JdbcAtomicTransactionInsertion
