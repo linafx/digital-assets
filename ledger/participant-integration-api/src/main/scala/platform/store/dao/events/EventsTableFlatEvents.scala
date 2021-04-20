@@ -122,14 +122,20 @@ private[events] object EventsTableFlatEvents {
   ): SimpleSql[Row] = {
     val witnessesWhereClause =
       sqlFunctions.arrayIntersectionWhereClause("flat_event_witnesses", requestingParty)
-    SQL"""select #$selectColumns, array[$requestingParty] as event_witnesses,
-                 case when submitters = array[$requestingParty] then command_id else '' end as command_id
+    SQL"""select #$selectColumns, #${sqlFunctions.toArray(requestingParty)} as event_witnesses,
+                 case when #${sqlFunctions.arrayIntersectionWhereClause(
+      "submitters",
+      requestingParty,
+    )} then command_id else '' end as command_id
           from participant_events
           join parameters on
-              (participant_pruned_up_to_inclusive is null or event_offset > participant_pruned_up_to_inclusive)
-              and event_offset <= ledger_end
+              (participant_pruned_up_to_inclusive is null or #${sqlFunctions.greaterThanClause(
+      "event_offset",
+      "participant_pruned_up_to_inclusive",
+    )})
+              and #${sqlFunctions.lessThanOrEqualToClause("event_offset", "ledger_end")}
           where transaction_id = $transactionId and #$witnessesWhereClause
-          order by event_sequential_id"""
+          order by event_sequential_id""" //problematic for oracle
   }
 
   private def multiPartyLookup(sqlFunctions: SqlFunctions)(
@@ -144,11 +150,14 @@ private[events] object EventsTableFlatEvents {
                  case when #$submittersInPartiesClause then command_id else '' end as command_id
           from participant_events
           join parameters on
-              (participant_pruned_up_to_inclusive is null or event_offset > participant_pruned_up_to_inclusive)
-              and event_offset <= ledger_end
+              (participant_pruned_up_to_inclusive is null or #${sqlFunctions.greaterThanClause(
+      "event_offset",
+      "participant_pruned_up_to_inclusive",
+    )})
+              and #${sqlFunctions.lessThanOrEqualToClause("event_offset", "ledger_end")}
           where transaction_id = $transactionId and #$witnessesWhereClause
           group by (#$groupByColumns)
-          order by event_sequential_id"""
+          order by event_sequential_id""" //problematic for oracle
   }
 
   private def getFlatTransactionsQueries(sqlFunctions: SqlFunctions) =
