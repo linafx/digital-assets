@@ -18,7 +18,9 @@ private[dao] trait SqlFunctions {
 
   def limitClause(numRows: Int): String
 
-  def equalsClause(left: String, right: Any): String
+  def equalsClause(left: String): String
+
+  def equalsClauseEnd(): String
 
   def greaterThanClause(left: String, right: Any): String
 
@@ -46,7 +48,9 @@ private[dao] object SqlFunctions {
 
     def limitClause(numRows: Int) = s"limit $numRows"
 
-    def equalsClause(left: String, right: Any) = s"$left = $right"
+    def equalsClause(left: String) = s"$left = "
+
+    def equalsClauseEnd(): String = ""
 
     def greaterThanClause(left: String, right: Any) = s"$left > $right"
 
@@ -67,7 +71,9 @@ private[dao] object SqlFunctions {
 
     def limitClause(numRows: Int) = s"limit $numRows"
 
-    def equalsClause(left: String, right: Any) = s"$left = $right"
+    def equalsClause(left: String) = s"$left = "
+
+    def equalsClauseEnd(): String = ""
 
     def greaterThanClause(left: String, right: Any) = s"$left > $right"
 
@@ -89,7 +95,9 @@ private[dao] object SqlFunctions {
 
     def limitClause(numRows: Int) = s"fetch next $numRows rows only"
 
-    def equalsClause(left: String, right: Any) = s"DBMS_LOB.compare($left, $right) = 0"
+    def equalsClause(left: String) = s"DBMS_LOB.compare($left, "
+
+    def equalsClauseEnd() = ") = 0"
 
     def greaterThanClause(left: String, right: Any) = s"DBMS_LOB.compare($left, $right) = 1"
 
