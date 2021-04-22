@@ -156,7 +156,7 @@ private[events] object EventsTableFlatEventsRangeQueries {
       val witnessesWhereClause =
         sqlFunctions.arrayIntersectionWhereClause("flat_event_witnesses", party)
       QueryParts.ByArith(
-        read = (range, limitExpr) =>
+        read = (range, _) =>
           SQL"""
             select #$selectColumns, #${sqlFunctions.toArray(party)} as event_witnesses,
                    case when #${sqlFunctions
@@ -165,7 +165,7 @@ private[events] object EventsTableFlatEventsRangeQueries {
             where event_sequential_id > ${range.startExclusive}
                   and event_sequential_id <= ${range.endInclusive}
                   and #$witnessesWhereClause
-            order by event_sequential_id #$limitExpr"""
+            order by event_sequential_id #${sqlFunctions.limitClause(pageSize)}"""
       )
     }
 
@@ -178,7 +178,7 @@ private[events] object EventsTableFlatEventsRangeQueries {
       val witnessesWhereClause =
         sqlFunctions.arrayIntersectionWhereClause("flat_event_witnesses", party)
       QueryParts.ByArith(
-        read = (range, limitExpr) =>
+        read = (range, _) =>
           SQL"""
             select #$selectColumns, #${sqlFunctions.toArray(party)} as event_witnesses,
                    case when #${sqlFunctions
@@ -188,7 +188,7 @@ private[events] object EventsTableFlatEventsRangeQueries {
                   and event_sequential_id <= ${range.endInclusive}
                   and #$witnessesWhereClause
                   and template_id in ($templateIds)
-            order by event_sequential_id #$limitExpr"""
+            order by event_sequential_id #${sqlFunctions.limitClause(pageSize)}"""
       )
     }
 
@@ -204,14 +204,14 @@ private[events] object EventsTableFlatEventsRangeQueries {
       val submittersInPartiesClause =
         sqlFunctions.arrayIntersectionWhereClause("submitters", parties)
       QueryParts.ByArith(
-        read = (range, limitExpr) => SQL"""
+        read = (range, _) => SQL"""
             select #$selectColumns, #$filteredWitnesses as event_witnesses,
                    case when #$submittersInPartiesClause then command_id else '' end as command_id
             from participant_events
             where event_sequential_id > ${range.startExclusive}
                   and event_sequential_id <= ${range.endInclusive}
                   and #$witnessesWhereClause
-            order by event_sequential_id #$limitExpr"""
+            order by event_sequential_id #${sqlFunctions.limitClause(pageSize)}"""
       )
     }
 
@@ -228,7 +228,7 @@ private[events] object EventsTableFlatEventsRangeQueries {
       val submittersInPartiesClause =
         sqlFunctions.arrayIntersectionWhereClause("submitters", parties)
       QueryParts.ByArith(
-        read = (range, limitExpr) => SQL"""
+        read = (range, _) => SQL"""
             select #$selectColumns, #$filteredWitnesses as event_witnesses,
                    case when #$submittersInPartiesClause then command_id else '' end as command_id
             from participant_events
@@ -236,7 +236,7 @@ private[events] object EventsTableFlatEventsRangeQueries {
                   and event_sequential_id <= ${range.endInclusive}
                   and #$witnessesWhereClause
                   and template_id in ($templateIds)
-            order by event_sequential_id #$limitExpr"""
+            order by event_sequential_id #${sqlFunctions.limitClause(pageSize)}"""
       )
     }
 
@@ -257,14 +257,14 @@ private[events] object EventsTableFlatEventsRangeQueries {
       val submittersInPartiesClause =
         sqlFunctions.arrayIntersectionWhereClause("submitters", parties)
       QueryParts.ByArith(
-        read = (range, limitExpr) => SQL"""
+        read = (range, _) => SQL"""
             select #$selectColumns, #$filteredWitnesses as event_witnesses,
                    case when #$submittersInPartiesClause then command_id else '' end as command_id
             from participant_events
             where event_sequential_id > ${range.startExclusive}
                   and event_sequential_id <= ${range.endInclusive}
                   and #$partiesAndTemplatesCondition
-            order by event_sequential_id #$limitExpr"""
+            order by event_sequential_id #${sqlFunctions.limitClause(pageSize)}"""
       )
     }
 
@@ -288,14 +288,14 @@ private[events] object EventsTableFlatEventsRangeQueries {
       val submittersInPartiesClause =
         sqlFunctions.arrayIntersectionWhereClause("submitters", parties)
       QueryParts.ByArith(
-        read = (range, limitExpr) => SQL"""
+        read = (range, _) => SQL"""
             select #$selectColumns, #$filteredWitnesses as event_witnesses,
                    case when #$submittersInPartiesClause then command_id else '' end as command_id
             from participant_events
             where event_sequential_id > ${range.startExclusive}
                   and event_sequential_id <= ${range.endInclusive}
                   and (#$witnessesWhereClause or #$partiesAndTemplatesCondition)
-            order by event_sequential_id #$limitExpr"""
+            order by event_sequential_id #${sqlFunctions.limitClause(pageSize)}"""
       )
     }
 
@@ -321,7 +321,8 @@ private[events] object EventsTableFlatEventsRangeQueries {
             where create_argument is not null
                   and event_sequential_id > ${range.startExclusive._2: Long}
                   and event_sequential_id <= ${range.endInclusive._2: Long}
-                  and (create_consumed_at is null or create_consumed_at > ${range.endInclusive._1: Offset})
+                  and (create_consumed_at is null or
+                  #${sqlFunctions.greaterThanClauseStart("create_consumed_at")} ${range.endInclusive._1: Offset} #${sqlFunctions.greaterThanClauseEnd()})
                   and #$witnessesWhereClause
             order by event_sequential_id #${sqlFunctions.limitClause(pageSize)}"""
     }
@@ -341,7 +342,8 @@ private[events] object EventsTableFlatEventsRangeQueries {
             where create_argument is not null
                   and event_sequential_id > ${range.startExclusive._2: Long}
                   and event_sequential_id <= ${range.endInclusive._2: Long}
-                  and (create_consumed_at is null or create_consumed_at > ${range.endInclusive._1: Offset})
+                  and (create_consumed_at is null or
+                  #${sqlFunctions.greaterThanClauseStart("create_consumed_at")} ${range.endInclusive._1: Offset} #${sqlFunctions.greaterThanClauseEnd()})
                   and #$witnessesWhereClause
                   and template_id in ($templateIds)
             order by event_sequential_id #${sqlFunctions.limitClause(pageSize)}"""
@@ -364,7 +366,8 @@ private[events] object EventsTableFlatEventsRangeQueries {
             where create_argument is not null
                   and event_sequential_id > ${range.startExclusive._2: Long}
                   and event_sequential_id <= ${range.endInclusive._2: Long}
-                  and (create_consumed_at is null or create_consumed_at > ${range.endInclusive._1: Offset})
+                  and (create_consumed_at is null or
+                  #${sqlFunctions.greaterThanClauseStart("create_consumed_at")} ${range.endInclusive._1: Offset} #${sqlFunctions.greaterThanClauseEnd()})
                   and #$witnessesWhereClause
             order by event_sequential_id #${sqlFunctions.limitClause(pageSize)}"""
     }
@@ -387,7 +390,8 @@ private[events] object EventsTableFlatEventsRangeQueries {
             where create_argument is not null
                   and event_sequential_id > ${range.startExclusive._2: Long}
                   and event_sequential_id <= ${range.endInclusive._2: Long}
-                  and (create_consumed_at is null or create_consumed_at > ${range.endInclusive._1: Offset})
+                  and (create_consumed_at is null or
+                  #${sqlFunctions.greaterThanClauseStart("create_consumed_at")} ${range.endInclusive._1: Offset} #${sqlFunctions.greaterThanClauseEnd()})
                   and #$witnessesWhereClause
                   and template_id in ($templateIds)
             order by event_sequential_id #${sqlFunctions.limitClause(pageSize)}"""
@@ -415,7 +419,8 @@ private[events] object EventsTableFlatEventsRangeQueries {
             where create_argument is not null
                   and event_sequential_id > ${range.startExclusive._2: Long}
                   and event_sequential_id <= ${range.endInclusive._2: Long}
-                  and (create_consumed_at is null or create_consumed_at > ${range.endInclusive._1: Offset})
+                  and (create_consumed_at is null or
+                  #${sqlFunctions.greaterThanClauseStart("create_consumed_at")} ${range.endInclusive._1: Offset} #${sqlFunctions.greaterThanClauseEnd()})
                   and #$partiesAndTemplatesCondition
             order by event_sequential_id #${sqlFunctions.limitClause(pageSize)}"""
     }
@@ -445,7 +450,8 @@ private[events] object EventsTableFlatEventsRangeQueries {
             where create_argument is not null
                   and event_sequential_id > ${range.startExclusive._2: Long}
                   and event_sequential_id <= ${range.endInclusive._2: Long}
-                  and (create_consumed_at is null or create_consumed_at > ${range.endInclusive._1: Offset})
+                  and (create_consumed_at is null or
+                  #${sqlFunctions.greaterThanClauseStart("create_consumed_at")} ${range.endInclusive._1: Offset} #${sqlFunctions.greaterThanClauseEnd()})
                   and (#$witnessesWhereClause or #$partiesAndTemplatesCondition)
             order by event_sequential_id #${sqlFunctions.limitClause(pageSize)}"""
     }

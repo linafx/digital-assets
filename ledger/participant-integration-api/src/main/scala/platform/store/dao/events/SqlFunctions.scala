@@ -24,6 +24,10 @@ private[dao] trait SqlFunctions {
 
   def greaterThanClause(left: String, right: Any): String
 
+  def greaterThanClauseStart(left: String): String
+
+  def greaterThanClauseEnd(): String
+
   def lessThanOrEqualToClause(left: String, right: Any): String
 }
 
@@ -54,6 +58,10 @@ private[dao] object SqlFunctions {
 
     def greaterThanClause(left: String, right: Any) = s"$left > $right"
 
+    def greaterThanClauseStart(left: String): String = s"$left > "
+
+    def greaterThanClauseEnd(): String = ""
+
     def lessThanOrEqualToClause(left: String, right: Any) = s"$left <= $right"
   }
 
@@ -76,6 +84,10 @@ private[dao] object SqlFunctions {
     def equalsClauseEnd(): String = ""
 
     def greaterThanClause(left: String, right: Any) = s"$left > $right"
+
+    def greaterThanClauseStart(left: String): String = s"$left > "
+
+    def greaterThanClauseEnd(): String = ""
 
     def lessThanOrEqualToClause(left: String, right: Any) = s"$left <= $right"
   }
@@ -100,6 +112,10 @@ private[dao] object SqlFunctions {
     def equalsClauseEnd() = ") = 0"
 
     def greaterThanClause(left: String, right: Any) = s"DBMS_LOB.compare($left, $right) = 1"
+
+    def greaterThanClauseStart(left: String): String = s"DBMS_LOB.compare($left, "
+
+    def greaterThanClauseEnd(): String = ") = 1"
 
     def lessThanOrEqualToClause(left: String, right: Any) =
       s"DBMS_LOB.compare($left, $right) IN (0, -1)"

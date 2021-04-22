@@ -6,7 +6,7 @@ package com.daml.platform.store.dao.events
 import java.sql.Connection
 import java.time.Instant
 
-import anorm.{BatchSql, NamedParameter}
+import anorm.{BatchSql, NamedParameter, SqlStringInterpolation}
 import com.daml.ledger.participant.state.v1.DivulgedContract
 import com.daml.platform.store.Conversions._
 import com.daml.platform.store.dao.events.ContractsTable.Executable
@@ -30,6 +30,12 @@ object ContractsTableOracle extends ContractsTable {
     deleteContracts = buildDeletes(info),
     insertContracts = buildInserts(tx, info, serialized),
   )
+
+  override def lookupContractKeyGlobally(
+                                          key: Key
+                                        )(implicit connection: Connection): Option[ContractId] =
+    SQL"select participant_contracts.contract_id from participant_contracts where DBMS_LOB.compare(create_key_hash, ${key.hash}) = 0"
+      .as(contractId("contract_id").singleOpt)
 
   private def insertContract(
       contractId: ContractId,

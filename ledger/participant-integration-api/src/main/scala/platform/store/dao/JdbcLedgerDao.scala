@@ -1289,19 +1289,19 @@ private[platform] object JdbcLedgerDao {
 
     override protected[JdbcLedgerDao] val SQL_GET_PACKAGE_ENTRIES: String =
       """select * from package_entries where
-        |(dbms_lob.compare(ledger_offset, {startExclusive}) = 1) and
+        |({startExclusive} is null or dbms_lob.compare(ledger_offset, {startExclusive}) = 1) and
         |(dbms_lob.compare(ledger_offset, {endInclusive}) IN (0, -1))
         |offset {queryOffset} rows fetch next {pageSize} rows only""".stripMargin
 
     override protected[JdbcLedgerDao] val SQL_GET_PARTY_ENTRIES: String =
       """select * from party_entries where
-        |(dbms_lob.compare(ledger_offset, {startExclusive}) = 1) and
+        |({startExclusive} is null or dbms_lob.compare(ledger_offset, {startExclusive}) = 1) and
         |(dbms_lob.compare(ledger_offset, {endInclusive}) IN (0, -1))
         |offset {queryOffset} rows fetch next {pageSize} rows only""".stripMargin
 
     override protected[JdbcLedgerDao] val SQL_GET_CONFIGURATION_ENTRIES =
       """select * from configuration_entries where
-        |(dbms_lob.compare(ledger_offset, {startExclusive}) = 1) and
+        |({startExclusive} is null or dbms_lob.compare(ledger_offset, {startExclusive}) = 1) and
         |(dbms_lob.compare(ledger_offset, {endInclusive}) IN (0, -1))
         |offset {queryOffset} rows fetch next {pageSize} rows only""".stripMargin
 

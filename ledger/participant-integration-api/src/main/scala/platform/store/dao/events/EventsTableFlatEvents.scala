@@ -88,24 +88,24 @@ private[events] object EventsTableFlatEvents {
       "create_key_value_compression",
     ).mkString(", ")
 
-  private val groupByColumns =
-    Seq(
-      "event_offset",
-      "transaction_id",
-      "ledger_effective_time",
-      "command_id",
-      "workflow_id",
-      "participant_events.event_id",
-      "contract_id",
-      "template_id",
-      "create_argument",
-      "create_argument_compression",
-      "create_signatories",
-      "create_observers",
-      "create_agreement_text",
-      "create_key_value",
-      "create_key_value_compression",
-    ).mkString(", ")
+//  private val groupByColumns =
+//    Seq(
+////      "event_offset",
+//      "transaction_id",
+//      "ledger_effective_time",
+//      "command_id",
+//      "workflow_id",
+//      "participant_events.event_id",
+//      "contract_id",
+//      "template_id",
+////      "create_argument",
+//      "create_argument_compression",
+////      "create_signatories",
+////      "create_observers",
+//      "create_agreement_text",
+////      "create_key_value",
+//      "create_key_value_compression",
+//    ).mkString(", ")
 
   def prepareLookupFlatTransactionById(sqlFunctions: SqlFunctions)(
       transactionId: TransactionId,
@@ -135,7 +135,7 @@ private[events] object EventsTableFlatEvents {
     )})
               and #${sqlFunctions.lessThanOrEqualToClause("event_offset", "ledger_end")}
           where transaction_id = $transactionId and #$witnessesWhereClause
-          order by event_sequential_id""" //problematic for oracle
+          order by event_sequential_id"""
   }
 
   private def multiPartyLookup(sqlFunctions: SqlFunctions)(
@@ -156,9 +156,13 @@ private[events] object EventsTableFlatEvents {
     )})
               and #${sqlFunctions.lessThanOrEqualToClause("event_offset", "ledger_end")}
           where transaction_id = $transactionId and #$witnessesWhereClause
-          group by (#$groupByColumns)
-          order by event_sequential_id""" //problematic for oracle
+          order by event_sequential_id"""
   }
+
+  //TODO BH: existing groupByColumns need to match select and include BLOB and VARRAY columns you cannot group by with oracle
+  // so need to remove the groupBy for oracle
+  //  group by (#$groupByColumns)
+
 
   private def getFlatTransactionsQueries(sqlFunctions: SqlFunctions) =
     new EventsTableFlatEventsRangeQueries.GetTransactions(

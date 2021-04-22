@@ -174,7 +174,7 @@ private[events] object EventsTableTreeEvents {
     val witnessesWhereClause =
       sqlFunctions.arrayIntersectionWhereClause("tree_event_witnesses", requestingParty)
     EventsRange.readPage(
-      read = (range, limitExpr) =>
+      read = (range, _) =>
         SQL"""
         select #$selectColumns, #${sqlFunctions.toArray(requestingParty)} as event_witnesses,
                case when #${sqlFunctions
@@ -183,7 +183,7 @@ private[events] object EventsTableTreeEvents {
         where event_sequential_id > ${range.startExclusive}
               and event_sequential_id <= ${range.endInclusive}
               and #$witnessesWhereClause
-        order by event_sequential_id #$limitExpr""",
+        order by event_sequential_id #${sqlFunctions.limitClause(pageSize)}""",
       rawTreeEventParser,
       range,
       pageSize,
@@ -202,14 +202,14 @@ private[events] object EventsTableTreeEvents {
     val submittersInPartiesClause =
       sqlFunctions.arrayIntersectionWhereClause("submitters", requestingParties)
     EventsRange.readPage(
-      read = (range, limitExpr) => SQL"""
+      read = (range, _) => SQL"""
         select #$selectColumns, #$filteredWitnesses as event_witnesses,
                case when #$submittersInPartiesClause then command_id else '' end as command_id
         from participant_events
         where event_sequential_id > ${range.startExclusive}
               and event_sequential_id <= ${range.endInclusive}
               and #$witnessesWhereClause
-        order by event_sequential_id #$limitExpr""",
+        order by event_sequential_id #${sqlFunctions.limitClause(pageSize)}""",
       rawTreeEventParser,
       range,
       pageSize,

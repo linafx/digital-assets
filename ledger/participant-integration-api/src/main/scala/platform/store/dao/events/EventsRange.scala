@@ -63,12 +63,10 @@ private[events] object EventsRange {
     // however tests using PostgreSQL 12 with tens of millions of events have shown that the index
     // on `event_offset` is not used unless we _hint_ at it by specifying `order by event_offset`
     val query = dbType match {
-      // TODO : When event_sequential_id is null oracle bombs before even getting to the getOrElse block
-      // 1 - Need to figure out how to get max on event_sequential_id
       // 2 - Need to figure out order by event_offset alternative
       // 3 - Need to get group by to work field even works
       case Oracle =>
-        SQL"select EVENT_SEQUENTIAL_ID from participant_events where (dbms_lob.compare(event_offset, ${offset}) IN (0, -1)) fetch next 1 rows only"
+        SQL"select nvl(max(event_sequential_id),0) from participant_events where (dbms_lob.compare(event_offset, ${offset}) IN (0, -1)) fetch next 1 rows only"
       case _ =>
         SQL"select max(event_sequential_id) from participant_events where event_offset <= ${offset} group by event_offset order by event_offset desc limit 1"
     }
