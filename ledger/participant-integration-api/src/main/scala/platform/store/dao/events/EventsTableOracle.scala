@@ -56,7 +56,9 @@ object EventsTableOracle extends EventsTable {
     ).unzip
     s"""insert
        |/*+ ignore_row_on_dupkey_index(participant_events(event_id)) */
-       |into participant_events(${columns.mkString(", ")}) values (${values.mkString(", ")})""".stripMargin
+       |into participant_events(${columns.mkString(", ")}) values (${values.mkString(
+      ", "
+    )})""".stripMargin
   }
 
   private def transaction(

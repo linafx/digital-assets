@@ -322,7 +322,9 @@ private[events] object EventsTableFlatEventsRangeQueries {
                   and event_sequential_id > ${range.startExclusive._2: Long}
                   and event_sequential_id <= ${range.endInclusive._2: Long}
                   and (create_consumed_at is null or
-                  #${sqlFunctions.greaterThanClauseStart("create_consumed_at")} ${range.endInclusive._1: Offset} #${sqlFunctions.greaterThanClauseEnd()})
+                  #${sqlFunctions.greaterThanClauseStart(
+        "create_consumed_at"
+      )} ${range.endInclusive._1: Offset} #${sqlFunctions.greaterThanClauseEnd()})
                   and #$witnessesWhereClause
             order by event_sequential_id #${sqlFunctions.limitClause(pageSize)}"""
     }
@@ -343,7 +345,9 @@ private[events] object EventsTableFlatEventsRangeQueries {
                   and event_sequential_id > ${range.startExclusive._2: Long}
                   and event_sequential_id <= ${range.endInclusive._2: Long}
                   and (create_consumed_at is null or
-                  #${sqlFunctions.greaterThanClauseStart("create_consumed_at")} ${range.endInclusive._1: Offset} #${sqlFunctions.greaterThanClauseEnd()})
+                  #${sqlFunctions.greaterThanClauseStart(
+        "create_consumed_at"
+      )} ${range.endInclusive._1: Offset} #${sqlFunctions.greaterThanClauseEnd()})
                   and #$witnessesWhereClause
                   and template_id in ($templateIds)
             order by event_sequential_id #${sqlFunctions.limitClause(pageSize)}"""
@@ -367,7 +371,9 @@ private[events] object EventsTableFlatEventsRangeQueries {
                   and event_sequential_id > ${range.startExclusive._2: Long}
                   and event_sequential_id <= ${range.endInclusive._2: Long}
                   and (create_consumed_at is null or
-                  #${sqlFunctions.greaterThanClauseStart("create_consumed_at")} ${range.endInclusive._1: Offset} #${sqlFunctions.greaterThanClauseEnd()})
+                  #${sqlFunctions.greaterThanClauseStart(
+        "create_consumed_at"
+      )} ${range.endInclusive._1: Offset} #${sqlFunctions.greaterThanClauseEnd()})
                   and #$witnessesWhereClause
             order by event_sequential_id #${sqlFunctions.limitClause(pageSize)}"""
     }
@@ -391,7 +397,9 @@ private[events] object EventsTableFlatEventsRangeQueries {
                   and event_sequential_id > ${range.startExclusive._2: Long}
                   and event_sequential_id <= ${range.endInclusive._2: Long}
                   and (create_consumed_at is null or
-                  #${sqlFunctions.greaterThanClauseStart("create_consumed_at")} ${range.endInclusive._1: Offset} #${sqlFunctions.greaterThanClauseEnd()})
+                  #${sqlFunctions.greaterThanClauseStart(
+        "create_consumed_at"
+      )} ${range.endInclusive._1: Offset} #${sqlFunctions.greaterThanClauseEnd()})
                   and #$witnessesWhereClause
                   and template_id in ($templateIds)
             order by event_sequential_id #${sqlFunctions.limitClause(pageSize)}"""
@@ -420,7 +428,9 @@ private[events] object EventsTableFlatEventsRangeQueries {
                   and event_sequential_id > ${range.startExclusive._2: Long}
                   and event_sequential_id <= ${range.endInclusive._2: Long}
                   and (create_consumed_at is null or
-                  #${sqlFunctions.greaterThanClauseStart("create_consumed_at")} ${range.endInclusive._1: Offset} #${sqlFunctions.greaterThanClauseEnd()})
+                  #${sqlFunctions.greaterThanClauseStart(
+        "create_consumed_at"
+      )} ${range.endInclusive._1: Offset} #${sqlFunctions.greaterThanClauseEnd()})
                   and #$partiesAndTemplatesCondition
             order by event_sequential_id #${sqlFunctions.limitClause(pageSize)}"""
     }
@@ -451,7 +461,9 @@ private[events] object EventsTableFlatEventsRangeQueries {
                   and event_sequential_id > ${range.startExclusive._2: Long}
                   and event_sequential_id <= ${range.endInclusive._2: Long}
                   and (create_consumed_at is null or
-                  #${sqlFunctions.greaterThanClauseStart("create_consumed_at")} ${range.endInclusive._1: Offset} #${sqlFunctions.greaterThanClauseEnd()})
+                  #${sqlFunctions.greaterThanClauseStart(
+        "create_consumed_at"
+      )} ${range.endInclusive._1: Offset} #${sqlFunctions.greaterThanClauseEnd()})
                   and (#$witnessesWhereClause or #$partiesAndTemplatesCondition)
             order by event_sequential_id #${sqlFunctions.limitClause(pageSize)}"""
     }

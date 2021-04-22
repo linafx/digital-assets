@@ -163,7 +163,6 @@ private[events] object EventsTableFlatEvents {
   // so need to remove the groupBy for oracle
   //  group by (#$groupByColumns)
 
-
   private def getFlatTransactionsQueries(sqlFunctions: SqlFunctions) =
     new EventsTableFlatEventsRangeQueries.GetTransactions(
       selectColumns = selectColumns,
