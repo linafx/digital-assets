@@ -2105,6 +2105,8 @@ class EngineTest
         ("RollbackGlobalArchiveNonRollbackCreate", keyResultCid)
       val rollbackCreateNonRollbackGlobalArchive =
         ("RollbackCreateNonRollbackGlobalArchive", keyResultCid)
+      val rollbackGlobalArchiveUpdates =
+        ("RollbackGlobalArchiveUpdates", twoCids)
 
       "non-uck mode" in {
         val allCases = Table(
@@ -2124,6 +2126,7 @@ class EngineTest
           rollbackFetchNonRollbackCreate,
           rollbackGlobalArchiveNonRollbackCreate,
           rollbackCreateNonRollbackGlobalArchive,
+          rollbackGlobalArchiveUpdates,
         )
         forEvery(allCases) { case (name, arg) =>
           run(name, arg) shouldBe a[Right[_, _]]

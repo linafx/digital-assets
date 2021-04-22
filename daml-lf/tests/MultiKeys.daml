@@ -212,3 +212,21 @@ template KeyOperations
          archive cid
          None <- lookupByKey @Keyed p
          pure ()
+
+    -- should be rejected in uck
+    nonconsuming choice RollbackGlobalArchiveUpdates : ()
+      with
+        cid1 : ContractId Keyed
+        cid2 : ContractId Keyed
+      controller p
+      do (cid', _) <- fetchByKey @Keyed p
+         cid1 === cid'
+         try do
+           -- archive has an implicit read which is not rolled back
+           -- and should therefore update the following lookup.
+           archive cid2
+           throw E
+         catch
+           E -> pure ()
+         (cid', _) <- fetchByKey @Keyed p
+         cid2 === cid'
