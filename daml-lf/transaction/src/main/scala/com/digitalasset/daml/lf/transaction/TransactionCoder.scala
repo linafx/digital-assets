@@ -356,8 +356,8 @@ object TransactionCoder {
                   builder.setResultUnversioned,
                 )
               case None => Right(())
-                // TODO
-                // Left(EncodeError("NodeExercises without result"))
+              // TODO
+              // Left(EncodeError("NodeExercises without result"))
             }
             _ <- encodeAndSetContractKey(
               encodeCid,
@@ -537,14 +537,15 @@ object TransactionCoder {
         val protoExe = protoNode.getExercise
         for {
           rv <-
-          if (!protoExe.hasResultVersioned) { Right(None) } else {
-          decodeValue(
-            decodeCid,
-            nodeVersion,
-            protoExe.getResultVersioned,
-            protoExe.getResultUnversioned,
-          ).map(Some(_))
-          }
+            if (!protoExe.hasResultVersioned) { Right(None) }
+            else {
+              decodeValue(
+                decodeCid,
+                nodeVersion,
+                protoExe.getResultVersioned,
+                protoExe.getResultUnversioned,
+              ).map(Some(_))
+            }
           keyWithMaintainers <-
             decodeOptionalKeyWithMaintainers(decodeCid, nodeVersion, protoExe.getKeyWithMaintainers)
           ni <- nodeId
