@@ -111,6 +111,20 @@ conformance_test(
 )
 
 conformance_test(
+    name = "conformance-test",
+    server = ":daml-on-sql-ephemeral-postgresql",
+    lf_versions = ["dev"],
+    server_args = [
+        "--ledgerid=conformance-test",
+        "--port=6865",
+        "--eager-package-loading",
+    ],
+    test_tool_args = [
+        "--include=ExceptionsIT",
+    ],
+)
+
+conformance_test(
     name = "conformance-test-multi-party-submissions",
     server = ":daml-on-sql-ephemeral-postgresql",
     server_args = [
