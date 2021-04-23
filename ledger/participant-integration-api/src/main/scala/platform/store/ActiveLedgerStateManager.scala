@@ -25,6 +25,15 @@ private[platform] class ActiveLedgerStateManager[ALS <: ActiveLedgerState[ALS]](
     initialState: => ALS
 ) {
 
+  /** The accumulator state used while validating the transaction
+    * and to record the required changes to the ledger state.
+    * @param acc The current state, None if we encountered an error.
+    * @param errs The list of errors produced during validation.
+    * @param parties The set of parties that are used
+    *  in the transaction and will be implicitly allocated
+    * @param archivedIds The set of contract ids
+    *  archived by the transaction.
+    */
   private case class AddTransactionState(
       acc: Option[ALS],
       errs: Set[RejectionReason],
@@ -108,6 +117,7 @@ private[platform] class ActiveLedgerStateManager[ALS <: ActiveLedgerState[ALS]](
                 val nodeParties = nf.signatories
                   .union(nf.stakeholders)
                   .union(nf.actingParties)
+                // TODO independent of rollback
                 AddTransactionState(
                   Some(acc),
                   contractCheck(nf.coid).fold(errs)(errs + _),
@@ -115,6 +125,7 @@ private[platform] class ActiveLedgerStateManager[ALS <: ActiveLedgerState[ALS]](
                   archivedIds,
                 )
               case nc: N.NodeCreate[ContractId] =>
+                // TODO depends on rollback
                 val nodeParties = nc.signatories
                   .union(nc.stakeholders)
                   .union(nc.key.map(_.maintainers).getOrElse(Set.empty))
@@ -158,6 +169,7 @@ private[platform] class ActiveLedgerStateManager[ALS <: ActiveLedgerState[ALS]](
                     }
                 }
               case ne: N.NodeExercises[_, ContractId] =>
+                // TODO depends on rollback
                 val nodeParties = ne.signatories
                   .union(ne.stakeholders)
                   .union(ne.actingParties)

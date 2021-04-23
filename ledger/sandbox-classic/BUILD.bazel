@@ -322,3 +322,16 @@ server_conformance_test(
         "--exclude=ClosedWorldIT",
     ],
 )
+
+server_conformance_test(
+    name = "conformance-test-exceptions",
+    lf_versions = ["dev"],
+    server_args = [
+        "--wall-clock-time",
+        "--contract-id-seeding=testing-weak",
+    ],
+    servers = SERVERS,
+    test_tool_args = [
+        "--include=ExceptionsIT",
+    ],
+)
