@@ -112,8 +112,8 @@ conformance_test(
 
 conformance_test(
     name = "conformance-test",
-    server = ":daml-on-sql-ephemeral-postgresql",
     lf_versions = ["dev"],
+    server = ":daml-on-sql-ephemeral-postgresql",
     server_args = [
         "--ledgerid=conformance-test",
         "--port=6865",

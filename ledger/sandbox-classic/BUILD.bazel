@@ -299,7 +299,7 @@ server_conformance_test(
 server_conformance_test(
     name = "conformance-test-static-time",
     lf_versions = [
-      "dev",
+        "dev",
     ],
     server_args = [
         "--static-time",
@@ -311,7 +311,6 @@ server_conformance_test(
         "--exclude=ClosedWorldIT",
     ],
 )
-
 
 server_conformance_test(
     name = "conformance-test-wall-clock",
