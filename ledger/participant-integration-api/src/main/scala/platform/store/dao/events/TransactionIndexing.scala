@@ -324,7 +324,14 @@ object TransactionIndexing {
       divulgedContracts: Iterable[DivulgedContract],
   ): TransactionIndexing =
     transaction
-      .fold(new Builder(blindingInfo))(_ add _)
+      .foldInExecutionOrder(new Builder(blindingInfo))(
+        exerciseBegin = (acc, nid, node) => (acc.add((nid, node)), true),
+        // Rollback nodes are not included in the indexer
+        rollbackBegin = (acc, _, _) => (acc, false),
+        leaf = (acc, nid, node) => acc.add((nid, node)),
+        exerciseEnd = (acc, _, _) => acc,
+        rollbackEnd = (acc, _, _) => acc,
+      )
       .build(
         submitterInfo = submitterInfo,
         workflowId = workflowId,
