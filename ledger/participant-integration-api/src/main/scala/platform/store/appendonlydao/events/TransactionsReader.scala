@@ -11,7 +11,6 @@ import akka.{Done, NotUsed}
 import com.daml.ledger.api.TraceIdentifiers
 import com.daml.ledger.api.v1.active_contracts_service.GetActiveContractsResponse
 import com.daml.ledger.api.v1.event.Event
-import com.daml.ledger.api.v1.transaction.TreeEvent
 import com.daml.ledger.api.v1.transaction_service.{
   GetFlatTransactionResponse,
   GetTransactionResponse,
@@ -206,16 +205,19 @@ private[appendonlydao] final class TransactionsReader(
         )
     }
 
-    val events: Source[EventsTable.Entry[TreeEvent], NotUsed] =
+    val events =
       Source
-        .futureSource(requestedRangeF.map { requestedRange =>
-          streamEvents(
-            verbose,
-            dbMetrics.getTransactionTrees,
-            query,
-            nextPageRange[TreeEvent](requestedRange.endInclusive),
-          )(requestedRange)
-        })
+        .futureSource(
+          requestedRangeF
+            .flatMap(range => dispatcher.executeSql(dbMetrics.getTransactionTrees)(query(range)))
+            .flatMap(es =>
+              Timed.future(
+                future = Future.traverse(es)(deserializeEntry(verbose)),
+                timer = dbMetrics.getTransactionTrees.translationTimer,
+              )
+            )
+            .map(v => Source.fromIterator(() => v.iterator))
+        )
         .mapMaterializedValue(_ => NotUsed)
 
     groupContiguous(events)(by = _.transactionId)

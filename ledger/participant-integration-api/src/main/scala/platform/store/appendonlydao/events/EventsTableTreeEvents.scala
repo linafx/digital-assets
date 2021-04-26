@@ -5,6 +5,7 @@ package com.daml.platform.store.appendonlydao.events
 
 import anorm.{Row, RowParser, SimpleSql, SqlStringInterpolation, ~}
 import com.daml.ledger.TransactionId
+import com.daml.scalautil.Statement.discard
 import com.daml.platform.store.Conversions._
 
 import scala.collection.compat.immutable.ArraySeq
@@ -161,10 +162,11 @@ private[events] object EventsTableTreeEvents {
       requestingParty: Party,
       pageSize: Int,
   ): SqlSequence[Vector[EventsTable.Entry[Raw.TreeEvent]]] = {
+    discard(pageSize)
     val witnessesWhereClause =
       sqlFunctions.arrayIntersectionWhereClause("tree_event_witnesses", requestingParty)
-    EventsRange.readPage(
-      read = (range, limitExpr) => SQL"""
+    SqlSequence.vector(
+      SQL"""
         select #$selectColumns, array[$requestingParty] as event_witnesses,
                event_kind = 20 as exercise_consuming,
                case when submitters = array[$requestingParty]::text[] then command_id else '' end as command_id
@@ -173,11 +175,13 @@ private[events] object EventsTableTreeEvents {
               and event_sequential_id <= ${range.endInclusive}
               and #$witnessesWhereClause
               and event_kind != 0 -- we do not want to fetch divulgence events
-        order by event_sequential_id #$limitExpr""",
+        order by event_sequential_id""",
       rawTreeEventParser,
-      range,
-      pageSize,
     )
+//    discard(range)
+//    discard(sqlFunctions)
+//    discard(requestingParty)
+//    SqlSequence.vector(SQL"""SELECT 0""", rawTreeEventParser)
   }
 
   private def multiPartyTrees(sqlFunctions: SqlFunctions)(
@@ -185,14 +189,16 @@ private[events] object EventsTableTreeEvents {
       requestingParties: Set[Party],
       pageSize: Int,
   ): SqlSequence[Vector[EventsTable.Entry[Raw.TreeEvent]]] = {
+    discard(pageSize)
     val witnessesWhereClause =
       sqlFunctions.arrayIntersectionWhereClause("tree_event_witnesses", requestingParties)
     val filteredWitnesses =
       sqlFunctions.arrayIntersectionValues("tree_event_witnesses", requestingParties)
-    val submittersInPartiesClause =
+    val submittersInPartiesClause = {
       sqlFunctions.arrayIntersectionWhereClause("submitters", requestingParties)
-    EventsRange.readPage(
-      read = (range, limitExpr) => SQL"""
+    }
+    SqlSequence.vector(
+      SQL"""
         select #$selectColumns, #$filteredWitnesses as event_witnesses,
                event_kind = 20 as exercise_consuming,
                case when #$submittersInPartiesClause then command_id else '' end as command_id
@@ -201,11 +207,12 @@ private[events] object EventsTableTreeEvents {
               and event_sequential_id <= ${range.endInclusive}
               and #$witnessesWhereClause
               and event_kind != 0 -- we do not want to fetch divulgence events
-        order by event_sequential_id #$limitExpr""",
+        order by event_sequential_id""",
       rawTreeEventParser,
-      range,
-      pageSize,
     )
+//    discard(range)
+//    discard(sqlFunctions)
+//    discard(requestingParties)
+//    SqlSequence.vector(SQL"""SELECT 0""", rawTreeEventParser)
   }
-
 }

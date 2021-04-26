@@ -69,6 +69,11 @@ private[events] object EventsRange {
       range: EventsRange[Long],
       pageSize: Int,
   ): SqlSequence[Vector[A]] = {
+    // max(min(10, pageSize), pageSize / 10)
+    // for pageSize < 10 => pageSize
+    // for pageSize (10, 100) => 10
+    // for pageSize >= 100 => pageSize / 10
+    // for the default (1000) -> 100
     val minPageSize = 10 min pageSize max (pageSize / 10)
     val guessedPageEnd = range.endInclusive min (range.startExclusive + pageSize)
     SqlSequence
