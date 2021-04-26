@@ -61,7 +61,7 @@ template KeyOperations
         cid : ContractId Keyed
       controller p
       do (cidByKey, _) <- fetchByKey @Keyed p
-         cid =/= cidByKey
+         cid =/= cidByKey -- sanity-check the choice argument
          c <- fetch cid
          key c === p
          (cidByKey', _) <- fetchByKey @Keyed p
