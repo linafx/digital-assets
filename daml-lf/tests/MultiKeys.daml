@@ -229,4 +229,4 @@ template KeyOperations
          catch
            E -> pure ()
          (cid', _) <- fetchByKey @Keyed p
-         cid2 === cid'
+         cid1 === cid'
