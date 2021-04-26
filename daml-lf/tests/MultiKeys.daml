@@ -150,12 +150,15 @@ template KeyOperations
     -- should be rejected in uck
     nonconsuming choice RollbackCreateNonRollbackFetchByKey : ()
       controller p
-      do try do
-           create (Keyed p)
+      do cid1 <- fetchByKey @Keyed p
+         try do
+           cid <- create (Keyed p)
+           (cid', _) <- fetchByKey @Keyed p
+           cid === cid'
            throw E
          catch E -> pure ()
-         _ <- fetchByKey @Keyed p
-         pure ()
+         cid2 <- fetchByKey @Keyed p
+         cid1 === cid2
 
     -- should be rejected in uck
     nonconsuming choice RollbackFetchByKeyNonRollbackCreate : ()
